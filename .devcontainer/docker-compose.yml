@@ -1,0 +1,66 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TZ: ${TZ:-Asia/Seoul}
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    user: vscode
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace:cached
+      - claude-code-bashhistory:/commandhistory
+      - claude-code-config:/home/vscode/.claude
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - ENVIRONMENT=development
+      - CLAUDE_CONFIG_DIR=/home/vscode/.claude
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    stdin_open: true
+    tty: true
+    command: >
+      sh -c "zsh && sudo /usr/local/bin/init-firewall.sh"
+    ports:
+      - "4000:4000"
+    networks:
+      - bsage-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-bsgateway}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-devpassword}
+      - POSTGRES_DB=${POSTGRES_DB:-bsgateway}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bsgateway}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bsage-network
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bsage-network
+
+volumes:
+  claude-code-bashhistory:
+  claude-code-config:
+  postgres_data:
+
+networks:
+  bsage-network:
+    driver: bridge

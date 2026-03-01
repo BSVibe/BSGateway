@@ -1,0 +1,153 @@
+# ============================================================
+# BSGateway - Unified Configuration
+# ============================================================
+# Single source of truth for model definitions + routing rules.
+# LiteLLM reads model_list/litellm_settings/general_settings.
+# BSGateway reads the routing section + model_list for passthrough.
+# ============================================================
+
+# === Model Definitions ===
+model_list:
+  # --- Local LLM (external Ollama or compatible server) ---
+  - model_name: "local/llama3"
+    litellm_params:
+      model: "ollama_chat/llama3"
+      api_base: "os.environ/LOCAL_LLM_API_BASE"
+
+  - model_name: "local/codellama"
+    litellm_params:
+      model: "ollama_chat/codellama"
+      api_base: "os.environ/LOCAL_LLM_API_BASE"
+
+  - model_name: "local/mistral"
+    litellm_params:
+      model: "ollama_chat/mistral"
+      api_base: "os.environ/LOCAL_LLM_API_BASE"
+
+  # --- OpenAI ---
+  - model_name: "gpt-4o-mini"
+    litellm_params:
+      model: "openai/gpt-4o-mini"
+      api_key: "os.environ/OPENAI_API_KEY"
+
+  - model_name: "gpt-4o"
+    litellm_params:
+      model: "openai/gpt-4o"
+      api_key: "os.environ/OPENAI_API_KEY"
+
+  # --- Anthropic ---
+  - model_name: "claude-opus"
+    litellm_params:
+      model: "anthropic/claude-opus-4-0"
+      api_key: "os.environ/ANTHROPIC_API_KEY"
+
+  - model_name: "claude-sonnet"
+    litellm_params:
+      model: "anthropic/claude-sonnet-4-20250514"
+      api_key: "os.environ/ANTHROPIC_API_KEY"
+
+# === LiteLLM Settings ===
+litellm_settings:
+  callbacks: bsgateway.routing.hook.proxy_handler_instance
+  drop_params: true
+  num_retries: 2
+  request_timeout: 120
+  json_logs: true
+
+router_settings:
+  routing_strategy: "simple-shuffle"
+  num_retries: 2
+
+general_settings:
+  master_key: "os.environ/LITELLM_MASTER_KEY"
+  database_url: "os.environ/DATABASE_URL"
+
+# === BSGateway Routing ===
+# LiteLLM ignores this section; only our hook reads it.
+# passthrough_models is auto-derived from model_list above.
+routing:
+  fallback_tier: "medium"
+
+  tiers:
+    simple:
+      score_range: [0, 30]
+      model: "local/llama3"
+    medium:
+      score_range: [31, 65]
+      model: "gpt-4o-mini"
+    complex:
+      score_range: [66, 100]
+      model: "claude-opus"
+
+  aliases:
+    auto: "auto_route"
+    local: "local/llama3"
+    fast: "gpt-4o-mini"
+    smart: "gpt-4o"
+    opus: "claude-opus"
+    sonnet: "claude-sonnet"
+    # Claude Code default models -> auto_route for cost optimization
+    # Uncomment to auto-route Claude Code requests:
+    # claude-sonnet-4-20250514: "auto_route"
+    # claude-opus-4-0: "auto_route"
+
+  classifier:
+    strategy: "llm"  # "static" | "llm" | "ml"
+
+    # LLM classifier config (used when strategy: llm)
+    llm:
+      api_base: "http://host.docker.internal:11434"
+      model: "llama3"
+      timeout: 3.0
+
+    # Static classifier config (also used as LLM fallback)
+    static:
+      weights:
+        token_count: 0.25
+        system_prompt: 0.20
+        keyword_patterns: 0.25
+        conversation_length: 0.10
+        code_complexity: 0.15
+        tool_usage: 0.05
+
+      token_thresholds:
+        low: 500
+        medium: 2000
+        high: 8000
+
+      complex_keywords:
+        - "architect"
+        - "design system"
+        - "trade-off"
+        - "security audit"
+        - "refactor"
+        - "optimize"
+        - "deep analysis"
+        - "review code"
+        - "debug complex"
+        - "performance"
+        - "scalability"
+        - "implement"
+        - "function"
+        - "build"
+        - "create"
+
+      simple_keywords:
+        - "hello"
+        - "hi"
+        - "thanks"
+        - "convert"
+        - "format"
+        - "translate"
+        - "summarize"
+        - "what is"
+        - "how to"
+        - "explain"
+
+  collector:
+    enabled: true
+    embedding:
+      api_base: "http://host.docker.internal:11434"
+      model: "nomic-embed-text"
+      timeout: 5.0
+      max_chars: 1000
