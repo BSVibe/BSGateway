@@ -16,13 +16,14 @@ Client Request
               |         |         |
            simple    medium    complex
               |         |         |
-         local/llama3  gpt-4o-mini  claude-opus
+     local/glm-4.7-flash  gpt-5-mini  claude-opus
 ```
 
-**Three routing methods:**
+**Four routing methods:**
 1. **Passthrough** - known model names go directly (auto-derived from `model_list`)
-2. **Alias** - shorthand names resolve to specific models (`fast` -> `gpt-4o-mini`)
-3. **Auto-route** - classifier scores complexity 0-100, maps to tier
+2. **Alias** - shorthand names resolve to specific models (`auto` -> complexity routing)
+3. **Pattern match** - glob patterns auto-route matching models (`claude-*` catches any Claude Code model)
+4. **Auto-route** - classifier scores complexity 0-100, maps to tier
 
 ## Classifier Strategies
 
@@ -57,13 +58,12 @@ curl http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -d '{"model": "auto", "messages": [{"role": "user", "content": "hello"}]}'
 
-# Aliases
-# "auto"   -> complexity-based routing
-# "fast"   -> gpt-4o-mini
-# "smart"  -> gpt-4o
-# "opus"   -> claude-opus
-# "local"  -> local/llama3
+# "auto"              -> complexity-based routing
+# "claude-sonnet-4-6" -> matched by "claude-*" pattern, auto-routed
+# "claude-opus"       -> passthrough (defined in model_list)
 ```
+
+- **Add a pattern**: add to `routing.auto_route_patterns` (fnmatch glob syntax)
 
 ## Data Collection
 
@@ -71,7 +71,7 @@ Every auto-routed request is logged to PostgreSQL (`routing_logs` table) for ML 
 - Original text + system prompt (for classification validation)
 - Numeric features (token count, code blocks, conversation turns, etc.)
 - Classification labels (tier, strategy, score)
-- Optional embedding vector (via Ollama `nomic-embed-text`)
+- Optional embedding vector (via Ollama `qwen3-embedding`)
 
 ## Project Structure
 
@@ -92,9 +92,8 @@ bsgateway/
     sql/
       schema.sql       # PostgreSQL DDL
       queries.sql      # Named queries (-- name: pattern)
-  tests/               # pytest-asyncio, 58 tests, 96% coverage
-config/
-  gateway.yaml         # Unified config (LiteLLM + routing)
+  tests/               # pytest-asyncio, 64 tests
+gateway.yaml           # Unified config (LiteLLM + routing)
 ```
 
 ## Development
