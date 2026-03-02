@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Literal
 
 import structlog
@@ -22,7 +23,8 @@ from bsgateway.routing.models import (
 )
 
 if TYPE_CHECKING:
-    from litellm.proxy.proxy_server import DualCache, UserAPIKeyAuth
+    from litellm.caching.dual_cache import DualCache
+    from litellm.proxy._types import UserAPIKeyAuth
 
 logger = structlog.get_logger(__name__)
 
@@ -69,6 +71,9 @@ def load_routing_config(config_path: str | None = None) -> RoutingConfig:
 
     # Parse aliases
     aliases = routing.get("aliases", {})
+
+    # Parse auto-route patterns (fnmatch glob syntax)
+    auto_route_patterns: list[str] = routing.get("auto_route_patterns", [])
 
     # Auto-derive passthrough from model_list + tier models
     passthrough_models: set[str] = set()
@@ -123,6 +128,7 @@ def load_routing_config(config_path: str | None = None) -> RoutingConfig:
     return RoutingConfig(
         tiers=tiers,
         aliases=aliases,
+        auto_route_patterns=auto_route_patterns,
         passthrough_models=passthrough_models,
         classifier=classifier_config,
         fallback_tier=routing.get("fallback_tier", "medium"),
@@ -151,10 +157,14 @@ class BSGatewayRouter:
         if self.config.collector.enabled:
             from bsgateway.core.config import settings
 
-            self.collector: RoutingCollector | None = RoutingCollector(
-                database_url=settings.database_url,
-                embedding_config=self.config.collector.embedding,
-            )
+            if settings.database_url is None:
+                logger.warning("collector_disabled", reason="database_url not set")
+                self.collector = None
+            else:
+                self.collector: RoutingCollector | None = RoutingCollector(
+                    database_url=settings.database_url,
+                    embedding_config=self.config.collector.embedding,
+                )
         else:
             self.collector = None
 
@@ -210,7 +220,7 @@ class BSGatewayRouter:
                 resolved_model=requested_model,
             )
 
-        # 2. Alias resolution
+        # 2. Alias resolution (exact match)
         if requested_model in self.config.aliases:
             resolved = self.config.aliases[requested_model]
             if resolved != "auto_route":
@@ -221,8 +231,19 @@ class BSGatewayRouter:
                 )
             # Fall through to auto-routing
 
-        # 3. Auto-route based on complexity
+        # 3. Pattern-based auto-routing (e.g. "claude-*")
+        elif self._matches_auto_route_pattern(requested_model):
+            pass  # Fall through to auto-routing
+
+        # 4. Auto-route based on complexity
         return await self._auto_route(requested_model, data)
+
+    def _matches_auto_route_pattern(self, model: str) -> bool:
+        """Check if a model name matches any auto_route_patterns."""
+        return any(
+            fnmatch(model, pattern)
+            for pattern in self.config.auto_route_patterns
+        )
 
     async def _auto_route(
         self, requested_model: str, data: dict

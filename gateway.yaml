@@ -9,41 +9,25 @@
 # === Model Definitions ===
 model_list:
   # --- Local LLM (external Ollama or compatible server) ---
-  - model_name: "local/llama3"
+  - model_name: "local/glm-4.7-flash"
     litellm_params:
-      model: "ollama_chat/llama3"
-      api_base: "os.environ/LOCAL_LLM_API_BASE"
-
-  - model_name: "local/codellama"
-    litellm_params:
-      model: "ollama_chat/codellama"
-      api_base: "os.environ/LOCAL_LLM_API_BASE"
-
-  - model_name: "local/mistral"
-    litellm_params:
-      model: "ollama_chat/mistral"
+      model: "ollama_chat/glm-4.7-flash"
       api_base: "os.environ/LOCAL_LLM_API_BASE"
 
   # --- OpenAI ---
-  - model_name: "gpt-4o-mini"
+  - model_name: "gpt-5-mini"
     litellm_params:
-      model: "openai/gpt-4o-mini"
-      api_key: "os.environ/OPENAI_API_KEY"
-
-  - model_name: "gpt-4o"
-    litellm_params:
-      model: "openai/gpt-4o"
+      model: "openai/gpt-5-mini"
       api_key: "os.environ/OPENAI_API_KEY"
 
   # --- Anthropic ---
   - model_name: "claude-opus"
     litellm_params:
-      model: "anthropic/claude-opus-4-0"
+      model: "anthropic/claude-opus-4-6"
       api_key: "os.environ/ANTHROPIC_API_KEY"
-
   - model_name: "claude-sonnet"
     litellm_params:
-      model: "anthropic/claude-sonnet-4-20250514"
+      model: "anthropic/claude-sonnet-4-6"
       api_key: "os.environ/ANTHROPIC_API_KEY"
 
 # === LiteLLM Settings ===
@@ -71,25 +55,23 @@ routing:
   tiers:
     simple:
       score_range: [0, 30]
-      model: "local/llama3"
+      model: "local/glm-4.7-flash"
     medium:
       score_range: [31, 65]
-      model: "gpt-4o-mini"
+      model: "gpt-5-mini"
     complex:
       score_range: [66, 100]
       model: "claude-opus"
 
   aliases:
     auto: "auto_route"
-    local: "local/llama3"
-    fast: "gpt-4o-mini"
-    smart: "gpt-4o"
-    opus: "claude-opus"
-    sonnet: "claude-sonnet"
-    # Claude Code default models -> auto_route for cost optimization
-    # Uncomment to auto-route Claude Code requests:
-    # claude-sonnet-4-20250514: "auto_route"
-    # claude-opus-4-0: "auto_route"
+
+  # Pattern-based auto-routing (fnmatch glob syntax).
+  # Any requested model matching a pattern here is auto-routed by complexity.
+  # This eliminates the need to update aliases every time Claude Code
+  # ships a new default model ID (e.g. claude-sonnet-4-7, claude-opus-5-0).
+  auto_route_patterns:
+    - "claude-*"
 
   classifier:
     strategy: "llm"  # "static" | "llm" | "ml"
@@ -97,7 +79,7 @@ routing:
     # LLM classifier config (used when strategy: llm)
     llm:
       api_base: "http://host.docker.internal:11434"
-      model: "llama3"
+      model: "ollama_chat/glm-4.7-flash"
       timeout: 3.0
 
     # Static classifier config (also used as LLM fallback)
@@ -148,6 +130,6 @@ routing:
     enabled: true
     embedding:
       api_base: "http://host.docker.internal:11434"
-      model: "nomic-embed-text"
+      model: "qwen3-embedding"
       timeout: 5.0
       max_chars: 1000

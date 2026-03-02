@@ -80,6 +80,7 @@ class RoutingConfig:
 
     tiers: list[TierConfig] = field(default_factory=list)
     aliases: dict[str, str] = field(default_factory=dict)
+    auto_route_patterns: list[str] = field(default_factory=list)
     passthrough_models: set[str] = field(default_factory=set)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     fallback_tier: str = "medium"

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import cast
+
 import litellm
+from litellm.types.utils import Choices, ModelResponse
 import structlog
 
 from bsgateway.routing.classifiers.base import (
@@ -43,15 +46,20 @@ class LLMClassifier:
         prompt = self._build_prompt(user_text[:500], system_text[:200])
 
         try:
-            response = await litellm.acompletion(
-                model=f"ollama_chat/{self.config.model}",
-                messages=[{"role": "user", "content": prompt}],
-                api_base=self.config.api_base,
-                max_tokens=20,
-                temperature=0,
-                timeout=self.config.timeout,
+            response = cast(
+                ModelResponse,
+                await litellm.acompletion(
+                    model=self.config.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    api_base=self.config.api_base,
+                    max_tokens=20,
+                    temperature=0,
+                    timeout=self.config.timeout,
+                    stream=False,
+                ),
             )
-            raw = response.choices[0].message.content.strip().lower()
+            choice = cast(Choices, response.choices[0])
+            raw = (choice.message.content or "").strip().lower()
             tier = self._parse_tier(raw)
             logger.debug("llm_classified", tier=tier, raw_response=raw)
             return ClassificationResult(tier=tier, strategy="llm")

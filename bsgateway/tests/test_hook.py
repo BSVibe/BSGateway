@@ -212,6 +212,83 @@ class TestRoutingMetadata:
         assert "routing_decision" in result["metadata"]
 
 
+class TestAutoRoutePatterns:
+    @pytest.fixture
+    def pattern_config(self) -> RoutingConfig:
+        return RoutingConfig(
+            tiers=[
+                TierConfig(name="simple", score_range=(0, 30), model="local/llama3"),
+                TierConfig(name="medium", score_range=(31, 65), model="gpt-4o-mini"),
+                TierConfig(name="complex", score_range=(66, 100), model="claude-opus"),
+            ],
+            aliases={"auto": "auto_route"},
+            auto_route_patterns=["claude-*"],
+            passthrough_models={"local/llama3", "gpt-4o-mini", "claude-opus"},
+            classifier=ClassifierConfig(
+                weights=ClassifierWeights(),
+                complex_keywords=["architect", "refactor"],
+                simple_keywords=["hello", "thanks"],
+            ),
+            fallback_tier="medium",
+            classifier_strategy="static",
+            collector=CollectorConfig(enabled=False),
+        )
+
+    @pytest.fixture
+    def pattern_router(self, pattern_config: RoutingConfig) -> BSGatewayRouter:
+        return BSGatewayRouter(config=pattern_config)
+
+    @pytest.mark.asyncio
+    async def test_claude_code_model_auto_routed(self, pattern_router: BSGatewayRouter) -> None:
+        """Claude Code's default model IDs should be auto-routed, not rejected."""
+        data = {
+            "model": "claude-sonnet-4-6",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await pattern_router.async_pre_call_hook(
+            MagicMock(), MagicMock(), data, "completion"
+        )
+        decision = result["metadata"]["routing_decision"]
+        assert decision["method"] == "auto"
+        assert decision["original_model"] == "claude-sonnet-4-6"
+
+    @pytest.mark.asyncio
+    async def test_future_claude_model_auto_routed(self, pattern_router: BSGatewayRouter) -> None:
+        """Future Claude model IDs should also match without config changes."""
+        data = {
+            "model": "claude-opus-5-0",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await pattern_router.async_pre_call_hook(
+            MagicMock(), MagicMock(), data, "completion"
+        )
+        assert result["metadata"]["routing_decision"]["method"] == "auto"
+
+    @pytest.mark.asyncio
+    async def test_non_matching_model_still_auto_routes(self, pattern_router: BSGatewayRouter) -> None:
+        """Unknown models that don't match patterns should still auto-route."""
+        data = {
+            "model": "some-unknown-model",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await pattern_router.async_pre_call_hook(
+            MagicMock(), MagicMock(), data, "completion"
+        )
+        assert result["metadata"]["routing_decision"]["method"] == "auto"
+
+    @pytest.mark.asyncio
+    async def test_passthrough_takes_priority_over_pattern(self, pattern_router: BSGatewayRouter) -> None:
+        """Passthrough models should not be intercepted by patterns."""
+        data = {
+            "model": "claude-opus",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await pattern_router.async_pre_call_hook(
+            MagicMock(), MagicMock(), data, "completion"
+        )
+        assert result["metadata"]["routing_decision"]["method"] == "passthrough"
+
+
 class TestLoadRoutingConfig:
     def test_loads_from_yaml(self, tmp_path: Path) -> None:
         config_data = {
@@ -277,6 +354,33 @@ class TestLoadRoutingConfig:
         assert "gpt-4o" in config.passthrough_models
         assert "claude-opus" in config.passthrough_models
 
+    def test_loads_auto_route_patterns(self, tmp_path: Path) -> None:
+        config_data = {
+            "routing": {
+                "tiers": {},
+                "auto_route_patterns": ["claude-*", "gpt-*"],
+                "collector": {"enabled": False},
+            },
+        }
+        config_file = tmp_path / "gateway.yaml"
+        config_file.write_text(yaml.dump(config_data))
+
+        config = load_routing_config(str(config_file))
+        assert config.auto_route_patterns == ["claude-*", "gpt-*"]
+
+    def test_missing_auto_route_patterns_defaults_empty(self, tmp_path: Path) -> None:
+        config_data = {
+            "routing": {
+                "tiers": {},
+                "collector": {"enabled": False},
+            },
+        }
+        config_file = tmp_path / "gateway.yaml"
+        config_file.write_text(yaml.dump(config_data))
+
+        config = load_routing_config(str(config_file))
+        assert config.auto_route_patterns == []
+
     def test_missing_file_returns_defaults(self, tmp_path: Path) -> None:
         config = load_routing_config(str(tmp_path / "nonexistent.yaml"))
         assert isinstance(config, RoutingConfig)
@@ -300,5 +404,6 @@ class TestLoadRoutingConfig:
 
         config = load_routing_config(str(config_file))
         assert config.collector.enabled is True
+        assert config.collector.embedding is not None
         assert config.collector.embedding.model == "custom-embed"
         assert config.collector.embedding.timeout == 10.0
