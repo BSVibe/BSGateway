@@ -8,11 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """BSGateway configuration via environment variables."""
 
-    litellm_master_key: str = ""
-    local_llm_api_base: str = "http://host.docker.internal:11434"
-    local_llm_model: str = "llama3"
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
     gateway_config_path: Path = Path("gateway.yaml")
     database_url: str | None = None
     redis_host: str = "redis"

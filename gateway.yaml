@@ -78,7 +78,7 @@ routing:
 
     # LLM classifier config (used when strategy: llm)
     llm:
-      api_base: "http://host.docker.internal:11434"
+      api_base: "os.environ/LOCAL_LLM_API_BASE"
       model: "ollama_chat/glm-4.7-flash"
       timeout: 3.0
 
@@ -129,7 +129,7 @@ routing:
   collector:
     enabled: true
     embedding:
-      api_base: "http://host.docker.internal:11434"
+      api_base: "os.environ/LOCAL_LLM_API_BASE"
       model: "qwen3-embedding"
       timeout: 5.0
       max_chars: 1000

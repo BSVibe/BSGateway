@@ -40,6 +40,14 @@ def _get_custom_logger_base():
     return _CustomLogger
 
 
+def _resolve_env(value: str) -> str:
+    """Resolve ``os.environ/VAR`` references, matching LiteLLM's convention."""
+    if isinstance(value, str) and value.startswith("os.environ/"):
+        var = value[len("os.environ/"):]
+        return os.environ.get(var, value)
+    return value
+
+
 def load_routing_config(config_path: str | None = None) -> RoutingConfig:
     """Load routing configuration from unified gateway.yaml.
 
@@ -103,7 +111,7 @@ def load_routing_config(config_path: str | None = None) -> RoutingConfig:
     # Parse LLM classifier config
     llm_raw = classifier_raw.get("llm", {})
     llm_config = LLMClassifierConfig(
-        api_base=llm_raw.get("api_base", "http://host.docker.internal:11434"),
+        api_base=_resolve_env(llm_raw.get("api_base", "http://host.docker.internal:11434")),
         model=llm_raw.get("model", "llama3"),
         timeout=llm_raw.get("timeout", 3.0),
     )
@@ -114,7 +122,7 @@ def load_routing_config(config_path: str | None = None) -> RoutingConfig:
     embedding_raw = collector_raw.get("embedding")
     if embedding_raw:
         embedding_config = EmbeddingConfig(
-            api_base=embedding_raw.get("api_base", "http://host.docker.internal:11434"),
+            api_base=_resolve_env(embedding_raw.get("api_base", "http://host.docker.internal:11434")),
             model=embedding_raw.get("model", "nomic-embed-text"),
             timeout=embedding_raw.get("timeout", 5.0),
             max_chars=embedding_raw.get("max_chars", 1000),
