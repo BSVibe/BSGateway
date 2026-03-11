@@ -74,6 +74,6 @@
   // Mount configuration
   "mounts": [
     "source=claude-code-bashhistory,target=/commandhistory,type=volume",
-    "source=claude-code-config,target=/home/vscode/.claude,type=volume"
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
   ]
 }
