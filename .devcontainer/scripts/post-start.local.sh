@@ -8,7 +8,7 @@ if ! pgrep -x tailscaled > /dev/null; then
         --socket=/var/run/tailscale/tailscaled.sock \
         --tun=userspace-networking &
     sleep 2
-    sudo tailscale up --hostname=bsage-dev
+    sudo tailscale up --hostname=bsgateway-dev
     echo "[OK] Tailscale started"
 else
     echo "[OK] Tailscale already running"

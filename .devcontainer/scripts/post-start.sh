@@ -1,17 +1,8 @@
 #!/bin/bash
 set -e
 
-echo "BSage DevContainer Post-Start Setup"
+echo "BSGateway DevContainer Post-Start Setup"
 echo "============================================="
-
-# 0. Configure git safe directory (required for devcontainer)
-# Use --replace-all to avoid duplicates on repeated runs
-if ! git config --global --get-all safe.directory | grep -q "^/workspace$"; then
-    git config --global --add safe.directory /workspace
-    echo "[OK] Git safe directory configured"
-else
-    echo "[OK] Git safe directory already configured"
-fi
 
 # 1. Create virtual environment if it doesn't exist (uv is pre-installed in Dockerfile)
 if [ ! -d ".venv" ]; then

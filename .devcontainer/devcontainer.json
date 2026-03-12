@@ -1,6 +1,6 @@
 {
-  "name": "BSage - Personal AI Agent",
-  "dockerComposeFile": "docker-compose.yml",
+  "name": "BSGatway - LLM Gateway",
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"],
   "service": "app",
   "workspaceFolder": "/workspace",
   // Wait for services to be ready

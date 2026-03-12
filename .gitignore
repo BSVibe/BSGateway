@@ -34,3 +34,6 @@ tmp/
 # Docker volumes (local)
 postgres_data/
 redis_data/
+
+# Devcontainer local overrides (git worktree mount)
+docker-compose.override.yml

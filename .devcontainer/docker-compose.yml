@@ -27,7 +27,7 @@ services:
     ports:
       - "${EXTERNAL_BACKEND_PORT:-4000}:4000"
     networks:
-      - bsage-network
+      - bsgateway-network
 
   postgres:
     image: postgres:16-alpine
@@ -43,7 +43,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - bsage-network
+      - bsgateway-network
 
   redis:
     image: redis:7-alpine
@@ -53,12 +53,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - bsage-network
+      - bsgateway-network
 
 volumes:
   claude-code-bashhistory:
   postgres_data:
 
 networks:
-  bsage-network:
+  bsgateway-network:
     driver: bridge
