@@ -85,7 +85,9 @@ class TestComplexRequests:
             ],
         }
         result = await classifier.classify(data)
-        assert result.score >= 50, f"Code review with large block should be complex, got {result.score}"
+        assert result.score >= 50, (
+            f"Code review with large block should be complex, got {result.score}"
+        )
 
     @pytest.mark.asyncio
     async def test_tool_usage_boosts_score(self, classifier: StaticClassifier) -> None:
@@ -160,7 +162,9 @@ class TestMultiTurnConversation:
         result_short = await classifier.classify(
             {"messages": [{"role": "user", "content": "Question 0"}]}
         )
-        assert result_long.score > result_short.score, "Longer conversation should have higher score"
+        assert result_long.score > result_short.score, (
+            "Longer conversation should have higher score"
+        )
 
 
 class TestErrorTraces:

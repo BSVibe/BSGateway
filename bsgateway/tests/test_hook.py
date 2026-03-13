@@ -6,8 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from bsgateway.routing.classifiers.base import ClassificationResult
-from bsgateway.routing.classifiers.static import StaticClassifier
 from bsgateway.routing.hook import BSGatewayRouter, load_routing_config
 from bsgateway.routing.models import (
     ClassifierConfig,
@@ -32,7 +30,9 @@ def routing_config() -> RoutingConfig:
             "fast": "gpt-4o-mini",
             "opus": "claude-opus",
         },
-        passthrough_models={"local/llama3", "gpt-4o-mini", "gpt-4o", "claude-opus", "claude-sonnet"},
+        passthrough_models={
+            "local/llama3", "gpt-4o-mini", "gpt-4o", "claude-opus", "claude-sonnet",
+        },
         classifier=ClassifierConfig(
             weights=ClassifierWeights(),
             complex_keywords=["architect", "design system", "refactor", "optimize"],
@@ -265,7 +265,9 @@ class TestAutoRoutePatterns:
         assert result["metadata"]["routing_decision"]["method"] == "auto"
 
     @pytest.mark.asyncio
-    async def test_non_matching_model_still_auto_routes(self, pattern_router: BSGatewayRouter) -> None:
+    async def test_non_matching_model_still_auto_routes(
+        self, pattern_router: BSGatewayRouter,
+    ) -> None:
         """Unknown models that don't match patterns should still auto-route."""
         data = {
             "model": "some-unknown-model",
@@ -277,7 +279,9 @@ class TestAutoRoutePatterns:
         assert result["metadata"]["routing_decision"]["method"] == "auto"
 
     @pytest.mark.asyncio
-    async def test_passthrough_takes_priority_over_pattern(self, pattern_router: BSGatewayRouter) -> None:
+    async def test_passthrough_takes_priority_over_pattern(
+        self, pattern_router: BSGatewayRouter,
+    ) -> None:
         """Passthrough models should not be intercepted by patterns."""
         data = {
             "model": "claude-opus",
@@ -337,7 +341,10 @@ class TestLoadRoutingConfig:
                 {"model_name": "local/llama3", "litellm_params": {"model": "ollama_chat/llama3"}},
                 {"model_name": "gpt-4o-mini", "litellm_params": {"model": "openai/gpt-4o-mini"}},
                 {"model_name": "gpt-4o", "litellm_params": {"model": "openai/gpt-4o"}},
-                {"model_name": "claude-opus", "litellm_params": {"model": "anthropic/claude-opus-4-0"}},
+                {
+                    "model_name": "claude-opus",
+                    "litellm_params": {"model": "anthropic/claude-opus-4-0"},
+                },
             ],
             "routing": {
                 "tiers": {

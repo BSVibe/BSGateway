@@ -35,5 +35,8 @@ tmp/
 postgres_data/
 redis_data/
 
+# Internal docs (not for public)
+docs/internal/
+
 # Devcontainer local overrides (git worktree mount)
 docker-compose.override.yml
