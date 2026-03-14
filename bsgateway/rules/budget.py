@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import structlog
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 logger = structlog.get_logger(__name__)
 
@@ -10,7 +14,7 @@ logger = structlog.get_logger(__name__)
 class BudgetTracker:
     """Redis-backed budget and usage tracking per tenant."""
 
-    def __init__(self, redis_client: object) -> None:
+    def __init__(self, redis_client: Redis) -> None:
         self._redis = redis_client
 
     def _daily_key(self, tenant_id: str) -> str:

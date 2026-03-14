@@ -3,19 +3,31 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Rule Conditions
 # ---------------------------------------------------------------------------
 
 
+ConditionValue = str | int | float | bool | list | None
+
+
 class ConditionSchema(BaseModel):
     condition_type: str = Field(..., min_length=1)
     field: str = Field(..., min_length=1)
     operator: str = Field(default="eq")
-    value: object = Field(...)
+    value: ConditionValue = Field(...)
     negate: bool = False
+
+    @field_validator("value")
+    @classmethod
+    def validate_value(cls, v: ConditionValue) -> ConditionValue:
+        if isinstance(v, str) and len(v) > 1000:
+            raise ValueError("value string too long (max 1000)")
+        if isinstance(v, list) and len(v) > 100:
+            raise ValueError("value list too long (max 100)")
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +56,7 @@ class ConditionResponse(BaseModel):
     condition_type: str
     field: str
     operator: str
-    value: object
+    value: ConditionValue
     negate: bool
 
 

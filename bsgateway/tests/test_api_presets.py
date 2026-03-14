@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
+from bsgateway.core.security import hash_api_key
 
 SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
@@ -20,7 +21,7 @@ def _make_app():
     pool._closed = False
     app.state.db_pool = pool
     app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-    app.state.superadmin_key = SUPERADMIN_KEY
+    app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
     return app
 
 

@@ -25,7 +25,13 @@ def _evaluate_raw(condition: RuleCondition, ctx: EvaluationContext) -> bool:
     if op == "contains":
         return _str_contains(field_value, expected)
     if op == "regex":
-        return bool(re.search(str(expected), str(field_value), re.IGNORECASE))
+        pattern = str(expected)
+        if len(pattern) > 500:
+            return False
+        try:
+            return bool(re.search(pattern, str(field_value), re.IGNORECASE))
+        except re.error:
+            return False
     if op == "gt":
         return _numeric(field_value) > _numeric(expected)
     if op == "lt":
@@ -35,6 +41,8 @@ def _evaluate_raw(condition: RuleCondition, ctx: EvaluationContext) -> bool:
     if op == "lte":
         return _numeric(field_value) <= _numeric(expected)
     if op == "between":
+        if not isinstance(expected, list) or len(expected) != 2:
+            return False
         v = _numeric(field_value)
         return _numeric(expected[0]) <= v <= _numeric(expected[1])
     if op == "in":

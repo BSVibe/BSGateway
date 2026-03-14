@@ -47,9 +47,9 @@ async def get_auth_context(request: Request) -> AuthContext:
     token = auth_header[7:]
     pool: asyncpg.Pool = request.app.state.db_pool
 
-    # Check superadmin key first
-    superadmin_key = getattr(request.app.state, "superadmin_key", "")
-    if superadmin_key and token == superadmin_key:
+    # Check superadmin key first (compare hashes, never plaintext)
+    superadmin_hash = getattr(request.app.state, "superadmin_key_hash", "")
+    if superadmin_hash and hash_api_key(token) == superadmin_hash:
         return AuthContext(
             tenant_id=UUID("00000000-0000-0000-0000-000000000000"),
             scopes=["admin"],

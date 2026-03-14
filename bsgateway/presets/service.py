@@ -6,6 +6,7 @@ import structlog
 
 from bsgateway.presets.models import ModelMapping, PresetApplyResult
 from bsgateway.presets.registry import PresetRegistry
+from bsgateway.rules.repository import RulesRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -15,7 +16,7 @@ _registry = PresetRegistry()
 class PresetService:
     """Apply preset templates to tenants."""
 
-    def __init__(self, rules_repo: object) -> None:
+    def __init__(self, rules_repo: RulesRepository) -> None:
         self._repo = rules_repo
 
     async def apply_preset(

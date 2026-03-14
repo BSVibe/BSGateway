@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Protocol, runtime_checkable
+
 import structlog
 
 from bsgateway.rules.conditions import evaluate_condition
@@ -13,6 +15,13 @@ from bsgateway.rules.models import (
 logger = structlog.get_logger(__name__)
 
 
+@runtime_checkable
+class IntentClassifierProtocol(Protocol):
+    """Protocol for intent classifiers used by the rule engine."""
+
+    async def classify(self, text: str) -> str | None: ...
+
+
 class RuleEngine:
     """Priority-based first-match rule engine."""
 
@@ -20,7 +29,7 @@ class RuleEngine:
         self,
         data: dict,
         tenant_config: TenantConfig,
-        intent_classifier: object | None = None,
+        intent_classifier: IntentClassifierProtocol | None = None,
     ) -> RuleMatch | None:
         """Evaluate rules against request data.
 
@@ -107,8 +116,6 @@ class RuleEngine:
 
     @staticmethod
     async def _classify_intent(
-        classifier: object, ctx: EvaluationContext,
+        classifier: IntentClassifierProtocol, ctx: EvaluationContext,
     ) -> str | None:
-        if hasattr(classifier, "classify"):
-            return await classifier.classify(ctx.user_text)
-        return None
+        return await classifier.classify(ctx.user_text)

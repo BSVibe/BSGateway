@@ -96,73 +96,6 @@ async def create_rule(
     return await _build_rule_response(repo, row, tenant_id)
 
 
-@router.get("", response_model=list[RuleResponse])
-async def list_rules(
-    tenant_id: UUID,
-    request: Request,
-    _auth: AuthContext = Depends(require_admin),
-) -> list[RuleResponse]:
-    repo = _get_repo(request)
-    rows = await repo.list_rules(tenant_id)
-    return [await _build_rule_response(repo, r, tenant_id) for r in rows]
-
-
-@router.get("/{rule_id}", response_model=RuleResponse)
-async def get_rule(
-    tenant_id: UUID,
-    rule_id: UUID,
-    request: Request,
-    _auth: AuthContext = Depends(require_admin),
-) -> RuleResponse:
-    repo = _get_repo(request)
-    row = await repo.get_rule(rule_id, tenant_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Rule not found")
-    return await _build_rule_response(repo, row, tenant_id)
-
-
-@router.patch("/{rule_id}", response_model=RuleResponse)
-async def update_rule(
-    tenant_id: UUID,
-    rule_id: UUID,
-    body: RuleUpdate,
-    request: Request,
-    _auth: AuthContext = Depends(require_admin),
-) -> RuleResponse:
-    repo = _get_repo(request)
-    existing = await repo.get_rule(rule_id, tenant_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Rule not found")
-
-    row = await repo.update_rule(
-        rule_id=rule_id,
-        tenant_id=tenant_id,
-        name=body.name or existing["name"],
-        priority=body.priority if body.priority is not None else existing["priority"],
-        is_default=body.is_default if body.is_default is not None else existing["is_default"],
-        target_model=body.target_model or existing["target_model"],
-    )
-
-    if body.conditions is not None:
-        await repo.replace_conditions(
-            rule_id,
-            [c.model_dump() for c in body.conditions],
-        )
-
-    return await _build_rule_response(repo, row, tenant_id)
-
-
-@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_rule(
-    tenant_id: UUID,
-    rule_id: UUID,
-    request: Request,
-    _auth: AuthContext = Depends(require_admin),
-) -> None:
-    repo = _get_repo(request)
-    await repo.delete_rule(rule_id, tenant_id)
-
-
 @router.post("/reorder", status_code=status.HTTP_204_NO_CONTENT)
 async def reorder_rules(
     tenant_id: UUID,
@@ -246,3 +179,75 @@ async def test_rules(
             "classified_intent": ctx.classified_intent,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Individual rule operations
+# ---------------------------------------------------------------------------
+
+
+@router.get("", response_model=list[RuleResponse])
+async def list_rules(
+    tenant_id: UUID,
+    request: Request,
+    _auth: AuthContext = Depends(require_admin),
+) -> list[RuleResponse]:
+    repo = _get_repo(request)
+    rows = await repo.list_rules(tenant_id)
+    return [await _build_rule_response(repo, r, tenant_id) for r in rows]
+
+
+@router.get("/{rule_id}", response_model=RuleResponse)
+async def get_rule(
+    tenant_id: UUID,
+    rule_id: UUID,
+    request: Request,
+    _auth: AuthContext = Depends(require_admin),
+) -> RuleResponse:
+    repo = _get_repo(request)
+    row = await repo.get_rule(rule_id, tenant_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return await _build_rule_response(repo, row, tenant_id)
+
+
+@router.patch("/{rule_id}", response_model=RuleResponse)
+async def update_rule(
+    tenant_id: UUID,
+    rule_id: UUID,
+    body: RuleUpdate,
+    request: Request,
+    _auth: AuthContext = Depends(require_admin),
+) -> RuleResponse:
+    repo = _get_repo(request)
+    existing = await repo.get_rule(rule_id, tenant_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    row = await repo.update_rule(
+        rule_id=rule_id,
+        tenant_id=tenant_id,
+        name=body.name or existing["name"],
+        priority=body.priority if body.priority is not None else existing["priority"],
+        is_default=body.is_default if body.is_default is not None else existing["is_default"],
+        target_model=body.target_model or existing["target_model"],
+    )
+
+    if body.conditions is not None:
+        await repo.replace_conditions(
+            rule_id,
+            [c.model_dump() for c in body.conditions],
+        )
+
+    return await _build_rule_response(repo, row, tenant_id)
+
+
+@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_rule(
+    tenant_id: UUID,
+    rule_id: UUID,
+    request: Request,
+    _auth: AuthContext = Depends(require_admin),
+) -> None:
+    repo = _get_repo(request)
+    await repo.delete_rule(rule_id, tenant_id)

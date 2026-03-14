@@ -31,7 +31,7 @@ def _detect_language(text: str) -> str | None:
     cjk_ideo = len(_CJK_IDEO_RE.findall(text))
     total_cjk = hangul + kana + cjk_ideo
     if total_cjk == 0:
-        return "en"  # Default to English for Latin/ASCII text
+        return "en"  # Fallback: non-CJK scripts (Arabic, Cyrillic, etc.) also return "en"
     if hangul > kana and hangul > cjk_ideo:
         return "ko"
     if kana > hangul:

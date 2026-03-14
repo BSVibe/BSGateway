@@ -7,6 +7,9 @@ from fastapi import FastAPI
 
 from bsgateway.core.config import settings
 from bsgateway.core.database import close_pool, get_pool
+from bsgateway.core.security import hash_api_key
+from bsgateway.presets.repository import FeedbackRepository
+from bsgateway.rules.repository import RulesRepository
 from bsgateway.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
@@ -22,11 +25,19 @@ async def lifespan(app: FastAPI):
     pool = await get_pool(settings.collector_database_url)
     app.state.db_pool = pool
     app.state.encryption_key = settings.encryption_key_bytes
-    app.state.superadmin_key = settings.superadmin_key
+    app.state.superadmin_key_hash = (
+        hash_api_key(settings.superadmin_key) if settings.superadmin_key else ""
+    )
 
-    # Initialize tenant schema
-    repo = TenantRepository(pool)
-    await repo.init_schema()
+    # Initialize schemas
+    tenant_repo = TenantRepository(pool)
+    await tenant_repo.init_schema()
+
+    rules_repo = RulesRepository(pool)
+    await rules_repo.init_schema()
+
+    feedback_repo = FeedbackRepository(pool)
+    await feedback_repo.init_schema()
 
     logger.info("api_server_started", port=settings.api_port)
     yield
