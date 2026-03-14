@@ -45,11 +45,13 @@ def create_app() -> FastAPI:
     )
 
     from bsgateway.api.routers.intents import router as intents_router
+    from bsgateway.api.routers.presets import router as presets_router
     from bsgateway.api.routers.rules import router as rules_router
     from bsgateway.api.routers.tenants import router as tenants_router
 
     app.include_router(tenants_router, prefix="/api/v1")
     app.include_router(rules_router, prefix="/api/v1")
     app.include_router(intents_router, prefix="/api/v1")
+    app.include_router(presets_router, prefix="/api/v1")
 
     return app
