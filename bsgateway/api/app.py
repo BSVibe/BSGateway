@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from bsgateway.audit.repository import AuditRepository
 from bsgateway.core.config import settings
@@ -108,5 +110,14 @@ def create_app() -> FastAPI:
     app.include_router(feedback_router, prefix="/api/v1")
     app.include_router(usage_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")
+
+    # Serve frontend dashboard (only if build directory exists)
+    frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+    if frontend_dist.is_dir():
+        app.mount(
+            "/dashboard",
+            StaticFiles(directory=str(frontend_dist), html=True),
+            name="dashboard",
+        )
 
     return app
