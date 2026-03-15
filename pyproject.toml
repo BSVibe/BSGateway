@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn>=0.30.0",
     "pyjwt>=2.8.0",
     "cryptography>=42.0.0",
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]

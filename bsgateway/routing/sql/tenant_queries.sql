@@ -76,3 +76,9 @@ RETURNING id, tenant_id, model_name, provider, litellm_model, api_base, is_activ
 
 -- name: delete_tenant_model
 DELETE FROM tenant_models WHERE id = $1 AND tenant_id = $2;
+
+-- name: list_active_models_with_keys
+SELECT id, tenant_id, model_name, provider, litellm_model,
+       api_key_encrypted, api_base, is_active, extra_params
+FROM tenant_models WHERE tenant_id = $1 AND is_active = TRUE
+ORDER BY model_name;
