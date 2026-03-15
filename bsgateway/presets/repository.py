@@ -52,10 +52,11 @@ class FeedbackRepository:
     async def init_schema(self) -> None:
         schema = sql.schema()
         async with self._pool.acquire() as conn:
-            for statement in schema.split(";"):
-                statement = statement.strip()
-                if statement:
-                    await conn.execute(statement)
+            async with conn.transaction():
+                for statement in schema.split(";"):
+                    statement = statement.strip()
+                    if statement:
+                        await conn.execute(statement)
 
     async def create_feedback(
         self,

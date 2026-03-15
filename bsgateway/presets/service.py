@@ -7,6 +7,7 @@ import structlog
 from bsgateway.presets.models import ModelMapping, PresetApplyResult
 from bsgateway.presets.registry import PresetRegistry
 from bsgateway.rules.repository import RulesRepository
+from bsgateway.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -16,8 +17,11 @@ _registry = PresetRegistry()
 class PresetService:
     """Apply preset templates to tenants."""
 
-    def __init__(self, rules_repo: RulesRepository) -> None:
+    def __init__(
+        self, rules_repo: RulesRepository, tenant_repo: TenantRepository,
+    ) -> None:
         self._repo = rules_repo
+        self._tenant_repo = tenant_repo
 
     async def apply_preset(
         self,
@@ -33,6 +37,16 @@ class PresetService:
         preset = _registry.get(preset_name)
         if not preset:
             raise ValueError(f"Unknown preset: {preset_name}")
+
+        # Validate that all target models are registered for this tenant
+        registered_models = await self._tenant_repo.list_models(tenant_id)
+        registered_names = {r["model_name"] for r in registered_models}
+        for rule_def in preset.rules:
+            concrete = model_mapping.resolve(rule_def.target_level)
+            if concrete not in registered_names:
+                raise ValueError(
+                    f"Model '{concrete}' is not registered for this tenant"
+                )
 
         intents_created = 0
         examples_created = 0

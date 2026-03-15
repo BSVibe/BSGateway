@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID
 
 import asyncpg
@@ -64,16 +65,14 @@ async def get_auth_context(request: Request) -> AuthContext:
     repo = TenantRepository(pool)
     row = await repo.get_api_key_by_hash(key_hash)
 
-    if not row:
+    if (
+        not row
+        or not row["is_active"]
+        or (row["expires_at"] and row["expires_at"] < datetime.now(UTC))
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-
-    if not row["is_active"]:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key has been revoked",
+            detail="Invalid or expired API key",
         )
 
     if not row["tenant_is_active"]:

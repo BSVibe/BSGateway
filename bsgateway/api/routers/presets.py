@@ -15,6 +15,7 @@ from bsgateway.presets.schemas import (
 )
 from bsgateway.presets.service import PresetService
 from bsgateway.rules.repository import RulesRepository
+from bsgateway.tenant.repository import TenantRepository
 
 router = APIRouter(tags=["presets"])
 
@@ -56,7 +57,8 @@ async def apply_preset(
     """Apply a preset template to a tenant."""
     pool = get_pool(request)
     rules_repo = RulesRepository(pool)
-    service = PresetService(rules_repo)
+    tenant_repo = TenantRepository(pool)
+    service = PresetService(rules_repo, tenant_repo)
 
     try:
         result = await service.apply_preset(

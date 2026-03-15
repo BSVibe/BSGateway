@@ -5,7 +5,7 @@ Uses FastAPI TestClient with mocked database pool.
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
@@ -94,6 +94,69 @@ class TestTenantAuth:
             resp = client.get("/api/v1/tenants", headers=admin_headers)
             assert resp.status_code == 200
 
+    def test_expired_api_key_returns_401(self, client: TestClient):
+        expired_at = datetime.now(UTC) - timedelta(hours=1)
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
+            new_callable=AsyncMock,
+            return_value={
+                "id": uuid4(),
+                "tenant_id": uuid4(),
+                "key_hash": "fakehash",
+                "key_prefix": "bsg_test1234",
+                "name": "expired-key",
+                "scopes": ["admin"],
+                "is_active": True,
+                "expires_at": expired_at,
+                "last_used_at": None,
+                "created_at": datetime.now(UTC),
+                "tenant_is_active": True,
+            },
+        ):
+            resp = client.get(
+                "/api/v1/tenants",
+                headers={"Authorization": "Bearer some-tenant-key"},
+            )
+            assert resp.status_code == 401
+            assert "expired" in resp.json()["detail"].lower()
+
+    def test_non_expired_api_key_works(self, client: TestClient):
+        tid = uuid4()
+        future = datetime.now(UTC) + timedelta(hours=24)
+        with (
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
+                new_callable=AsyncMock,
+                return_value={
+                    "id": uuid4(),
+                    "tenant_id": tid,
+                    "key_hash": "fakehash",
+                    "key_prefix": "bsg_test1234",
+                    "name": "valid-key",
+                    "scopes": ["admin"],
+                    "is_active": True,
+                    "expires_at": future,
+                    "last_used_at": None,
+                    "created_at": datetime.now(UTC),
+                    "tenant_is_active": True,
+                },
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.touch_api_key",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.list_tenants",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            resp = client.get(
+                "/api/v1/tenants",
+                headers={"Authorization": "Bearer some-tenant-key"},
+            )
+            assert resp.status_code == 200
+
 
 class TestTenantCRUD:
     def test_create_tenant(self, client: TestClient, admin_headers: dict):
@@ -167,19 +230,27 @@ class TestApiKeyEndpoints:
     def test_create_api_key(self, client: TestClient, admin_headers: dict):
         tid = uuid4()
         now = datetime.now(UTC)
-        with patch(
-            "bsgateway.tenant.repository.TenantRepository.create_api_key",
-            new_callable=AsyncMock,
-            return_value={
-                "id": uuid4(),
-                "tenant_id": tid,
-                "key_prefix": "bsg_abcd1234",
-                "name": "prod",
-                "scopes": ["read"],
-                "is_active": True,
-                "expires_at": None,
-                "created_at": now,
-            },
+        with (
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_tenant",
+                new_callable=AsyncMock,
+                return_value=_make_tenant_row(tenant_id=tid),
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.create_api_key",
+                new_callable=AsyncMock,
+                return_value={
+                    "id": uuid4(),
+                    "tenant_id": tid,
+                    "key_prefix": "bsg_abcd1234",
+                    "name": "prod",
+                    "scopes": ["read"],
+                    "is_active": True,
+                    "expires_at": None,
+                    "last_used_at": None,
+                    "created_at": now,
+                },
+            ),
         ):
             resp = client.post(
                 f"/api/v1/tenants/{tid}/keys",
@@ -190,6 +261,20 @@ class TestApiKeyEndpoints:
             data = resp.json()
             assert data["key"].startswith("bsg_")
             assert data["name"] == "prod"
+
+    def test_create_api_key_tenant_not_found(self, client: TestClient, admin_headers: dict):
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            resp = client.post(
+                f"/api/v1/tenants/{uuid4()}/keys",
+                json={"name": "test"},
+                headers=admin_headers,
+            )
+            assert resp.status_code == 404
+            assert "Tenant not found" in resp.json()["detail"]
 
     def test_list_api_keys(self, client: TestClient, admin_headers: dict):
         tid = uuid4()

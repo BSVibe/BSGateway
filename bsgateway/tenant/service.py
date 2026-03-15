@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from json import JSONDecodeError
 from uuid import UUID
 
+import asyncpg
 import structlog
 
 from bsgateway.core.security import (
@@ -24,10 +26,21 @@ from bsgateway.tenant.repository import TenantRepository
 logger = structlog.get_logger(__name__)
 
 
-def _record_to_tenant(row) -> TenantResponse:
-    settings = row["settings"]
-    if isinstance(settings, str):
-        settings = json.loads(settings)
+def _safe_json_loads(raw: str | dict | None, fallback: dict | None = None) -> dict:
+    """Safely parse JSON string, returning fallback on error."""
+    if raw is None:
+        return fallback or {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)
+    except (JSONDecodeError, TypeError):
+        logger.warning("json_parse_failed", raw_type=type(raw).__name__)
+        return fallback or {}
+
+
+def _record_to_tenant(row: asyncpg.Record) -> TenantResponse:
+    settings = _safe_json_loads(row["settings"])
     return TenantResponse(
         id=row["id"],
         name=row["name"],
@@ -39,10 +52,8 @@ def _record_to_tenant(row) -> TenantResponse:
     )
 
 
-def _record_to_model(row) -> TenantModelResponse:
-    extra_params = row["extra_params"]
-    if isinstance(extra_params, str):
-        extra_params = json.loads(extra_params)
+def _record_to_model(row: asyncpg.Record) -> TenantModelResponse:
+    extra_params = _safe_json_loads(row["extra_params"])
     return TenantModelResponse(
         id=row["id"],
         tenant_id=row["tenant_id"],
@@ -141,6 +152,8 @@ class TenantService:
         encrypted_key = None
         if data.api_key and self._encryption_key:
             encrypted_key = encrypt_value(data.api_key, self._encryption_key)
+        elif data.api_key:
+            logger.warning("encryption_skipped", reason="encryption_key_not_set")
 
         row = await self._repo.create_model(
             tenant_id=tenant_id,
@@ -173,12 +186,12 @@ class TenantService:
             return None
 
         encrypted_key = existing["api_key_encrypted"]
+        if data.api_key is not None and not self._encryption_key:
+            logger.warning("encryption_skipped", reason="encryption_key_not_set")
         if data.api_key is not None and self._encryption_key:
             encrypted_key = encrypt_value(data.api_key, self._encryption_key)
 
-        existing_extra = existing["extra_params"]
-        if isinstance(existing_extra, str):
-            existing_extra = json.loads(existing_extra)
+        existing_extra = _safe_json_loads(existing["extra_params"])
 
         row = await self._repo.update_model(
             model_id=model_id,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     def encryption_key_bytes(self) -> bytes:
         """Return the encryption key as raw bytes."""
         if not self.encryption_key:
+            warnings.warn(
+                "ENCRYPTION_KEY is not set; provider API keys will not be encrypted",
+                stacklevel=2,
+            )
             return b""
         return bytes.fromhex(self.encryption_key)
 

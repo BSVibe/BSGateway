@@ -90,6 +90,15 @@ class TestPresetsAPI:
                 new_callable=AsyncMock,
                 return_value=[],
             ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.list_models",
+                new_callable=AsyncMock,
+                return_value=[
+                    {"model_name": "gpt-4o-mini"},
+                    {"model_name": "gpt-4o"},
+                    {"model_name": "claude-opus"},
+                ],
+            ),
         ):
             resp = client.post(
                 f"/api/v1/tenants/{tid}/presets/apply",

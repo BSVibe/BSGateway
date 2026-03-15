@@ -127,12 +127,3 @@ class ExampleResponse(BaseModel):
     intent_id: UUID
     text: str
     created_at: datetime
-
-
-class ClassifyRequest(BaseModel):
-    text: str = Field(..., min_length=1)
-
-
-class ClassifyResponse(BaseModel):
-    intent: str | None
-    confidence: float | None

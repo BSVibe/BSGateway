@@ -54,10 +54,11 @@ class RulesRepository:
     async def init_schema(self) -> None:
         schema = sql.schema()
         async with self._pool.acquire() as conn:
-            for statement in schema.split(";"):
-                statement = statement.strip()
-                if statement:
-                    await conn.execute(statement)
+            async with conn.transaction():
+                for statement in schema.split(";"):
+                    statement = statement.strip()
+                    if statement:
+                        await conn.execute(statement)
 
     # -- Rules --
 
@@ -112,7 +113,8 @@ class RulesRepository:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 # Temporarily set all priorities to negative to avoid
-                # unique constraint violations during reorder
+                # unique constraint violations during reorder.
+                # TODO: use DEFERRABLE constraint instead of magic offset
                 for rule_id, priority in priorities.items():
                     await conn.execute(
                         sql.query("update_rule_priority"),

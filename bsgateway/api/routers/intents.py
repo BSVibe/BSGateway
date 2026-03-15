@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bsgateway.api.deps import AuthContext, get_pool, require_admin
@@ -21,7 +22,7 @@ def _get_repo(request: Request) -> RulesRepository:
     return RulesRepository(get_pool(request))
 
 
-def _to_response(row) -> IntentResponse:
+def _to_response(row: asyncpg.Record) -> IntentResponse:
     return IntentResponse(
         id=row["id"],
         tenant_id=row["tenant_id"],
@@ -49,7 +50,8 @@ async def create_intent(
         threshold=body.threshold,
     )
 
-    # Add initial examples (embedding generation is done async later)
+    # Store examples without embeddings; embedding generation is a Phase 3 task
+    # (requires embed_fn injection via IntentClassifier)
     for example_text in body.examples:
         await repo.add_example(row["id"], example_text)
 
@@ -157,6 +159,24 @@ async def add_example(
     )
 
 
+@router.delete(
+    "/{intent_id}/examples/{example_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_example(
+    tenant_id: UUID,
+    intent_id: UUID,
+    example_id: UUID,
+    request: Request,
+    _auth: AuthContext = Depends(require_admin),
+) -> None:
+    repo = _get_repo(request)
+    intent = await repo.get_intent(intent_id, tenant_id)
+    if not intent:
+        raise HTTPException(status_code=404, detail="Intent not found")
+    await repo.delete_example(example_id, intent_id)
+
+
 @router.get("/{intent_id}/examples", response_model=list[ExampleResponse])
 async def list_examples(
     tenant_id: UUID,
@@ -165,6 +185,10 @@ async def list_examples(
     _auth: AuthContext = Depends(require_admin),
 ) -> list[ExampleResponse]:
     repo = _get_repo(request)
+    # Verify intent belongs to tenant
+    intent = await repo.get_intent(intent_id, tenant_id)
+    if not intent:
+        raise HTTPException(status_code=404, detail="Intent not found")
     rows = await repo.list_examples(intent_id)
     return [
         ExampleResponse(

@@ -60,6 +60,17 @@ class TestPresetRegistry:
 
 class TestPresetService:
     @pytest.fixture
+    def mock_tenant_repo(self) -> AsyncMock:
+        repo = AsyncMock()
+        repo.list_models.return_value = [
+            {"model_name": "gpt-4o-mini"},
+            {"model_name": "gpt-4o"},
+            {"model_name": "claude-opus"},
+            {"model_name": "claude-sonnet"},
+        ]
+        return repo
+
+    @pytest.fixture
     def mock_rules_repo(self) -> AsyncMock:
         repo = AsyncMock()
         repo.create_rule.return_value = {
@@ -92,8 +103,10 @@ class TestPresetService:
         repo.replace_conditions.return_value = []
         return repo
 
-    async def test_apply_preset(self, mock_rules_repo: AsyncMock):
-        service = PresetService(mock_rules_repo)
+    async def test_apply_preset(
+        self, mock_rules_repo: AsyncMock, mock_tenant_repo: AsyncMock,
+    ):
+        service = PresetService(mock_rules_repo, mock_tenant_repo)
         tid = uuid4()
 
         mapping = ModelMapping(
@@ -114,8 +127,10 @@ class TestPresetService:
         # Verify rules were created with concrete model names
         assert mock_rules_repo.create_rule.call_count > 0
 
-    async def test_apply_preset_unknown(self, mock_rules_repo: AsyncMock):
-        service = PresetService(mock_rules_repo)
+    async def test_apply_preset_unknown(
+        self, mock_rules_repo: AsyncMock, mock_tenant_repo: AsyncMock,
+    ):
+        service = PresetService(mock_rules_repo, mock_tenant_repo)
         with pytest.raises(ValueError, match="Unknown preset"):
             await service.apply_preset(
                 tenant_id=uuid4(),
@@ -126,9 +141,9 @@ class TestPresetService:
             )
 
     async def test_apply_preset_maps_model_levels(
-        self, mock_rules_repo: AsyncMock,
+        self, mock_rules_repo: AsyncMock, mock_tenant_repo: AsyncMock,
     ):
-        service = PresetService(mock_rules_repo)
+        service = PresetService(mock_rules_repo, mock_tenant_repo)
         tid = uuid4()
 
         mapping = ModelMapping(

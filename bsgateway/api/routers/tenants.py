@@ -117,6 +117,9 @@ async def create_api_key(
     _auth: AuthContext = Depends(require_admin),
 ) -> ApiKeyCreatedResponse:
     svc = _get_service(request)
+    tenant = await svc.get_tenant(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
     return await svc.create_api_key(tenant_id, body.name, body.scopes)
 
 

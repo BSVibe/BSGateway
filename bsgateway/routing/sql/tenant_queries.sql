@@ -13,7 +13,7 @@ FROM tenants WHERE slug = $1;
 
 -- name: list_tenants
 SELECT id, name, slug, is_active, settings, created_at, updated_at
-FROM tenants ORDER BY created_at DESC LIMIT $1 OFFSET $2;
+FROM tenants WHERE is_active = TRUE ORDER BY created_at DESC LIMIT $1 OFFSET $2;
 
 -- name: update_tenant
 UPDATE tenants SET name = $2, slug = $3, settings = $4, updated_at = NOW()
@@ -27,7 +27,7 @@ WHERE id = $1;
 -- name: insert_api_key
 INSERT INTO tenant_api_keys (tenant_id, key_hash, key_prefix, name, scopes)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, tenant_id, key_prefix, name, scopes, is_active, expires_at, created_at;
+RETURNING id, tenant_id, key_prefix, name, scopes, is_active, expires_at, last_used_at, created_at;
 
 -- name: get_api_key_by_hash
 SELECT ak.id, ak.tenant_id, ak.key_hash, ak.key_prefix, ak.name,
