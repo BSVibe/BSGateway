@@ -55,6 +55,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    from bsgateway.api.routers.feedback import router as feedback_router
     from bsgateway.api.routers.intents import router as intents_router
     from bsgateway.api.routers.presets import router as presets_router
     from bsgateway.api.routers.rules import router as rules_router
@@ -64,5 +65,6 @@ def create_app() -> FastAPI:
     app.include_router(rules_router, prefix="/api/v1")
     app.include_router(intents_router, prefix="/api/v1")
     app.include_router(presets_router, prefix="/api/v1")
+    app.include_router(feedback_router, prefix="/api/v1")
 
     return app

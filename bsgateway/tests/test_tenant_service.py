@@ -236,6 +236,34 @@ class TestTenantModels:
         assert result is not None
         assert result.model_name == "gpt-4o-updated"
 
+    async def test_create_model_no_encryption_key_rejects(
+        self, mock_repo: AsyncMock,
+    ):
+        """Providing api_key without ENCRYPTION_KEY must raise ValueError."""
+        svc_no_key = TenantService(mock_repo, encryption_key=b"")
+        data = TenantModelCreate(
+            model_name="gpt-4o",
+            provider="openai",
+            litellm_model="openai/gpt-4o",
+            api_key="sk-plaintext",
+        )
+        with pytest.raises(ValueError, match="ENCRYPTION_KEY is required"):
+            await svc_no_key.create_model(uuid4(), data)
+
+    async def test_update_model_no_encryption_key_rejects(
+        self, mock_repo: AsyncMock,
+    ):
+        """Updating api_key without ENCRYPTION_KEY must raise ValueError."""
+        svc_no_key = TenantService(mock_repo, encryption_key=b"")
+        tid = uuid4()
+        mid = uuid4()
+        existing = _make_model_record(tenant_id=tid, model_id=mid)
+        mock_repo.get_model.return_value = existing
+
+        data = TenantModelUpdate(api_key="sk-new-plaintext")
+        with pytest.raises(ValueError, match="ENCRYPTION_KEY is required"):
+            await svc_no_key.update_model(mid, tid, data)
+
     async def test_delete_model(self, service: TenantService, mock_repo: AsyncMock):
         tid = uuid4()
         mid = uuid4()

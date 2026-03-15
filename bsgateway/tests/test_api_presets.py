@@ -52,53 +52,22 @@ class TestPresetsAPI:
             assert preset["rule_count"] >= 1
 
     def test_apply_preset(self):
+        from bsgateway.presets.models import PresetApplyResult
+
         client = _client()
         tid = uuid4()
-        now = datetime.now(UTC)
-        with (
-            patch(
-                "bsgateway.rules.repository.RulesRepository.create_rule",
-                new_callable=AsyncMock,
-                return_value={
-                    "id": uuid4(), "tenant_id": tid,
-                    "name": "test", "priority": 0,
-                    "is_active": True, "is_default": False,
-                    "target_model": "gpt-4o",
-                    "created_at": now, "updated_at": now,
-                },
-            ),
-            patch(
-                "bsgateway.rules.repository.RulesRepository.create_intent",
-                new_callable=AsyncMock,
-                return_value={
-                    "id": uuid4(), "tenant_id": tid,
-                    "name": "test", "description": "",
-                    "threshold": 0.7, "is_active": True,
-                    "created_at": now, "updated_at": now,
-                },
-            ),
-            patch(
-                "bsgateway.rules.repository.RulesRepository.add_example",
-                new_callable=AsyncMock,
-                return_value={
-                    "id": uuid4(), "intent_id": uuid4(),
-                    "text": "ex", "created_at": now,
-                },
-            ),
-            patch(
-                "bsgateway.rules.repository.RulesRepository.replace_conditions",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch(
-                "bsgateway.tenant.repository.TenantRepository.list_models",
-                new_callable=AsyncMock,
-                return_value=[
-                    {"model_name": "gpt-4o-mini"},
-                    {"model_name": "gpt-4o"},
-                    {"model_name": "claude-opus"},
-                ],
-            ),
+
+        mock_result = PresetApplyResult(
+            preset_name="coding-assistant",
+            rules_created=4,
+            intents_created=3,
+            examples_created=12,
+        )
+
+        with patch(
+            "bsgateway.presets.service.PresetService.apply_preset",
+            new_callable=AsyncMock,
+            return_value=mock_result,
         ):
             resp = client.post(
                 f"/api/v1/tenants/{tid}/presets/apply",
@@ -115,8 +84,8 @@ class TestPresetsAPI:
             assert resp.status_code == 201
             data = resp.json()
             assert data["preset_name"] == "coding-assistant"
-            assert data["rules_created"] > 0
-            assert data["intents_created"] > 0
+            assert data["rules_created"] == 4
+            assert data["intents_created"] == 3
 
     def test_apply_preset_unknown(self):
         client = _client()

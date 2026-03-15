@@ -28,6 +28,9 @@ def _evaluate_raw(condition: RuleCondition, ctx: EvaluationContext) -> bool:
         pattern = str(expected)
         if len(pattern) > 500:
             return False
+        # Reject patterns with nested quantifiers (ReDoS risk)
+        if re.search(r"\(.+[*+]\)[*+?]", pattern):
+            return False
         try:
             return bool(re.search(pattern, str(field_value), re.IGNORECASE))
         except re.error:
@@ -64,6 +67,12 @@ def _str_contains(haystack: Any, needle: Any) -> bool:
 
 
 def _numeric(value: Any) -> float:
+    """Convert value to float for numeric comparisons.
+
+    Returns 0.0 for None or non-numeric values. This is intentional:
+    missing fields (None) are treated as zero so that comparisons like
+    ``daily_cost < 10`` still work when the field hasn't been populated.
+    """
     if value is None:
         return 0.0
     try:

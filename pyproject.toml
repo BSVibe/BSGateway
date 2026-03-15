@@ -37,7 +37,11 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "RUF"]
+ignore = [
+    "B008",   # Depends() in default args is idiomatic FastAPI
+    "B017",   # pytest.raises(Exception) is fine in tests
+]
 
 [tool.coverage.run]
 source = ["bsgateway"]

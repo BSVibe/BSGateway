@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bsgateway.api.deps import AuthContext, get_encryption_key, get_pool, require_admin
+from bsgateway.core.exceptions import DuplicateError
 from bsgateway.tenant.models import (
     ApiKeyCreate,
     ApiKeyCreatedResponse,
@@ -22,7 +23,8 @@ from bsgateway.tenant.service import TenantService
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
 
-def _get_service(request: Request) -> TenantService:
+def get_tenant_service(request: Request) -> TenantService:
+    """DI dependency for TenantService."""
     pool = get_pool(request)
     encryption_key = get_encryption_key(request)
     return TenantService(TenantRepository(pool), encryption_key)
@@ -39,8 +41,11 @@ async def create_tenant(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> TenantResponse:
-    svc = _get_service(request)
-    return await svc.create_tenant(body.name, body.slug, body.settings)
+    svc = get_tenant_service(request)
+    try:
+        return await svc.create_tenant(body.name, body.slug, body.settings)
+    except DuplicateError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message) from e
 
 
 @router.get("", response_model=list[TenantResponse])
@@ -50,7 +55,7 @@ async def list_tenants(
     offset: int = 0,
     _auth: AuthContext = Depends(require_admin),
 ) -> list[TenantResponse]:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     return await svc.list_tenants(limit, offset)
 
 
@@ -60,7 +65,7 @@ async def get_tenant(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> TenantResponse:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     tenant = await svc.get_tenant(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -74,7 +79,7 @@ async def update_tenant(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> TenantResponse:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     existing = await svc.get_tenant(tenant_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -96,7 +101,7 @@ async def deactivate_tenant(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> None:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     await svc.deactivate_tenant(tenant_id)
 
 
@@ -116,7 +121,7 @@ async def create_api_key(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> ApiKeyCreatedResponse:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     tenant = await svc.get_tenant(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -129,7 +134,7 @@ async def list_api_keys(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> list[ApiKeyResponse]:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     return await svc.list_api_keys(tenant_id)
 
 
@@ -140,7 +145,7 @@ async def revoke_api_key(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> None:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     await svc.revoke_api_key(key_id, tenant_id)
 
 
@@ -160,8 +165,13 @@ async def create_model(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> TenantModelResponse:
-    svc = _get_service(request)
-    return await svc.create_model(tenant_id, body)
+    svc = get_tenant_service(request)
+    try:
+        return await svc.create_model(tenant_id, body)
+    except DuplicateError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.get("/{tenant_id}/models", response_model=list[TenantModelResponse])
@@ -170,7 +180,7 @@ async def list_models(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> list[TenantModelResponse]:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     return await svc.list_models(tenant_id)
 
 
@@ -181,7 +191,7 @@ async def get_model(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> TenantModelResponse:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     model = await svc.get_model(model_id, tenant_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -196,8 +206,11 @@ async def update_model(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> TenantModelResponse:
-    svc = _get_service(request)
-    model = await svc.update_model(model_id, tenant_id, body)
+    svc = get_tenant_service(request)
+    try:
+        model = await svc.update_model(model_id, tenant_id, body)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
     return model
@@ -210,5 +223,5 @@ async def delete_model(
     request: Request,
     _auth: AuthContext = Depends(require_admin),
 ) -> None:
-    svc = _get_service(request)
+    svc = get_tenant_service(request)
     await svc.delete_model(model_id, tenant_id)

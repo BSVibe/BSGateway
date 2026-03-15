@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS routing_rules (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(tenant_id, name),
-    UNIQUE(tenant_id, priority)
+    UNIQUE(tenant_id, priority) DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE INDEX IF NOT EXISTS idx_rules_tenant_priority

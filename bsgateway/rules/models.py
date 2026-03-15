@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import UTC
 from typing import Any
 
 from bsgateway.routing.classifiers.base import (
@@ -15,6 +16,7 @@ _CJK_RE = re.compile(r"[\u3000-\u9fff\uac00-\ud7af\u3040-\u309f\u30a0-\u30ff]")
 _HANGUL_RE = re.compile(r"[\uac00-\ud7af\u3131-\u3163]")
 _KANA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
 _CJK_IDEO_RE = re.compile(r"[\u4e00-\u9fff]")
+_LATIN_RE = re.compile(r"[a-zA-Z]")
 
 
 def _detect_language(text: str) -> str | None:
@@ -22,6 +24,7 @@ def _detect_language(text: str) -> str | None:
 
     Returns ISO 639-1 code or None if undetermined.
     Only detects ko, ja, zh, en for now — enough for routing decisions.
+    Non-CJK/non-Latin scripts (Arabic, Cyrillic, etc.) return None.
     """
     if not text:
         return None
@@ -31,7 +34,11 @@ def _detect_language(text: str) -> str | None:
     cjk_ideo = len(_CJK_IDEO_RE.findall(text))
     total_cjk = hangul + kana + cjk_ideo
     if total_cjk == 0:
-        return "en"  # Fallback: non-CJK scripts (Arabic, Cyrillic, etc.) also return "en"
+        # Check if text is predominantly Latin before assuming English
+        latin = len(_LATIN_RE.findall(text))
+        if latin / max(len(text), 1) > 0.3:
+            return "en"
+        return None
     if hangul > kana and hangul > cjk_ideo:
         return "ko"
     if kana > hangul:
@@ -39,6 +46,20 @@ def _detect_language(text: str) -> str | None:
     if cjk_ideo > 0:
         return "zh"
     return None
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate that handles both CJK and Latin text.
+
+    CJK characters are roughly 1 token each; Latin words ~1.3 tokens.
+    """
+    if not text:
+        return 0
+    cjk_chars = len(_CJK_RE.findall(text))
+    # Remove CJK chars to count remaining word-based tokens
+    non_cjk = _CJK_RE.sub("", text)
+    word_tokens = len(non_cjk.split())
+    return int((word_tokens + cjk_chars) * 1.3)
 
 
 @dataclass
@@ -134,16 +155,16 @@ class EvaluationContext:
             if fn.get("name"):
                 tool_names.append(fn["name"])
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
         return cls(
             user_text=user_text,
             system_prompt=system_prompt,
             all_text=all_text,
-            estimated_tokens=int(len(all_text.split()) * 1.3) if all_text else 0,
+            estimated_tokens=_estimate_tokens(all_text),
             conversation_turns=len(
                 [m for m in messages if m.get("role") == "user"]
             ),

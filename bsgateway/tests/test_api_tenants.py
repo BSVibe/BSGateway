@@ -313,6 +313,67 @@ class TestApiKeyEndpoints:
             assert resp.status_code == 204
 
 
+class TestCrossTenantAccess:
+    """Test that a tenant cannot access another tenant's resources."""
+
+    def test_deactivated_tenant_returns_403(self, client: TestClient):
+        tid = uuid4()
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
+            new_callable=AsyncMock,
+            return_value={
+                "id": uuid4(),
+                "tenant_id": tid,
+                "key_hash": "fakehash",
+                "key_prefix": "bsg_test1234",
+                "name": "key",
+                "scopes": ["admin"],
+                "is_active": True,
+                "expires_at": None,
+                "last_used_at": None,
+                "created_at": datetime.now(UTC),
+                "tenant_is_active": False,
+            },
+        ):
+            resp = client.get(
+                "/api/v1/tenants",
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 403
+
+    def test_non_admin_scope_returns_403(self, client: TestClient):
+        tid = uuid4()
+        with (
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
+                new_callable=AsyncMock,
+                return_value={
+                    "id": uuid4(),
+                    "tenant_id": tid,
+                    "key_hash": "fakehash",
+                    "key_prefix": "bsg_test1234",
+                    "name": "key",
+                    "scopes": ["read"],  # no admin scope
+                    "is_active": True,
+                    "expires_at": None,
+                    "last_used_at": None,
+                    "created_at": datetime.now(UTC),
+                    "tenant_is_active": True,
+                },
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.touch_api_key",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = client.get(
+                "/api/v1/tenants",
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 403
+            assert "Admin scope required" in resp.json()["detail"]
+
+
 class TestModelEndpoints:
     def test_create_model(self, client: TestClient, admin_headers: dict):
         tid = uuid4()

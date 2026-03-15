@@ -153,7 +153,9 @@ class TenantService:
         if data.api_key and self._encryption_key:
             encrypted_key = encrypt_value(data.api_key, self._encryption_key)
         elif data.api_key:
-            logger.warning("encryption_skipped", reason="encryption_key_not_set")
+            raise ValueError(
+                "ENCRYPTION_KEY is required to store provider API keys"
+            )
 
         row = await self._repo.create_model(
             tenant_id=tenant_id,
@@ -186,9 +188,11 @@ class TenantService:
             return None
 
         encrypted_key = existing["api_key_encrypted"]
-        if data.api_key is not None and not self._encryption_key:
-            logger.warning("encryption_skipped", reason="encryption_key_not_set")
-        if data.api_key is not None and self._encryption_key:
+        if data.api_key is not None:
+            if not self._encryption_key:
+                raise ValueError(
+                    "ENCRYPTION_KEY is required to store provider API keys"
+                )
             encrypted_key = encrypt_value(data.api_key, self._encryption_key)
 
         existing_extra = _safe_json_loads(existing["extra_params"])

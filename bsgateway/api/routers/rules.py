@@ -8,6 +8,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bsgateway.api.deps import AuthContext, get_pool, require_admin
+from bsgateway.core.exceptions import DuplicateError
 from bsgateway.rules.engine import RuleEngine
 from bsgateway.rules.models import (
     EvaluationContext,
@@ -128,13 +129,16 @@ async def create_rule(
 ) -> RuleResponse:
     await _validate_target_model(request, tenant_id, body.target_model, body.is_default)
     repo = _get_repo(request)
-    row = await repo.create_rule(
-        tenant_id=tenant_id,
-        name=body.name,
-        priority=body.priority,
-        target_model=body.target_model,
-        is_default=body.is_default,
-    )
+    try:
+        row = await repo.create_rule(
+            tenant_id=tenant_id,
+            name=body.name,
+            priority=body.priority,
+            target_model=body.target_model,
+            is_default=body.is_default,
+        )
+    except DuplicateError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message) from e
 
     if body.conditions:
         await repo.replace_conditions(
@@ -211,8 +215,24 @@ async def test_rules(
     )
 
     data = {"messages": body.messages, "model": body.model}
+
+    # Check if any rule uses intent conditions
+    has_intent_conditions = any(
+        c.condition_type == "intent"
+        for r in rules
+        for c in r.conditions
+    )
+
     engine = RuleEngine()
     match = await engine.evaluate(data, tenant_config)
+
+    # Add warning if intent conditions exist but no classifier is available
+    intent_warning = None
+    if has_intent_conditions:
+        intent_warning = (
+            "Intent conditions present but no embedding function configured. "
+            "Intent conditions were not evaluated."
+        )
 
     ctx = EvaluationContext.from_request(data)
 
@@ -227,7 +247,12 @@ async def test_rules(
             else None
         ),
         target_model=match.target_model if match else None,
-        evaluation_trace=(match.trace or []) if match else [],
+        evaluation_trace=(
+            (match.trace or [])
+            + ([{"warning": intent_warning}] if intent_warning else [])
+            if match
+            else ([{"warning": intent_warning}] if intent_warning else [])
+        ),
         context={
             "estimated_tokens": ctx.estimated_tokens,
             "conversation_turns": ctx.conversation_turns,

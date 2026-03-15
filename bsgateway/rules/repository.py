@@ -8,6 +8,8 @@ from uuid import UUID
 import asyncpg
 import structlog
 
+from bsgateway.core.exceptions import DuplicateError
+
 logger = structlog.get_logger(__name__)
 
 
@@ -50,6 +52,7 @@ class RulesRepository:
 
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
+        self._sql = sql
 
     async def init_schema(self) -> None:
         schema = sql.schema()
@@ -71,10 +74,15 @@ class RulesRepository:
         is_default: bool = False,
     ) -> asyncpg.Record:
         async with self._pool.acquire() as conn:
-            return await conn.fetchrow(
-                sql.query("insert_rule"),
-                tenant_id, name, priority, is_default, target_model,
-            )
+            try:
+                return await conn.fetchrow(
+                    sql.query("insert_rule"),
+                    tenant_id, name, priority, is_default, target_model,
+                )
+            except asyncpg.UniqueViolationError as e:
+                raise DuplicateError(
+                    "Rule with this name or priority already exists"
+                ) from e
 
     async def get_rule(
         self, rule_id: UUID, tenant_id: UUID,
@@ -112,14 +120,8 @@ class RulesRepository:
     ) -> None:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                # Temporarily set all priorities to negative to avoid
-                # unique constraint violations during reorder.
-                # TODO: use DEFERRABLE constraint instead of magic offset
-                for rule_id, priority in priorities.items():
-                    await conn.execute(
-                        sql.query("update_rule_priority"),
-                        rule_id, tenant_id, -(priority + 1000),
-                    )
+                # UNIQUE(tenant_id, priority) is DEFERRABLE INITIALLY DEFERRED,
+                # so constraint checks happen at commit, not per-statement.
                 for rule_id, priority in priorities.items():
                     await conn.execute(
                         sql.query("update_rule_priority"),

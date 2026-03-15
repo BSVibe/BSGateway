@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 import structlog
@@ -33,6 +34,7 @@ class PresetService:
 
         Creates intents, examples, and rules based on the preset,
         mapping abstract model levels to concrete model names.
+        All DB operations run in a single transaction for atomicity.
         """
         preset = _registry.get(preset_name)
         if not preset:
@@ -48,53 +50,58 @@ class PresetService:
                     f"Model '{concrete}' is not registered for this tenant"
                 )
 
+        # Check idempotency: reject if intents from this preset already exist
+        existing_intents = await self._repo.list_intents(tenant_id)
+        existing_names = {r["name"] for r in existing_intents}
+        preset_intent_names = {i.name for i in preset.intents}
+        overlap = existing_names & preset_intent_names
+        if overlap:
+            raise ValueError(
+                f"Preset '{preset_name}' appears already applied: "
+                f"intents {overlap} already exist"
+            )
+
         intents_created = 0
         examples_created = 0
         rules_created = 0
 
-        # Create intents with examples
-        for intent_def in preset.intents:
-            intent_row = await self._repo.create_intent(
-                tenant_id=tenant_id,
-                name=intent_def.name,
-                description=intent_def.description,
-            )
-            intents_created += 1
+        # Run all DB writes in a single transaction
+        async with self._repo._pool.acquire() as conn:
+            async with conn.transaction():
+                # Create intents with examples
+                for intent_def in preset.intents:
+                    intent_row = await conn.fetchrow(
+                        self._repo._sql.query("insert_intent"),
+                        tenant_id, intent_def.name, intent_def.description, 0.7,
+                    )
+                    intents_created += 1
 
-            for example_text in intent_def.examples:
-                await self._repo.add_example(
-                    intent_id=intent_row["id"],
-                    text=example_text,
-                )
-                examples_created += 1
+                    for example_text in intent_def.examples:
+                        await conn.fetchrow(
+                            self._repo._sql.query("insert_intent_example"),
+                            intent_row["id"], example_text, None,
+                        )
+                        examples_created += 1
 
-        # Create rules with concrete model names
-        for priority, rule_def in enumerate(preset.rules):
-            concrete_model = model_mapping.resolve(rule_def.target_level)
+                # Create rules with concrete model names
+                for priority, rule_def in enumerate(preset.rules):
+                    concrete_model = model_mapping.resolve(rule_def.target_level)
 
-            rule_row = await self._repo.create_rule(
-                tenant_id=tenant_id,
-                name=rule_def.name,
-                priority=priority,
-                target_model=concrete_model,
-                is_default=rule_def.is_default,
-            )
-            rules_created += 1
+                    rule_row = await conn.fetchrow(
+                        self._repo._sql.query("insert_rule"),
+                        tenant_id, rule_def.name, priority, rule_def.is_default,
+                        concrete_model,
+                    )
+                    rules_created += 1
 
-            # Add conditions
-            if rule_def.conditions:
-                conditions = [
-                    {
-                        "condition_type": c.condition_type,
-                        "field": c.field,
-                        "operator": c.operator,
-                        "value": c.value,
-                    }
-                    for c in rule_def.conditions
-                ]
-                await self._repo.replace_conditions(
-                    rule_row["id"], conditions,
-                )
+                    # Add conditions
+                    if rule_def.conditions:
+                        for c in rule_def.conditions:
+                            await conn.fetchrow(
+                                self._repo._sql.query("insert_condition"),
+                                rule_row["id"], c.condition_type, c.operator,
+                                c.field, json.dumps(c.value), False,
+                            )
 
         logger.info(
             "preset_applied",

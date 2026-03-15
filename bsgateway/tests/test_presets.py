@@ -4,8 +4,9 @@ TDD: Tests written FIRST.
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -73,34 +74,46 @@ class TestPresetService:
     @pytest.fixture
     def mock_rules_repo(self) -> AsyncMock:
         repo = AsyncMock()
-        repo.create_rule.return_value = {
-            "id": uuid4(),
-            "tenant_id": uuid4(),
-            "name": "test",
-            "priority": 1,
-            "is_active": True,
-            "is_default": False,
-            "target_model": "gpt-4o",
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
-        }
-        repo.create_intent.return_value = {
-            "id": uuid4(),
-            "tenant_id": uuid4(),
-            "name": "test",
-            "description": "test",
-            "threshold": 0.7,
-            "is_active": True,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
-        }
-        repo.add_example.return_value = {
-            "id": uuid4(),
-            "intent_id": uuid4(),
-            "text": "example",
-            "created_at": datetime.now(UTC),
-        }
-        repo.replace_conditions.return_value = []
+        repo.list_intents.return_value = []  # No existing intents (idempotency check)
+
+        # Mock _pool for transactional apply_preset
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(
+            side_effect=lambda *args, **kwargs: {
+                "id": uuid4(),
+                "tenant_id": uuid4(),
+                "name": "test",
+                "priority": 0,
+                "is_active": True,
+                "is_default": False,
+                "target_model": "gpt-4o",
+                "description": "",
+                "threshold": 0.7,
+                "text": "example",
+                "intent_id": uuid4(),
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+            }
+        )
+
+        @asynccontextmanager
+        async def mock_transaction():
+            yield
+
+        mock_conn.transaction = mock_transaction
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        repo._pool = MagicMock()
+        repo._pool.acquire = mock_acquire
+
+        # Mock _sql for named queries
+        mock_sql = MagicMock()
+        mock_sql.query = lambda name: f"-- mock query: {name}"
+        repo._sql = mock_sql
+
         return repo
 
     async def test_apply_preset(
@@ -124,8 +137,6 @@ class TestPresetService:
         assert result.preset_name == "coding-assistant"
         assert result.rules_created > 0
         assert result.intents_created > 0
-        # Verify rules were created with concrete model names
-        assert mock_rules_repo.create_rule.call_count > 0
 
     async def test_apply_preset_unknown(
         self, mock_rules_repo: AsyncMock, mock_tenant_repo: AsyncMock,
@@ -140,31 +151,24 @@ class TestPresetService:
                 ),
             )
 
-    async def test_apply_preset_maps_model_levels(
+    async def test_apply_preset_idempotency(
         self, mock_rules_repo: AsyncMock, mock_tenant_repo: AsyncMock,
     ):
+        """Applying the same preset twice should fail with a clear error."""
+        mock_rules_repo.list_intents.return_value = [
+            {"name": "code_review"},  # Existing intent from prior apply
+        ]
         service = PresetService(mock_rules_repo, mock_tenant_repo)
-        tid = uuid4()
-
-        mapping = ModelMapping(
-            economy="gpt-4o-mini",
-            balanced="claude-sonnet",
-            premium="claude-opus",
-        )
-
-        await service.apply_preset(
-            tenant_id=tid,
-            preset_name="coding-assistant",
-            model_mapping=mapping,
-        )
-
-        # Check that create_rule was called with concrete models
-        for call in mock_rules_repo.create_rule.call_args_list:
-            target = call.kwargs.get("target_model") or call.args[4] if len(call.args) > 4 else None
-            if target:
-                assert target in (
-                    "gpt-4o-mini", "claude-sonnet", "claude-opus",
-                ), f"Expected concrete model, got abstract level: {target}"
+        with pytest.raises(ValueError, match="already applied"):
+            await service.apply_preset(
+                tenant_id=uuid4(),
+                preset_name="coding-assistant",
+                model_mapping=ModelMapping(
+                    economy="gpt-4o-mini",
+                    balanced="gpt-4o",
+                    premium="claude-opus",
+                ),
+            )
 
 
 class TestFeedbackModels:

@@ -40,7 +40,18 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
             return b""
-        return bytes.fromhex(self.encryption_key)
+        try:
+            key = bytes.fromhex(self.encryption_key)
+        except ValueError as e:
+            raise ValueError(
+                "ENCRYPTION_KEY must be a valid hex string"
+                f" (got {len(self.encryption_key)} chars): {e}"
+            ) from e
+        if len(key) != 32:
+            raise ValueError(
+                f"ENCRYPTION_KEY must be 32 bytes (64 hex chars), got {len(key)} bytes"
+            )
+        return key
 
 
 settings = Settings()

@@ -173,3 +173,51 @@ class TestConditionSchemaValidation:
             value=None,
         )
         assert schema.value is None
+
+    def test_invalid_operator_rejected(self):
+        with pytest.raises(ValidationError):
+            ConditionSchema(
+                condition_type="text_pattern",
+                field="user_text",
+                operator="invalid_op",
+                value="hello",
+            )
+
+    def test_invalid_condition_type_rejected(self):
+        with pytest.raises(ValidationError):
+            ConditionSchema(
+                condition_type="nonexistent_type",
+                field="user_text",
+                operator="eq",
+                value="hello",
+            )
+
+    def test_between_requires_two_element_list(self):
+        with pytest.raises(ValidationError, match="2-element list"):
+            ConditionSchema(
+                condition_type="token_count",
+                field="estimated_tokens",
+                operator="between",
+                value="not-a-list",
+            )
+
+    def test_between_with_valid_list(self):
+        schema = ConditionSchema(
+            condition_type="token_count",
+            field="estimated_tokens",
+            operator="between",
+            value=[10, 100],
+        )
+        assert schema.value == [10, 100]
+
+
+class TestReDoSProtection:
+    def test_nested_quantifier_rejected(self):
+        ctx = _make_ctx(user_text="aaaaaaaab")
+        cond = RuleCondition(
+            condition_type="text_pattern",
+            field="user_text",
+            operator="regex",
+            value="(a+)+b",
+        )
+        assert evaluate_condition(cond, ctx) is False

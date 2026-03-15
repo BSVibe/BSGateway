@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
@@ -18,15 +18,15 @@ class BudgetTracker:
         self._redis = redis_client
 
     def _daily_key(self, tenant_id: str) -> str:
-        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        date = datetime.now(UTC).strftime("%Y-%m-%d")
         return f"tenant:{tenant_id}:cost:daily:{date}"
 
     def _monthly_key(self, tenant_id: str) -> str:
-        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        month = datetime.now(UTC).strftime("%Y-%m")
         return f"tenant:{tenant_id}:cost:monthly:{month}"
 
     def _hourly_req_key(self, tenant_id: str) -> str:
-        hour = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+        hour = datetime.now(UTC).strftime("%Y-%m-%dT%H")
         return f"tenant:{tenant_id}:requests:hourly:{hour}"
 
     async def record_cost(self, tenant_id: str, cost: float) -> None:
@@ -42,11 +42,11 @@ class BudgetTracker:
 
     async def get_daily_cost(self, tenant_id: str) -> float:
         val = await self._redis.get(self._daily_key(tenant_id))
-        return float(val) if val else 0.0
+        return float(val.decode() if isinstance(val, bytes) else val) if val else 0.0
 
     async def get_monthly_cost(self, tenant_id: str) -> float:
         val = await self._redis.get(self._monthly_key(tenant_id))
-        return float(val) if val else 0.0
+        return float(val.decode() if isinstance(val, bytes) else val) if val else 0.0
 
     async def increment_request_count(self, tenant_id: str) -> int:
         key = self._hourly_req_key(tenant_id)
@@ -56,4 +56,4 @@ class BudgetTracker:
 
     async def get_request_count_hourly(self, tenant_id: str) -> int:
         val = await self._redis.get(self._hourly_req_key(tenant_id))
-        return int(val) if val else 0
+        return int(val.decode() if isinstance(val, bytes) else val) if val else 0

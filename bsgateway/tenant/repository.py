@@ -7,6 +7,8 @@ from uuid import UUID
 import asyncpg
 import structlog
 
+from bsgateway.core.exceptions import DuplicateError
+
 logger = structlog.get_logger(__name__)
 
 
@@ -65,10 +67,15 @@ class TenantRepository:
         self, name: str, slug: str, settings: dict | None = None,
     ) -> asyncpg.Record:
         async with self._pool.acquire() as conn:
-            return await conn.fetchrow(
-                sql.query("insert_tenant"),
-                name, slug, json.dumps(settings or {}),
-            )
+            try:
+                return await conn.fetchrow(
+                    sql.query("insert_tenant"),
+                    name, slug, json.dumps(settings or {}),
+                )
+            except asyncpg.UniqueViolationError as e:
+                raise DuplicateError(
+                    f"Tenant with this name or slug already exists: {e.detail}"
+                ) from e
 
     async def get_tenant(self, tenant_id: UUID) -> asyncpg.Record | None:
         async with self._pool.acquire() as conn:
@@ -140,16 +147,21 @@ class TenantRepository:
         extra_params: dict | None = None,
     ) -> asyncpg.Record:
         async with self._pool.acquire() as conn:
-            return await conn.fetchrow(
-                sql.query("insert_tenant_model"),
-                tenant_id,
-                model_name,
-                provider,
-                litellm_model,
-                api_key_encrypted,
-                api_base,
-                json.dumps(extra_params or {}),
-            )
+            try:
+                return await conn.fetchrow(
+                    sql.query("insert_tenant_model"),
+                    tenant_id,
+                    model_name,
+                    provider,
+                    litellm_model,
+                    api_key_encrypted,
+                    api_base,
+                    json.dumps(extra_params or {}),
+                )
+            except asyncpg.UniqueViolationError as e:
+                raise DuplicateError(
+                    f"Model '{model_name}' already exists for this tenant"
+                ) from e
 
     async def get_model(self, model_id: UUID, tenant_id: UUID) -> asyncpg.Record | None:
         async with self._pool.acquire() as conn:

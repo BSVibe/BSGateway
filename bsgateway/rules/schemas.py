@@ -1,22 +1,33 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Rule Conditions
 # ---------------------------------------------------------------------------
 
+ValidOperator = Literal[
+    "eq", "contains", "regex",
+    "gt", "lt", "gte", "lte", "between",
+    "in", "not_in",
+]
+
+ValidConditionType = Literal[
+    "text_pattern", "token_count", "message", "tool",
+    "intent", "model_requested", "language", "time", "budget",
+]
 
 ConditionValue = str | int | float | bool | list | None
 
 
 class ConditionSchema(BaseModel):
-    condition_type: str = Field(..., min_length=1)
+    condition_type: ValidConditionType = Field(...)
     field: str = Field(..., min_length=1)
-    operator: str = Field(default="eq")
+    operator: ValidOperator = Field(default="eq")
     value: ConditionValue = Field(...)
     negate: bool = False
 
@@ -28,6 +39,15 @@ class ConditionSchema(BaseModel):
         if isinstance(v, list) and len(v) > 100:
             raise ValueError("value list too long (max 100)")
         return v
+
+    @model_validator(mode="after")
+    def validate_between_value(self) -> ConditionSchema:
+        if self.operator == "between":
+            if not isinstance(self.value, list) or len(self.value) != 2:
+                raise ValueError(
+                    "'between' operator requires a 2-element list"
+                )
+        return self
 
 
 # ---------------------------------------------------------------------------

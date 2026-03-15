@@ -79,6 +79,40 @@ class TestLanguageCondition:
         assert evaluate_condition(cond, ctx) is False
 
 
+class TestLanguageDetection:
+    """Test heuristic language detection edge cases."""
+
+    def test_arabic_returns_none(self):
+        from bsgateway.rules.models import _detect_language
+
+        assert _detect_language("مرحبا بالعالم") is None
+
+    def test_cyrillic_returns_none(self):
+        from bsgateway.rules.models import _detect_language
+
+        assert _detect_language("Привет мир") is None
+
+    def test_english_returns_en(self):
+        from bsgateway.rules.models import _detect_language
+
+        assert _detect_language("Hello world, how are you?") == "en"
+
+    def test_korean_returns_ko(self):
+        from bsgateway.rules.models import _detect_language
+
+        assert _detect_language("안녕하세요 반갑습니다") == "ko"
+
+    def test_empty_returns_none(self):
+        from bsgateway.rules.models import _detect_language
+
+        assert _detect_language("") is None
+
+    def test_numbers_only_returns_none(self):
+        from bsgateway.rules.models import _detect_language
+
+        assert _detect_language("12345 67890") is None
+
+
 class TestTimeCondition:
     def test_hour_between(self):
         ctx = _make_ctx(hour_of_day=3)

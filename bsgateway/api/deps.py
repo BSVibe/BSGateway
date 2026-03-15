@@ -70,15 +70,17 @@ async def get_auth_context(request: Request) -> AuthContext:
         or not row["is_active"]
         or (row["expires_at"] and row["expires_at"] < datetime.now(UTC))
     ):
+        logger.warning("auth_failed", reason="invalid_or_expired_key")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired API key",
         )
 
     if not row["tenant_is_active"]:
+        logger.warning("auth_failed", reason="tenant_deactivated")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant is deactivated",
+            detail="Access denied",
         )
 
     # Touch last_used_at (fire-and-forget)
@@ -86,6 +88,12 @@ async def get_auth_context(request: Request) -> AuthContext:
         await repo.touch_api_key(key_hash)
     except Exception:
         logger.warning("touch_api_key_failed", exc_info=True)
+
+    logger.info(
+        "auth_success",
+        tenant_id=str(row["tenant_id"]),
+        key_prefix=row["key_prefix"],
+    )
 
     return AuthContext(
         tenant_id=row["tenant_id"],
