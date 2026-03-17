@@ -71,7 +71,7 @@ class RoutingCollector:
     ) -> None:
         self.database_url = database_url
         self.embedding_config = embedding_config
-        self._pool: asyncpg.Pool | None = None
+        self._pool: asyncpg.Pool = None  # type: ignore[assignment]
         self._initialized = False
 
     async def _ensure_db(self) -> None:
@@ -129,7 +129,7 @@ class RoutingCollector:
         )
 
     async def _generate_embedding(self, text: str) -> bytes | None:
-        if not text:
+        if not text or not self.embedding_config:
             return None
         try:
             response = await litellm.aembedding(
