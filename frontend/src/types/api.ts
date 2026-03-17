@@ -45,7 +45,7 @@ export interface TenantModel {
 
 export interface TenantModelCreate {
   model_name: string;
-  provider: string;
+  provider?: string;
   litellm_model: string;
   api_key?: string;
   api_base?: string;

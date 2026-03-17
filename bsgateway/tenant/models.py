@@ -110,7 +110,7 @@ class ApiKeyResponse(BaseModel):
 
 class TenantModelCreate(BaseModel):
     model_name: str = Field(..., min_length=1, max_length=255)
-    provider: str = Field(..., min_length=1, max_length=100)
+    provider: str | None = Field(None, max_length=100)
     litellm_model: str = Field(..., min_length=1, max_length=255)
     api_key: str | None = None  # plaintext, encrypted before storage
     api_base: str | None = None
@@ -120,7 +120,6 @@ class TenantModelCreate(BaseModel):
         "json_schema_extra": {
             "example": {
                 "model_name": "gpt-4o",
-                "provider": "openai",
                 "litellm_model": "openai/gpt-4o",
                 "api_key": "sk-...",
                 "api_base": None,

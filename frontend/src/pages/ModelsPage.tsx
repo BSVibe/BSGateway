@@ -15,7 +15,6 @@ export function ModelsPage() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<TenantModelCreate>({
     model_name: '',
-    provider: '',
     litellm_model: '',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -25,7 +24,7 @@ export function ModelsPage() {
     try {
       await tenantsApi.createModel(TENANT_ID, formData);
       setShowForm(false);
-      setFormData({ model_name: '', provider: '', litellm_model: '' });
+      setFormData({ model_name: '', litellm_model: '' });
       refetch();
     } catch {
       alert('Failed to create model');
@@ -63,7 +62,7 @@ export function ModelsPage() {
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Model Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Alias</label>
               <input
                 type="text"
                 value={formData.model_name}
@@ -71,29 +70,35 @@ export function ModelsPage() {
                 placeholder="gpt-4o"
                 className="w-full border rounded-lg px-3 py-2 text-sm"
               />
+              <p className="text-xs text-gray-400 mt-1">Tenant 내부에서 사용할 이름</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
-              <input
-                type="text"
-                value={formData.provider}
-                onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                placeholder="openai"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">LiteLLM Model</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Model Name</label>
               <input
                 type="text"
                 value={formData.litellm_model}
                 onChange={(e) => setFormData({ ...formData, litellm_model: e.target.value })}
                 placeholder="openai/gpt-4o"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
+                className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+              />
+              <p className="text-xs text-gray-400 mt-1">LiteLLM 모델 ID (provider/model)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                API Base <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={formData.api_base || ''}
+                onChange={(e) => setFormData({ ...formData, api_base: e.target.value || undefined })}
+                placeholder="http://localhost:11434"
+                className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">API Key (optional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                API Key <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
               <input
                 type="password"
                 value={formData.api_key || ''}
@@ -105,7 +110,7 @@ export function ModelsPage() {
           </div>
           <button
             onClick={handleCreate}
-            disabled={submitting || !formData.model_name || !formData.provider || !formData.litellm_model}
+            disabled={submitting || !formData.model_name || !formData.litellm_model}
             className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
           >
             {submitting ? 'Registering...' : 'Register Model'}
@@ -122,7 +127,7 @@ export function ModelsPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{model.model_name}</span>
                     <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                      {model.provider}
+                      {model.litellm_model.split('/')[0]}
                     </span>
                     {!model.is_active && (
                       <span className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">
@@ -131,6 +136,9 @@ export function ModelsPage() {
                     )}
                   </div>
                   <p className="text-sm text-gray-500 mt-1 font-mono">{model.litellm_model}</p>
+                  {model.api_base && (
+                    <p className="text-xs text-gray-400 mt-0.5 font-mono">{model.api_base}</p>
+                  )}
                 </div>
                 <button
                   onClick={() => handleDelete(model)}

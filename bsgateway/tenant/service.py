@@ -157,10 +157,12 @@ class TenantService:
                 "ENCRYPTION_KEY is required to store provider API keys"
             )
 
+        provider = data.provider or data.litellm_model.split("/")[0]
+
         row = await self._repo.create_model(
             tenant_id=tenant_id,
             model_name=data.model_name,
-            provider=data.provider,
+            provider=provider,
             litellm_model=data.litellm_model,
             api_key_encrypted=encrypted_key,
             api_base=data.api_base,
