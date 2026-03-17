@@ -12,7 +12,7 @@ import { useAuth } from './hooks/useAuth';
 import './index.css';
 
 function App() {
-  const { isAuthenticated, login, logout } = useAuth();
+  const { isAuthenticated, tenantSlug, tenantName, login, logout } = useAuth();
 
   if (!isAuthenticated) {
     return (
@@ -25,7 +25,7 @@ function App() {
   return (
     <BrowserRouter basename="/dashboard">
       <Routes>
-        <Route element={<Layout onLogout={logout} />}>
+        <Route element={<Layout onLogout={logout} tenantSlug={tenantSlug} tenantName={tenantName} />}>
           <Route index element={<DashboardPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="models" element={<ModelsPage />} />

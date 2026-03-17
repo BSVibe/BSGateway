@@ -32,7 +32,8 @@ RETURNING id, tenant_id, key_prefix, name, scopes, is_active, expires_at, last_u
 -- name: get_api_key_by_hash
 SELECT ak.id, ak.tenant_id, ak.key_hash, ak.key_prefix, ak.name,
        ak.scopes, ak.is_active, ak.expires_at, ak.last_used_at, ak.created_at,
-       t.is_active as tenant_is_active
+       t.is_active as tenant_is_active,
+       t.name as tenant_name, t.slug as tenant_slug
 FROM tenant_api_keys ak
 JOIN tenants t ON t.id = ak.tenant_id
 WHERE ak.key_hash = $1;

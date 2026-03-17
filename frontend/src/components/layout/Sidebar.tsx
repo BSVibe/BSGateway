@@ -12,16 +12,24 @@ const navItems = [
 
 interface SidebarProps {
   onLogout?: () => void;
+  tenantSlug?: string | null;
+  tenantName?: string | null;
 }
 
-export function Sidebar({ onLogout }: SidebarProps) {
+export function Sidebar({ onLogout, tenantSlug, tenantName }: SidebarProps) {
   const location = useLocation();
 
   return (
     <aside className="w-56 bg-gray-900 text-gray-300 flex flex-col min-h-screen">
       <div className="p-4 border-b border-gray-700">
         <h1 className="text-lg font-bold text-white">BSGateway</h1>
-        <p className="text-xs text-gray-500">LLM Routing Dashboard</p>
+        {tenantName ? (
+          <p className="text-xs text-gray-400 truncate" title={tenantSlug || ''}>
+            {tenantName}
+          </p>
+        ) : (
+          <p className="text-xs text-gray-500">LLM Routing Dashboard</p>
+        )}
       </div>
       <nav className="flex-1 py-4">
         {navItems.map((item) => {

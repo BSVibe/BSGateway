@@ -14,6 +14,8 @@ services:
       - ..:/workspace:cached
       - claude-code-bashhistory:/commandhistory
       - ~/.claude:/home/vscode/.claude:cached
+    env_file:
+      - ../.env
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -25,7 +27,8 @@ services:
     command: >
       sh -c "zsh && sudo /usr/local/bin/init-firewall.sh"
     ports:
-      - "${EXTERNAL_BACKEND_PORT:-4000}:4000"
+      - "${EXTERNAL_BACKEND_PORT:-8000}:8000"
+      - "${EXTERNAL_FRONTEND_PORT:-5173}:5173"
     networks:
       - bsgateway-network
 

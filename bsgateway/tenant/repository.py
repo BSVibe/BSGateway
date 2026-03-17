@@ -73,8 +73,9 @@ class TenantRepository:
                     name, slug, json.dumps(settings or {}),
                 )
             except asyncpg.UniqueViolationError as e:
+                detail = e.as_dict().get("detail", str(e))
                 raise DuplicateError(
-                    f"Tenant with this name or slug already exists: {e.detail}"
+                    f"Tenant with this name or slug already exists: {detail}"
                 ) from e
 
     async def get_tenant(self, tenant_id: UUID) -> asyncpg.Record | None:

@@ -8,7 +8,7 @@ import asyncpg
 import structlog
 from fastapi import Depends, HTTPException, Request, status
 
-from bsgateway.core.security import hash_api_key
+from bsgateway.core.security import decode_jwt, hash_api_key
 
 logger = structlog.get_logger(__name__)
 
@@ -48,7 +48,21 @@ async def get_auth_context(request: Request) -> AuthContext:
     token = auth_header[7:]
     pool: asyncpg.Pool = request.app.state.db_pool
 
-    # Check superadmin key first (compare hashes, never plaintext)
+    # Try JWT first (issued by /auth/token for dashboard sessions)
+    jwt_secret = getattr(request.app.state, "jwt_secret", "")
+    if jwt_secret:
+        try:
+            payload = decode_jwt(token, jwt_secret)
+            logger.info("auth_jwt_success", tenant_id=payload.tenant_id)
+            return AuthContext(
+                tenant_id=UUID(payload.tenant_id),
+                scopes=payload.scopes,
+                key_hash="",
+            )
+        except Exception:
+            pass  # Not a valid JWT — fall through to API key auth
+
+    # Check superadmin key (compare hashes, never plaintext)
     superadmin_hash = getattr(request.app.state, "superadmin_key_hash", "")
     if superadmin_hash and hash_api_key(token) == superadmin_hash:
         return AuthContext(

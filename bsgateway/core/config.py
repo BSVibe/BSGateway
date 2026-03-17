@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Superadmin bootstrap key (for creating first tenant)
     superadmin_key: str = ""
 
+    # Development seed data (creates test tenant + API key on startup)
+    seed_dev_data: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )

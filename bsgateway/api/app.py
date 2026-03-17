@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 import structlog
 from fastapi import FastAPI
@@ -18,7 +22,7 @@ from bsgateway.tenant.repository import TenantRepository
 logger = structlog.get_logger(__name__)
 
 
-async def _init_redis() -> object | None:
+async def _init_redis() -> Redis | None:
     """Create a Redis client if configured, otherwise return None."""
     if not settings.redis_host:
         return None
@@ -31,7 +35,7 @@ async def _init_redis() -> object | None:
             password=settings.redis_password or None,
             decode_responses=False,
         )
-        await client.ping()
+        await client.ping()  # type: ignore[misc]
         logger.info("redis_connected", host=settings.redis_host, port=settings.redis_port)
         return client
     except Exception:
@@ -52,6 +56,7 @@ async def lifespan(app: FastAPI):
     app.state.superadmin_key_hash = (
         hash_api_key(settings.superadmin_key) if settings.superadmin_key else ""
     )
+    app.state.jwt_secret = settings.jwt_secret
 
     # Initialize schemas
     tenant_repo = TenantRepository(pool)
@@ -65,6 +70,12 @@ async def lifespan(app: FastAPI):
 
     audit_repo = AuditRepository(pool)
     await audit_repo.init_schema()
+
+    # Seed development data (if enabled)
+    if settings.seed_dev_data:
+        from bsgateway.core.seed import seed_dev_data
+
+        await seed_dev_data(pool, settings.encryption_key_bytes)
 
     # Initialize Redis (optional, used for rate limiting and budget tracking)
     app.state.redis = await _init_redis()
@@ -94,6 +105,7 @@ def create_app() -> FastAPI:
     )
 
     from bsgateway.api.routers.audit import router as audit_router
+    from bsgateway.api.routers.auth import router as auth_router
     from bsgateway.api.routers.chat import router as chat_router
     from bsgateway.api.routers.feedback import router as feedback_router
     from bsgateway.api.routers.intents import router as intents_router
@@ -102,6 +114,7 @@ def create_app() -> FastAPI:
     from bsgateway.api.routers.tenants import router as tenants_router
     from bsgateway.api.routers.usage import router as usage_router
 
+    app.include_router(auth_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(tenants_router, prefix="/api/v1")
     app.include_router(rules_router, prefix="/api/v1")

@@ -1,21 +1,44 @@
 import { useState } from 'react';
 
 interface LoginPageProps {
-  onLogin: (apiKey: string, tenantId: string) => void;
+  onLogin: (token: string, tenantId: string, tenantSlug: string, tenantName: string) => void;
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [apiKey, setApiKey] = useState('');
-  const [tenantId, setTenantId] = useState('');
+  const [showKey, setShowKey] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey || !tenantId) {
-      setError('Both fields are required');
+    if (!apiKey) {
+      setError('API key is required');
       return;
     }
-    onLogin(apiKey, tenantId);
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/v1/auth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.detail || 'Authentication failed');
+      }
+
+      const data = await res.json();
+      onLogin(data.token, data.tenant_id, data.tenant_slug, data.tenant_name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -26,31 +49,39 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
-            <input
-              type="text"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              placeholder="UUID"
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="bsg_... or superadmin key"
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="bsg_..."
+                className={`w-full border rounded-lg px-3 py-2 pr-16 text-sm font-mono ${
+                  !showKey && apiKey ? '[text-security:disc] [-webkit-text-security:disc]' : ''
+                }`}
+                style={!showKey && apiKey ? { WebkitTextSecurity: 'disc' } as React.CSSProperties : undefined}
+                autoComplete="off"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"
+              >
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Your API key identifies the tenant automatically.
+            </p>
           </div>
           {error && <p className="text-red-600 text-sm">{error}</p>}
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            Login
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
       </div>
