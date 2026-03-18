@@ -14,8 +14,6 @@ services:
       - ..:/workspace:cached
       - claude-code-bashhistory:/commandhistory
       - ~/.claude:/home/vscode/.claude:cached
-    env_file:
-      - ../.env
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
