@@ -41,3 +41,9 @@ docs/internal/
 
 # Devcontainer local overrides (git worktree mount)
 docker-compose.override.yml
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
