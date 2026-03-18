@@ -1,0 +1,43 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "BSGateway" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Dev Team
+    - navigation [ref=e8]:
+      - link "D Dashboard" [ref=e9] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e10]: D
+        - generic [ref=e11]: Dashboard
+      - link "R Rules" [active] [ref=e12] [cursor=pointer]:
+        - /url: /dashboard/rules
+        - generic [ref=e13]: R
+        - generic [ref=e14]: Rules
+      - link "M Models" [ref=e15] [cursor=pointer]:
+        - /url: /dashboard/models
+        - generic [ref=e16]: M
+        - generic [ref=e17]: Models
+      - link "I Intents" [ref=e18] [cursor=pointer]:
+        - /url: /dashboard/intents
+        - generic [ref=e19]: I
+        - generic [ref=e20]: Intents
+      - link "T Route Test" [ref=e21] [cursor=pointer]:
+        - /url: /dashboard/test
+        - generic [ref=e22]: T
+        - generic [ref=e23]: Route Test
+      - link "U Usage" [ref=e24] [cursor=pointer]:
+        - /url: /dashboard/usage
+        - generic [ref=e25]: U
+        - generic [ref=e26]: Usage
+      - link "A Audit Log" [ref=e27] [cursor=pointer]:
+        - /url: /dashboard/audit
+        - generic [ref=e28]: A
+        - generic [ref=e29]: Audit Log
+    - button "Logout" [ref=e31] [cursor=pointer]
+  - main [ref=e32]:
+    - generic [ref=e33]:
+      - paragraph [ref=e34]: Not Found
+      - button "Retry" [ref=e35] [cursor=pointer]
+```
