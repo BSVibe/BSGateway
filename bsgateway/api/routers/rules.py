@@ -7,7 +7,7 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from bsgateway.api.deps import AuthContext, get_audit_service, get_pool, require_admin
+from bsgateway.api.deps import AuthContext, get_audit_service, get_cache, get_pool, require_admin
 from bsgateway.core.exceptions import DuplicateError
 from bsgateway.rules.engine import RuleEngine
 from bsgateway.rules.models import (
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/tenants/{tenant_id}/rules", tags=["rules"])
 
 
 def _get_repo(request: Request) -> RulesRepository:
-    return RulesRepository(get_pool(request))
+    return RulesRepository(get_pool(request), cache=get_cache(request))
 
 
 async def _validate_target_model(
@@ -44,7 +44,7 @@ async def _validate_target_model(
     """Validate that target_model is registered for the tenant (skip for default rules)."""
     if is_default:
         return
-    tenant_repo = TenantRepository(get_pool(request))
+    tenant_repo = TenantRepository(get_pool(request), cache=get_cache(request))
     model = await tenant_repo.get_model_by_name(tenant_id, target_model)
     if not model:
         raise HTTPException(

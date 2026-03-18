@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from bsgateway.audit.repository import AuditRepository
+from bsgateway.core.cache import CacheManager
 from bsgateway.core.config import settings
 from bsgateway.core.database import close_pool, get_pool
 from bsgateway.core.security import hash_api_key
@@ -58,11 +59,17 @@ async def lifespan(app: FastAPI):
     )
     app.state.jwt_secret = settings.jwt_secret
 
+    # Initialize Redis (optional, used for rate limiting and caching)
+    app.state.redis = await _init_redis()
+
+    # Initialize cache manager if Redis is available
+    app.state.cache = CacheManager(app.state.redis) if app.state.redis else None
+
     # Initialize schemas
-    tenant_repo = TenantRepository(pool)
+    tenant_repo = TenantRepository(pool, cache=app.state.cache)
     await tenant_repo.init_schema()
 
-    rules_repo = RulesRepository(pool)
+    rules_repo = RulesRepository(pool, cache=app.state.cache)
     await rules_repo.init_schema()
 
     feedback_repo = FeedbackRepository(pool)
@@ -76,9 +83,6 @@ async def lifespan(app: FastAPI):
         from bsgateway.core.seed import seed_dev_data
 
         await seed_dev_data(pool, settings.encryption_key_bytes)
-
-    # Initialize Redis (optional, used for rate limiting and budget tracking)
-    app.state.redis = await _init_redis()
 
     logger.info("api_server_started", port=settings.api_port)
     yield

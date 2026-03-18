@@ -6,8 +6,10 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+import redis.asyncio as redis
 import structlog
 
+from bsgateway.core.cache import CacheManager, cache_key_rules, CACHE_TTL_RULES
 from bsgateway.core.exceptions import DuplicateError
 
 logger = structlog.get_logger(__name__)
@@ -48,11 +50,12 @@ sql = RulesSqlLoader()
 
 
 class RulesRepository:
-    """Database access for routing rules, conditions, and intents."""
+    """Database access for routing rules, conditions, and intents with caching."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    def __init__(self, pool: asyncpg.Pool, cache: CacheManager | None = None) -> None:
         self._pool = pool
         self._sql = sql
+        self._cache = cache
 
     async def init_schema(self) -> None:
         schema = sql.schema()
@@ -93,8 +96,23 @@ class RulesRepository:
             )
 
     async def list_rules(self, tenant_id: UUID) -> list[asyncpg.Record]:
+        # Try cache first
+        if self._cache:
+            key = cache_key_rules(str(tenant_id))
+            cached = await self._cache.get(key)
+            if cached is not None:
+                return [dict(row) for row in cached]
+
+        # Fetch from DB
         async with self._pool.acquire() as conn:
-            return await conn.fetch(sql.query("list_rules"), tenant_id)
+            rows = await conn.fetch(sql.query("list_rules"), tenant_id)
+
+        # Cache result
+        if self._cache and rows:
+            key = cache_key_rules(str(tenant_id))
+            await self._cache.set(key, [dict(row) for row in rows], CACHE_TTL_RULES)
+
+        return rows
 
     async def update_rule(
         self,
@@ -114,6 +132,11 @@ class RulesRepository:
     async def delete_rule(self, rule_id: UUID, tenant_id: UUID) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(sql.query("delete_rule"), rule_id, tenant_id)
+
+        # Invalidate cache
+        if self._cache:
+            key = cache_key_rules(str(tenant_id))
+            await self._cache.delete(key)
 
     async def reorder_rules(
         self, tenant_id: UUID, priorities: dict[UUID, int],

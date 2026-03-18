@@ -5,8 +5,10 @@ from pathlib import Path
 from uuid import UUID
 
 import asyncpg
+import redis.asyncio as redis
 import structlog
 
+from bsgateway.core.cache import CacheManager, cache_key_models, CACHE_TTL_MODELS
 from bsgateway.core.exceptions import DuplicateError
 
 logger = structlog.get_logger(__name__)
@@ -47,10 +49,11 @@ sql = TenantSqlLoader()
 
 
 class TenantRepository:
-    """Database access for tenants, API keys, and tenant models."""
+    """Database access for tenants, API keys, and tenant models with caching."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    def __init__(self, pool: asyncpg.Pool, cache: CacheManager | None = None) -> None:
         self._pool = pool
+        self._cache = cache
 
     async def init_schema(self) -> None:
         schema = sql.schema()
@@ -177,8 +180,23 @@ class TenantRepository:
             )
 
     async def list_models(self, tenant_id: UUID) -> list[asyncpg.Record]:
+        # Try cache first
+        if self._cache:
+            key = cache_key_models(str(tenant_id))
+            cached = await self._cache.get(key)
+            if cached is not None:
+                return [dict(row) for row in cached]
+
+        # Fetch from DB
         async with self._pool.acquire() as conn:
-            return await conn.fetch(sql.query("list_tenant_models"), tenant_id)
+            rows = await conn.fetch(sql.query("list_tenant_models"), tenant_id)
+
+        # Cache result
+        if self._cache and rows:
+            key = cache_key_models(str(tenant_id))
+            await self._cache.set(key, [dict(row) for row in rows], CACHE_TTL_MODELS)
+
+        return rows
 
     async def update_model(
         self,
@@ -207,3 +225,8 @@ class TenantRepository:
     async def delete_model(self, model_id: UUID, tenant_id: UUID) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(sql.query("delete_tenant_model"), model_id, tenant_id)
+
+        # Invalidate cache
+        if self._cache:
+            key = cache_key_models(str(tenant_id))
+            await self._cache.delete(key)

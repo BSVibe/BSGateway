@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from bsgateway.api.deps import (
     AuthContext,
     get_audit_service,
+    get_cache,
     get_encryption_key,
     get_pool,
     require_admin,
@@ -33,7 +34,8 @@ def get_tenant_service(request: Request) -> TenantService:
     """DI dependency for TenantService."""
     pool = get_pool(request)
     encryption_key = get_encryption_key(request)
-    return TenantService(TenantRepository(pool), encryption_key)
+    cache = get_cache(request)
+    return TenantService(TenantRepository(pool, cache=cache), encryption_key)
 
 
 # ---------------------------------------------------------------------------

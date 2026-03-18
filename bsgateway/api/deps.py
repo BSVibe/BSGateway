@@ -23,6 +23,11 @@ def get_encryption_key(request: Request) -> bytes:
     return request.app.state.encryption_key
 
 
+def get_cache(request: Request):
+    """Extract the cache manager from app state (optional)."""
+    return getattr(request.app.state, "cache", None)
+
+
 @dataclass
 class AuthContext:
     """Authenticated request context."""
@@ -76,6 +81,7 @@ async def get_auth_context(request: Request) -> AuthContext:
 
     from bsgateway.tenant.repository import TenantRepository
 
+    # Note: Don't use cache in get_auth_context since we need fresh auth check
     repo = TenantRepository(pool)
     row = await repo.get_api_key_by_hash(key_hash)
 
