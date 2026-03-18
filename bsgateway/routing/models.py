@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 
 @dataclass
@@ -75,6 +76,36 @@ class CollectorConfig:
 
 
 @dataclass
+class RegionConfig:
+    """Configuration for multi-region model deployment."""
+
+    region: str  # "us-east" | "us-west" | "eu-west" | etc.
+    api_base: str | None = None  # Override api_base for this region
+    latency_ms: int = 0  # Estimated latency in milliseconds
+    priority: int = 0  # Lower number = higher priority
+
+
+@dataclass
+class CostOptimizationConfig:
+    """Configuration for cost-optimized routing."""
+
+    enabled: bool = True
+    cost_per_1k_input: float = 0.0  # in USD
+    cost_per_1k_output: float = 0.0  # in USD
+    fallback_cost_multiplier: float = 1.5  # Cost threshold before falling back
+
+
+@dataclass
+class ABTestConfig:
+    """A/B test variant configuration."""
+
+    variant_id: str  # "control" | "variant-a" | "variant-b" | etc.
+    model: str  # Target model for this variant
+    traffic_percentage: float = 50.0  # 0-100
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
 class RoutingConfig:
     """Full routing configuration loaded from YAML."""
 
@@ -87,3 +118,7 @@ class RoutingConfig:
     classifier_strategy: str = "llm"
     llm_classifier: LLMClassifierConfig = field(default_factory=LLMClassifierConfig)
     collector: CollectorConfig = field(default_factory=CollectorConfig)
+    # Multi-region and advanced routing
+    regions: list[RegionConfig] = field(default_factory=list)
+    cost_optimization: CostOptimizationConfig = field(default_factory=CostOptimizationConfig)
+    ab_tests: dict[str, list[ABTestConfig]] = field(default_factory=dict)
