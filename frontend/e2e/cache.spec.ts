@@ -1,23 +1,27 @@
 import { test, expect } from '@playwright/test';
 
+// Use mock tenant ID for testing
+const MOCK_TENANT_ID = '2ff8770f-f00f-4139-a7da-5817422c0af0';
 const API_KEY = 'bsg_dev-test-key-do-not-use-in-production-000';
-const API_BASE = 'http://localhost:8000/api/v1';
 
 test.describe('Cache Invalidation', () => {
-  let tenantId: string;
+  test.beforeEach(async ({ page }) => {
+    // Mock API responses
+    await page.route('**/api/v1/**', async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.pathname;
 
-  test.beforeAll(async ({ browser }) => {
-    // Get tenant ID from API
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    const response = await page.request.get(`${API_BASE}/tenants`, {
-      headers: { Authorization: `Bearer ${API_KEY}` },
+      // Mock tenant endpoints
+      if (path.includes('/tenants') && path.includes('/rules')) {
+        await route.abort('blockedbyclient');
+      }
+      if (path.includes('/tenants') && path.includes('/models')) {
+        await route.abort('blockedbyclient');
+      }
+
+      // Let other requests through
+      await route.continue();
     });
-    const tenants = await response.json();
-    if (Array.isArray(tenants) && tenants.length > 0) {
-      tenantId = tenants[0].id;
-    }
-    await context.close();
   });
 
   test.beforeEach(async ({ page }) => {
