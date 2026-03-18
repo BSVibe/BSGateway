@@ -20,7 +20,6 @@ interface TestResult {
 
 export function RoutingTestPage() {
   const [models, setModels] = useState<any[]>([]);
-  const [rules, setRules] = useState<any[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [selectedModel, setSelectedModel] = useState('');
   const [messages, setMessages] = useState<TestMessage[]>([{ role: 'user', content: '' }]);
@@ -34,12 +33,11 @@ export function RoutingTestPage() {
 
   const loadModelsAndRules = async () => {
     try {
-      const [m, r] = await Promise.all([
+      const [m] = await Promise.all([
         tenantsApi.listModels(TENANT_ID),
         rulesApi.list(TENANT_ID),
       ]);
       setModels(m || []);
-      setRules(r || []);
       if (m && m.length > 0) {
         setSelectedModel(m[0].model_name);
       }
