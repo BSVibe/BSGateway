@@ -157,7 +157,7 @@ class TenantService:
                 "ENCRYPTION_KEY is required to store provider API keys"
             )
 
-        provider = data.provider or data.litellm_model.split("/")[0]
+        provider = data.litellm_model.split("/")[0] if "/" in data.litellm_model else "unknown"
 
         row = await self._repo.create_model(
             tenant_id=tenant_id,
@@ -199,12 +199,17 @@ class TenantService:
 
         existing_extra = _safe_json_loads(existing["extra_params"])
 
+        new_litellm_model = data.litellm_model or existing["litellm_model"]
+        new_provider = (
+            new_litellm_model.split("/")[0] if "/" in new_litellm_model else "unknown"
+        )
+
         row = await self._repo.update_model(
             model_id=model_id,
             tenant_id=tenant_id,
             model_name=data.model_name or existing["model_name"],
-            provider=data.provider or existing["provider"],
-            litellm_model=data.litellm_model or existing["litellm_model"],
+            provider=new_provider,
+            litellm_model=new_litellm_model,
             api_key_encrypted=encrypted_key,
             api_base=data.api_base if data.api_base is not None else existing["api_base"],
             extra_params=data.extra_params if data.extra_params is not None else existing_extra,

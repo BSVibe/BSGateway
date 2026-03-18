@@ -203,10 +203,11 @@ async def create_model(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     audit = get_audit_service(request)
+    provider = body.litellm_model.split("/")[0] if "/" in body.litellm_model else "unknown"
     await audit.record(
         tenant_id, _auth.key_hash or "superadmin",
         "model.created", "model", str(result.id),
-        {"model_name": body.model_name, "provider": body.provider},
+        {"model_name": body.model_name, "provider": provider},
     )
     return result
 

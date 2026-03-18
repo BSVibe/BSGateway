@@ -38,6 +38,8 @@ def app(mock_pool: AsyncMock):
     app.state.db_pool = mock_pool
     app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
     app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
+    app.state.jwt_secret = "test-jwt-secret"
+    app.state.redis = None
     return app
 
 
@@ -398,7 +400,6 @@ class TestModelEndpoints:
                 f"/api/v1/tenants/{tid}/models",
                 json={
                     "model_name": "my-gpt4",
-                    "provider": "openai",
                     "litellm_model": "openai/gpt-4o",
                     "api_key": "sk-test-key",
                 },
