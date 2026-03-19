@@ -1,90 +1,76 @@
 import { test, expect } from '@playwright/test';
-
-const API_KEY = 'bsg_dev-test-key-do-not-use-in-production-000';
+import { setupAuth, setupApiMocks } from './fixtures/mock-api';
 
 test.describe('Rules Management', () => {
   test.beforeEach(async ({ page }) => {
-    // Login before each test
-    await page.goto('/');
-    const input = page.locator('input[type="text"]');
-    await input.fill(API_KEY);
-    const button = page.locator('button[type="submit"]');
-    await button.click();
-    await page.waitForURL('/dashboard', { timeout: 5000 });
+    await setupAuth(page);
+    await setupApiMocks(page);
+    await page.goto('/dashboard/rules');
+    await expect(page.locator('h2')).toContainText('Routing Rules', { timeout: 5000 });
   });
 
-  test('should navigate to Rules page', async ({ page }) => {
-    await page.goto('/dashboard/rules');
-    await expect(page.locator('h2')).toContainText('Routing Rules');
+  test('displays existing rules sorted by priority', async ({ page }) => {
+    await expect(page.locator('text=High-priority rule')).toBeVisible();
+    await expect(page.locator('text=Default fallback')).toBeVisible();
+
+    // Priority badges - use exact text match to avoid P1 matching P100
+    await expect(page.getByText('P1', { exact: true })).toBeVisible();
+    await expect(page.getByText('P100', { exact: true })).toBeVisible();
   });
 
-  test('should open create rule form', async ({ page }) => {
-    await page.goto('/dashboard/rules');
+  test('shows default badge on default rules', async ({ page }) => {
+    // Use exact match to distinguish "default" badge from "Default fallback" name
+    await expect(page.getByText('default', { exact: true })).toBeVisible();
+  });
 
-    const newBtn = page.locator('button:has-text("New Rule")');
-    await newBtn.click();
+  test('shows condition count for rules with conditions', async ({ page }) => {
+    // Code only shows condition count when > 0
+    await expect(page.locator('text=1 condition(s)')).toBeVisible();
+  });
 
-    // Form should appear
+  test('shows target model for each rule', async ({ page }) => {
+    await expect(page.locator('text=Target:')).toHaveCount(2);
+    await expect(page.locator('span.font-mono:has-text("claude-sonnet")')).toBeVisible();
+    await expect(page.locator('span.font-mono:has-text("gpt-4o-mini")')).toBeVisible();
+  });
+
+  test('opens and closes create rule form', async ({ page }) => {
+    await expect(page.locator('label:has-text("Name")')).not.toBeVisible();
+
+    await page.click('button:has-text("New Rule")');
     await expect(page.locator('label:has-text("Name")')).toBeVisible();
     await expect(page.locator('label:has-text("Target Model")')).toBeVisible();
+    await expect(page.locator('label:has-text("Priority")')).toBeVisible();
+
+    await page.click('button:has-text("Cancel")');
+    await expect(page.locator('label:has-text("Name")')).not.toBeVisible();
   });
 
-  test('should create a new rule', async ({ page }) => {
-    await page.goto('/dashboard/rules');
+  test('creates a new rule', async ({ page }) => {
+    await page.click('button:has-text("New Rule")');
 
-    // Open form
-    const newBtn = page.locator('button:has-text("New Rule")');
-    await newBtn.click();
+    // Fill the form - use labels to find adjacent inputs
+    await page.locator('label:has-text("Name") + input').fill('Test Rule E2E');
+    await page.locator('input[type="number"]').fill('50');
+    await page.locator('label:has-text("Target Model") + input').fill('gpt-4o');
 
-    // Fill form
-    const nameInput = page.locator('input[placeholder=""]').first();
-    await nameInput.fill('Test Rule');
+    await page.click('button:has-text("Create Rule")');
 
-    const priorityInput = page.locator('input[type="number"]');
-    await priorityInput.fill('1');
-
-    // Target model input (second text input)
-    const inputs = page.locator('input:not([type="number"])');
-    const targetModelInput = await inputs.nth(1);
-    await targetModelInput.fill('gpt-4o');
-
-    // Submit
-    const createBtn = page.locator('button:has-text("Create Rule")');
-    await createBtn.click();
-
-    // Should see the rule in the list
-    await expect(page.locator('text=Test Rule')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Test Rule E2E')).toBeVisible({ timeout: 5000 });
   });
 
-  test('should delete a rule', async ({ page }) => {
-    await page.goto('/dashboard/rules');
+  test('deletes a rule with confirmation', async ({ page }) => {
+    // Use structural locator for robustness against onBlur
+    const firstRuleRow = page.locator('.divide-y > div').first();
+    const actionBtn = firstRuleRow.locator('button');
 
-    // Create a rule first
-    const newBtn = page.locator('button:has-text("New Rule")');
-    await newBtn.click();
+    // First click: shows "Confirm?"
+    await actionBtn.click();
+    await expect(actionBtn).toContainText('Confirm?');
 
-    const inputs = page.locator('input:not([type="number"])');
-    await inputs.nth(0).fill('Delete Me');
+    // Second click: confirms deletion
+    await actionBtn.click();
 
-    const priorityInput = page.locator('input[type="number"]');
-    await priorityInput.fill('99');
-
-    await inputs.nth(1).fill('gpt-4o');
-
-    const createBtn = page.locator('button:has-text("Create Rule")');
-    await createBtn.click();
-
-    await expect(page.locator('text=Delete Me')).toBeVisible({ timeout: 5000 });
-
-    // Delete the rule
-    const deleteBtn = page.locator('button:has-text("Delete"):near(:text("Delete Me"))');
-    await deleteBtn.click();
-
-    // Confirm deletion
-    const confirmBtn = page.locator('button:has-text("Confirm?")');
-    await confirmBtn.click();
-
-    // Rule should be gone
-    await expect(page.locator('text=Delete Me')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=High-priority rule')).not.toBeVisible({ timeout: 5000 });
   });
 });

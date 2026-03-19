@@ -1,106 +1,81 @@
 import { test, expect } from '@playwright/test';
-
-const API_KEY = 'bsg_dev-test-key-do-not-use-in-production-000';
+import { setupAuth, setupApiMocks } from './fixtures/mock-api';
 
 test.describe('Models Management', () => {
   test.beforeEach(async ({ page }) => {
-    // Login before each test
-    await page.goto('/');
-    const input = page.locator('input[type="text"]');
-    await input.fill(API_KEY);
-    const button = page.locator('button[type="submit"]');
-    await button.click();
-    await page.waitForURL('/dashboard', { timeout: 5000 });
+    await setupAuth(page);
+    await setupApiMocks(page);
+    await page.goto('/dashboard/models');
+    await expect(page.locator('h2')).toContainText('Models', { timeout: 5000 });
   });
 
-  test('should navigate to Models page', async ({ page }) => {
-    await page.goto('/dashboard/models');
-    await expect(page.locator('h2')).toContainText('Models');
+  test('displays existing models', async ({ page }) => {
+    // Use structural locator to distinguish model names from litellm names
+    await expect(page.locator('.font-medium:has-text("claude-sonnet")')).toBeVisible();
+    await expect(page.locator('.font-medium:has-text("gpt-4o")').first()).toBeVisible();
+    await expect(page.locator('.font-medium:has-text("gpt-4o-mini")')).toBeVisible();
   });
 
-  test('should open register model form', async ({ page }) => {
-    await page.goto('/dashboard/models');
+  test('shows provider badges', async ({ page }) => {
+    await expect(page.locator('.bg-blue-100:has-text("anthropic"), .bg-purple-100:has-text("anthropic"), span:has-text("anthropic")').first()).toBeVisible();
+    await expect(page.locator('span:has-text("openai")').first()).toBeVisible();
+  });
 
-    const registerBtn = page.locator('button:has-text("Register Model")');
-    await registerBtn.click();
+  test('shows inactive badge for disabled models', async ({ page }) => {
+    await expect(page.getByText('inactive', { exact: true })).toBeVisible();
+  });
 
-    // Form should appear
+  test('shows litellm model names', async ({ page }) => {
+    await expect(page.locator('text=anthropic/claude-sonnet-4-20250514')).toBeVisible();
+    await expect(page.locator('.font-mono:has-text("openai/gpt-4o")').first()).toBeVisible();
+  });
+
+  test('opens and closes register model form', async ({ page }) => {
+    await expect(page.locator('label:has-text("Alias")')).not.toBeVisible();
+
+    await page.click('button:has-text("Register Model")');
     await expect(page.locator('label:has-text("Alias")')).toBeVisible();
     await expect(page.locator('label:has-text("Model Name")')).toBeVisible();
+
+    await page.click('button:has-text("Cancel")');
+    await expect(page.locator('label:has-text("Alias")')).not.toBeVisible();
   });
 
-  test('should register a new model', async ({ page }) => {
-    await page.goto('/dashboard/models');
+  test('registers a new model', async ({ page }) => {
+    await page.click('button:has-text("Register Model")');
 
-    // Open form
-    const registerBtn = page.locator('button:has-text("Register Model")');
-    await registerBtn.click();
+    await page.fill('input[placeholder="gpt-4o"]', 'test-model-e2e');
+    await page.fill('input[placeholder="openai/gpt-4o"]', 'openai/gpt-4o-test');
 
-    // Fill form
-    const aliasInput = page.locator('input[placeholder="gpt-4o"]');
-    await aliasInput.fill('test-model');
+    await page.click('button:has-text("Register Model")');
 
-    // Model name input (with placeholder "openai/gpt-4o")
-    const modelNameInput = page.locator('input[placeholder="openai/gpt-4o"]');
-    await modelNameInput.fill('openai/gpt-4o-mini');
-
-    // Submit
-    const registerModelBtn = page.locator('button:has-text("Register Model")');
-    await registerModelBtn.click();
-
-    // Should see the model in the list
-    await expect(page.locator('text=test-model')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=openai')).toBeVisible();
+    await expect(page.locator('text=test-model-e2e')).toBeVisible({ timeout: 5000 });
   });
 
-  test('should show provider badge', async ({ page }) => {
-    await page.goto('/dashboard/models');
+  test('registers model with optional API base', async ({ page }) => {
+    await page.click('button:has-text("Register Model")');
 
-    // Open form
-    const registerBtn = page.locator('button:has-text("Register Model")');
-    await registerBtn.click();
+    await page.fill('input[placeholder="gpt-4o"]', 'ollama-model');
+    await page.fill('input[placeholder="openai/gpt-4o"]', 'ollama/llama3');
+    await page.fill('input[placeholder="http://localhost:11434"]', 'http://myserver:11434');
 
-    // Fill form
-    const aliasInput = page.locator('input[placeholder="gpt-4o"]');
-    await aliasInput.fill('anthropic-test');
-
-    const modelNameInput = page.locator('input[placeholder="openai/gpt-4o"]');
-    await modelNameInput.fill('anthropic/claude-3-sonnet');
-
-    const registerModelBtn = page.locator('button:has-text("Register Model")');
-    await registerModelBtn.click();
-
-    // Should show anthropic provider badge
-    await expect(page.locator('text=anthropic').first()).toBeVisible({ timeout: 5000 });
+    await page.click('button:has-text("Register Model")');
+    await expect(page.locator('text=ollama-model')).toBeVisible({ timeout: 5000 });
   });
 
-  test('should delete a model', async ({ page }) => {
-    await page.goto('/dashboard/models');
+  test('deletes a model with confirmation', async ({ page }) => {
+    // Use structural locator - first model row's button
+    const firstModelRow = page.locator('.divide-y > div').first();
+    const actionBtn = firstModelRow.locator('button');
 
-    // Create a model first
-    const registerBtn = page.locator('button:has-text("Register Model")');
-    await registerBtn.click();
+    // First click: Delete → Confirm?
+    await actionBtn.click();
+    await expect(actionBtn).toContainText('Confirm?');
 
-    const aliasInput = page.locator('input[placeholder="gpt-4o"]');
-    await aliasInput.fill('delete-me');
+    // Second click: confirm deletion
+    await actionBtn.click();
 
-    const modelNameInput = page.locator('input[placeholder="openai/gpt-4o"]');
-    await modelNameInput.fill('openai/gpt-4o-mini');
-
-    const registerModelBtn = page.locator('button:has-text("Register Model")');
-    await registerModelBtn.click();
-
-    await expect(page.locator('text=delete-me')).toBeVisible({ timeout: 5000 });
-
-    // Delete the model
-    const deleteBtn = page.locator('button:has-text("Delete"):near(:text("delete-me"))');
-    await deleteBtn.click();
-
-    // Confirm deletion
-    const confirmBtn = page.locator('button:has-text("Confirm?")');
-    await confirmBtn.click();
-
-    // Model should be gone
-    await expect(page.locator('text=delete-me')).not.toBeVisible({ timeout: 5000 });
+    // claude-sonnet should be gone
+    await expect(page.locator('.font-medium:has-text("claude-sonnet")')).not.toBeVisible({ timeout: 5000 });
   });
 });

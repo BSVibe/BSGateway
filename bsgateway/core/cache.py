@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, TypeVar
+from uuid import UUID
 
 import redis.asyncio as redis
 import structlog
@@ -13,6 +14,17 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 T = TypeVar("T")
+
+
+class _CacheEncoder(json.JSONEncoder):
+    """JSON encoder that handles UUID and datetime objects."""
+
+    def default(self, o: Any) -> Any:
+        if isinstance(o, UUID):
+            return str(o)
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
 
 
 class CacheManager:
@@ -40,7 +52,7 @@ class CacheManager:
     ) -> bool:
         """Set value in cache with optional TTL."""
         try:
-            serialized = json.dumps(value)
+            serialized = json.dumps(value, cls=_CacheEncoder)
             if ttl:
                 await self._redis.setex(key, ttl, serialized)
             else:

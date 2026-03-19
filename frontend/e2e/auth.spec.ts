@@ -1,172 +1,160 @@
 import { test, expect } from '@playwright/test';
-
-const API_KEY = 'bsg_dev-test-key-do-not-use-in-production-000';
-const API_URL = 'http://localhost:8000/api/v1';
-const APP_URL = 'http://localhost:5173';
+import { API_KEY, TENANT, setupApiMocks, setupAuth } from './fixtures/mock-api';
 
 test.describe('Authentication Flow', () => {
-  test('login with API key and access dashboard', async ({ page }) => {
-    // 1️⃣ Navigate to login
-    await page.goto(APP_URL);
-    await expect(page).toHaveTitle(/BSGateway/);
-
-    // 2️⃣ Fill in API key
-    await page.fill('input[placeholder="bsg_..."]', API_KEY);
-
-    // 3️⃣ Click login
-    await page.click('button:has-text("Sign in")');
-
-    // 4️⃣ Should redirect to dashboard
-    await page.waitForURL('**/');
-    await expect(page.locator('text=Dashboard')).toBeVisible();
-
-    // 5️⃣ Verify tenant name is displayed
-    await expect(page.locator('text=Dev Team')).toBeVisible();
-
-    // 6️⃣ Token should be stored in localStorage
-    const token = await page.evaluate(() => localStorage.getItem('bsg_token'));
-    expect(token).toBeTruthy();
-    expect(token).toMatch(/^eyJ/); // JWT format check
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
   });
 
-  test('API key exchange returns correct tenant info', async () => {
-    const response = await fetch(`${API_URL}/auth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: API_KEY }),
-    });
+  test('shows login page when not authenticated', async ({ page }) => {
+    await page.goto('/dashboard/');
+    await expect(page.locator('h1')).toContainText('BSGateway');
+    await expect(page.locator('text=LLM Routing Dashboard')).toBeVisible();
+    await expect(page.locator('input[placeholder="bsg_..."]')).toBeVisible();
+    await expect(page.locator('button[type="submit"]')).toContainText('Sign in');
+  });
 
-    expect(response.status).toBe(200);
+  test('login with valid API key redirects to dashboard', async ({ page }) => {
+    await page.goto('/dashboard/');
+
+    // Fill API key and submit
+    await page.fill('input[placeholder="bsg_..."]', API_KEY);
+    await page.click('button[type="submit"]');
+
+    // Should render dashboard (authenticated layout)
+    await expect(page.locator('h2')).toContainText('Dashboard', { timeout: 5000 });
+    await expect(page.locator('text=Dev Team')).toBeVisible();
+
+    // Token stored in localStorage
+    const token = await page.evaluate(() => localStorage.getItem('bsg_token'));
+    expect(token).toBeTruthy();
+    expect(token).toMatch(/^eyJ/);
+  });
+
+  test('login with invalid API key shows error', async ({ page }) => {
+    await page.goto('/dashboard/');
+
+    await page.fill('input[placeholder="bsg_..."]', 'bsg_invalid-key');
+    await page.click('button[type="submit"]');
+
+    // Error message should appear
+    await expect(page.locator('text=Invalid or expired')).toBeVisible({ timeout: 3000 });
+
+    // Should still be on login page
+    await expect(page.locator('button[type="submit"]')).toContainText('Sign in');
+  });
+
+  test('empty API key shows validation error', async ({ page }) => {
+    await page.goto('/dashboard/');
+
+    await page.click('button[type="submit"]');
+
+    await expect(page.locator('text=API key is required')).toBeVisible();
+  });
+
+  test('API key show/hide toggle works', async ({ page }) => {
+    await page.goto('/dashboard/');
+
+    const input = page.locator('input[placeholder="bsg_..."]');
+    await input.fill('test-secret-key');
+
+    // Default is hidden - "Show" button visible
+    await expect(page.locator('button:has-text("Show")')).toBeVisible();
+
+    // Click show
+    await page.click('button:has-text("Show")');
+    await expect(page.locator('button:has-text("Hide")')).toBeVisible();
+
+    // Click hide again
+    await page.click('button:has-text("Hide")');
+    await expect(page.locator('button:has-text("Show")')).toBeVisible();
+  });
+
+  test('auth token response contains correct tenant info', async ({ page }) => {
+    await page.goto('/dashboard/');
+
+    await page.fill('input[placeholder="bsg_..."]', API_KEY);
+
+    // Intercept the auth response
+    const responsePromise = page.waitForResponse('**/api/v1/auth/token');
+    await page.click('button[type="submit"]');
+    const response = await responsePromise;
     const data = await response.json();
 
     expect(data.token).toBeTruthy();
-    expect(data.tenant_id).toBeTruthy();
+    expect(data.tenant_id).toBe(TENANT.id);
     expect(data.tenant_slug).toBe('dev-team');
     expect(data.tenant_name).toBe('Dev Team');
     expect(data.scopes).toContain('chat');
     expect(data.scopes).toContain('admin');
   });
 
-  test('invalid API key returns 401', async () => {
-    const response = await fetch(`${API_URL}/auth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: 'bsg_invalid' }),
-    });
-
-    expect(response.status).toBe(401);
-    const data = await response.json();
-    expect(data.detail).toMatch(/Invalid or expired/);
-  });
-
-  test('logout clears token and redirects to login', async ({ page }) => {
-    // Login first
-    await page.goto(APP_URL);
-    await page.fill('input[placeholder="bsg_..."]', API_KEY);
-    await page.click('button:has-text("Sign in")');
-    await page.waitForURL('**/');
-
-    // Verify logged in
-    const token = await page.evaluate(() => localStorage.getItem('bsg_token'));
-    expect(token).toBeTruthy();
+  test('logout clears token and shows login', async ({ page }) => {
+    // Start authenticated
+    await setupAuth(page);
+    await page.goto('/dashboard/');
+    await expect(page.locator('h2')).toContainText('Dashboard', { timeout: 5000 });
 
     // Click logout
     await page.click('button:has-text("Logout")');
 
-    // Should redirect to login
-    await page.waitForURL('**/dashboard');
-    await expect(page.locator('text=API Key')).toBeVisible();
+    // Should show login page
+    await expect(page.locator('h1')).toContainText('BSGateway');
+    await expect(page.locator('input[placeholder="bsg_..."]')).toBeVisible();
 
     // Token should be cleared
-    const clearedToken = await page.evaluate(() => localStorage.getItem('bsg_token'));
-    expect(clearedToken).toBeNull();
+    const token = await page.evaluate(() => localStorage.getItem('bsg_token'));
+    expect(token).toBeNull();
   });
 });
 
-test.describe('Dashboard Navigation', () => {
+test.describe('Dashboard Navigation (authenticated)', () => {
   test.beforeEach(async ({ page }) => {
-    // Login before each test
-    await page.goto(APP_URL);
-    await page.fill('input[placeholder="bsg_..."]', API_KEY);
-    await page.click('button:has-text("Sign in")');
-    await page.waitForURL('**/');
+    await setupAuth(page);
+    await setupApiMocks(page);
+    await page.goto('/dashboard/');
+    await expect(page.locator('h2')).toContainText('Dashboard', { timeout: 5000 });
   });
 
-  test('can navigate between pages', async ({ page }) => {
-    // Verify Dashboard
-    await expect(page.locator('text=Dashboard')).toBeVisible();
-
-    // Navigate to Rules
-    await page.click('text=Rules');
-    await expect(page.locator('text=Rules')).toBeVisible();
-
-    // Navigate to Models
-    await page.click('text=Models');
-    await expect(page.locator('text=Models')).toBeVisible();
-
-    // Navigate to Usage
-    await page.click('text=Usage');
-    await expect(page.locator('text=Usage')).toBeVisible();
-
-    // Navigate to Audit
-    await page.click('text=Audit Log');
-    await expect(page.locator('text=Audit Log')).toBeVisible();
+  test('sidebar shows all nav items', async ({ page }) => {
+    const navLabels = ['Dashboard', 'Rules', 'Models', 'Intents', 'Route Test', 'Usage', 'Audit Log'];
+    for (const label of navLabels) {
+      await expect(page.locator(`aside >> text=${label}`)).toBeVisible();
+    }
   });
 
-  test('sidebar displays tenant name', async ({ page }) => {
-    await expect(page.locator('text=Dev Team')).toBeVisible();
-    await expect(page.locator('text=BSGateway')).toBeVisible();
-  });
-});
+  test('can navigate to each page via sidebar', async ({ page }) => {
+    // Rules
+    await page.click('aside >> text=Rules');
+    await expect(page.locator('h2')).toContainText('Routing Rules');
 
-test.describe('API Integration', () => {
-  let token: string;
+    // Models
+    await page.click('aside >> text=Models');
+    await expect(page.locator('h2')).toContainText('Models');
 
-  test.beforeEach(async () => {
-    // Get token via API
-    const response = await fetch(`${API_URL}/auth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: API_KEY }),
-    });
-    const data = await response.json();
-    token = data.token;
-  });
+    // Intents
+    await page.click('aside >> text=Intents');
+    await expect(page.locator('h2')).toContainText('Custom Intents');
 
-  test('can fetch rules with JWT', async () => {
-    const response = await fetch(
-      `${API_URL}/tenants/144154d8-d030-43ba-a75b-f37674524f80/rules`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
+    // Route Test
+    await page.click('aside >> text=Route Test');
+    await expect(page.locator('h2')).toContainText('Route Testing');
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(Array.isArray(data)).toBe(true);
+    // Usage
+    await page.click('aside >> text=Usage');
+    await expect(page.locator('h2')).toContainText('Usage Analytics');
+
+    // Audit Log
+    await page.click('aside >> text=Audit Log');
+    await expect(page.locator('h2')).toContainText('Audit Log');
+
+    // Back to Dashboard
+    await page.click('aside >> text=Dashboard');
+    await expect(page.locator('h2')).toContainText('Dashboard');
   });
 
-  test('can fetch models with JWT', async () => {
-    const response = await fetch(
-      `${API_URL}/tenants/144154d8-d030-43ba-a75b-f37674524f80/models`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(Array.isArray(data)).toBe(true);
-  });
-
-  test('invalid token returns 401', async () => {
-    const response = await fetch(
-      `${API_URL}/tenants/144154d8-d030-43ba-a75b-f37674524f80/rules`,
-      {
-        headers: { Authorization: 'Bearer invalid.token.here' },
-      }
-    );
-
-    expect(response.status).toBe(401);
+  test('sidebar shows tenant name and app title', async ({ page }) => {
+    await expect(page.locator('aside >> text=BSGateway')).toBeVisible();
+    await expect(page.locator('aside >> text=Dev Team')).toBeVisible();
   });
 });

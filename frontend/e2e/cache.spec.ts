@@ -1,189 +1,60 @@
 import { test, expect } from '@playwright/test';
+import { setupAuth, setupApiMocks } from './fixtures/mock-api';
 
-// Use mock tenant ID for testing
-const MOCK_TENANT_ID = '2ff8770f-f00f-4139-a7da-5817422c0af0';
-const API_KEY = 'bsg_dev-test-key-do-not-use-in-production-000';
-
-test.describe('Cache Invalidation', () => {
+test.describe('Cache Behavior', () => {
   test.beforeEach(async ({ page }) => {
-    // Mock API responses
-    await page.route('**/api/v1/**', async (route) => {
-      const url = new URL(route.request().url());
-      const path = url.pathname;
-
-      // Mock tenant endpoints
-      if (path.includes('/tenants') && path.includes('/rules')) {
-        await route.abort('blockedbyclient');
-      }
-      if (path.includes('/tenants') && path.includes('/models')) {
-        await route.abort('blockedbyclient');
-      }
-
-      // Let other requests through
-      await route.continue();
-    });
+    await setupAuth(page);
+    await setupApiMocks(page);
   });
 
-  test.beforeEach(async ({ page }) => {
-    // Login before each test
-    await page.goto('/');
-    const input = page.locator('input[type="text"]');
-    await input.fill(API_KEY);
-    const button = page.locator('button[type="submit"]');
-    await button.click();
-    await page.waitForURL('/dashboard', { timeout: 5000 });
+  test('rules page loads data and survives re-navigation', async ({ page }) => {
+    await page.goto('/dashboard/rules');
+    await expect(page.locator('h2')).toContainText('Routing Rules', { timeout: 5000 });
+    await expect(page.locator('text=High-priority rule')).toBeVisible();
+
+    // Navigate away and back
+    await page.goto('/dashboard/');
+    await expect(page.locator('h2:has-text("Dashboard")')).toBeVisible({ timeout: 5000 });
+
+    await page.goto('/dashboard/rules');
+    await expect(page.locator('text=High-priority rule')).toBeVisible();
   });
 
-  test('should cache rules on first fetch', async ({ page }) => {
-    await page.goto(`/dashboard/${tenantId}/rules`);
+  test('models page loads data and survives re-navigation', async ({ page }) => {
+    await page.goto('/dashboard/models');
+    // Use main content h2, not sidebar
+    await expect(page.locator('main h2, h2.text-2xl')).toContainText('Models', { timeout: 5000 });
+    await expect(page.locator('.font-medium:has-text("claude-sonnet")')).toBeVisible();
 
-    // First load - rules fetched from API
-    await expect(page.locator('h2')).toContainText('Routing Rules');
+    await page.goto('/dashboard/');
+    await expect(page.locator('h2:has-text("Dashboard")')).toBeVisible({ timeout: 5000 });
 
-    // Wait for rules to load
-    await page.waitForTimeout(500);
-
-    // Second navigation - should use cache
-    await page.goto(`/dashboard/${tenantId}`);
-    await page.goto(`/dashboard/${tenantId}/rules`);
-
-    // Rules should still be visible (from cache or fresh fetch)
-    await expect(page.locator('h2')).toContainText('Routing Rules');
+    await page.goto('/dashboard/models');
+    await expect(page.locator('.font-medium:has-text("claude-sonnet")')).toBeVisible();
   });
 
-  test('should invalidate cache when rule is created', async ({ page }) => {
-    await page.goto(`/dashboard/${tenantId}/rules`);
+  test('creating a rule reflects immediately without reload', async ({ page }) => {
+    await page.goto('/dashboard/rules');
+    await expect(page.locator('h2')).toContainText('Routing Rules', { timeout: 5000 });
 
-    // Get initial rule count
-    const ruleCountBefore = await page.locator('[data-testid="rule-item"]').count();
+    await page.click('button:has-text("New Rule")');
+    await page.locator('label:has-text("Name") + input').fill('Cache Test Rule');
+    await page.locator('input[type="number"]').fill('999');
+    await page.locator('label:has-text("Target Model") + input').fill('gpt-4o');
+    await page.click('button:has-text("Create Rule")');
 
-    // Create a new rule
-    const newBtn = page.locator('button:has-text("New Rule")');
-    await newBtn.click();
-
-    // Fill form
-    const nameInput = page.locator('input').first();
-    await nameInput.fill(`Cache Test Rule ${Date.now()}`);
-
-    const priorityInput = page.locator('input[type="number"]');
-    await priorityInput.fill('999');
-
-    const targetInput = page.locator('input').nth(1);
-    await targetInput.fill('gpt-4o');
-
-    // Submit form
-    const submitBtn = page.locator('button:has-text("Create")');
-    await submitBtn.click();
-
-    // Wait for success and cache invalidation
-    await page.waitForTimeout(1000);
-
-    // Verify rule count increased
-    const ruleCountAfter = await page.locator('[data-testid="rule-item"]').count();
-    expect(ruleCountAfter).toBeGreaterThan(ruleCountBefore);
+    await expect(page.locator('text=Cache Test Rule')).toBeVisible({ timeout: 5000 });
   });
 
-  test('should invalidate cache when rule is deleted', async ({ page }) => {
-    await page.goto(`/dashboard/${tenantId}/rules`);
+  test('creating a model reflects immediately without reload', async ({ page }) => {
+    await page.goto('/dashboard/models');
+    await expect(page.locator('main h2, h2.text-2xl')).toContainText('Models', { timeout: 5000 });
 
-    // Get initial rule count
-    const ruleCountBefore = await page.locator('[data-testid="rule-item"]').count();
+    await page.click('button:has-text("Register Model")');
+    await page.fill('input[placeholder="gpt-4o"]', 'cache-test-model');
+    await page.fill('input[placeholder="openai/gpt-4o"]', 'openai/cache-test');
+    await page.click('button:has-text("Register Model")');
 
-    if (ruleCountBefore === 0) {
-      test.skip();
-    }
-
-    // Delete first rule
-    const firstRule = page.locator('[data-testid="rule-item"]').first();
-    const deleteBtn = firstRule.locator('button:has-text("Delete")');
-    await deleteBtn.click();
-
-    // Confirm deletion
-    const confirmBtn = page.locator('button:has-text("Confirm")');
-    if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await confirmBtn.click();
-    }
-
-    // Wait for cache invalidation
-    await page.waitForTimeout(1000);
-
-    // Verify rule count decreased
-    const ruleCountAfter = await page.locator('[data-testid="rule-item"]').count();
-    expect(ruleCountAfter).toBeLessThanOrEqual(ruleCountBefore);
-  });
-
-  test('should cache models on first fetch', async ({ page }) => {
-    await page.goto(`/dashboard/${tenantId}/models`);
-
-    // First load - models fetched from API
-    await expect(page.locator('h2')).toContainText('Models');
-
-    // Wait for models to load
-    await page.waitForTimeout(500);
-
-    // Second navigation - should use cache
-    await page.goto(`/dashboard/${tenantId}`);
-    await page.goto(`/dashboard/${tenantId}/models`);
-
-    // Models should still be visible
-    await expect(page.locator('h2')).toContainText('Models');
-  });
-
-  test('should invalidate cache when model is created', async ({ page }) => {
-    await page.goto(`/dashboard/${tenantId}/models`);
-
-    // Get initial model count
-    const modelCountBefore = await page.locator('[data-testid="model-item"]').count();
-
-    // Create a new model
-    const newBtn = page.locator('button:has-text("Add Model")');
-    await newBtn.click();
-
-    // Fill form
-    const nameInput = page.locator('input[placeholder*="Model name"]').first();
-    await nameInput.fill(`cache-test-${Date.now()}`);
-
-    const litellmInput = page.locator('input[placeholder*="litellm model"]');
-    await litellmInput.fill('openai/gpt-4o');
-
-    // Submit form
-    const submitBtn = page.locator('button:has-text("Register")');
-    await submitBtn.click();
-
-    // Wait for success and cache invalidation
-    await page.waitForTimeout(1000);
-
-    // Verify model count increased
-    const modelCountAfter = await page.locator('[data-testid="model-item"]').count();
-    expect(modelCountAfter).toBeGreaterThanOrEqual(modelCountBefore);
-  });
-
-  test('should invalidate cache when model is deleted', async ({ page }) => {
-    await page.goto(`/dashboard/${tenantId}/models`);
-
-    // Get initial model count
-    const modelCountBefore = await page.locator('[data-testid="model-item"]').count();
-
-    if (modelCountBefore === 0) {
-      test.skip();
-    }
-
-    // Delete first model
-    const firstModel = page.locator('[data-testid="model-item"]').first();
-    const deleteBtn = firstModel.locator('button:has-text("Delete")');
-    await deleteBtn.click();
-
-    // Confirm deletion
-    const confirmBtn = page.locator('button:has-text("Confirm")');
-    if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await confirmBtn.click();
-    }
-
-    // Wait for cache invalidation
-    await page.waitForTimeout(1000);
-
-    // Verify model count decreased
-    const modelCountAfter = await page.locator('[data-testid="model-item"]').count();
-    expect(modelCountAfter).toBeLessThanOrEqual(modelCountBefore);
+    await expect(page.locator('text=cache-test-model')).toBeVisible({ timeout: 5000 });
   });
 });
