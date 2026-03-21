@@ -128,8 +128,10 @@ class TestLifespan:
 
             # Each repo class returns a mock with async init_schema
             repo_classes = [
-                mock_tenant_repo_cls, mock_rules_repo_cls,
-                mock_feedback_repo_cls, mock_audit_repo_cls,
+                mock_tenant_repo_cls,
+                mock_rules_repo_cls,
+                mock_feedback_repo_cls,
+                mock_audit_repo_cls,
             ]
             for cls in repo_classes:
                 cls.return_value.init_schema = AsyncMock()
@@ -167,8 +169,10 @@ class TestLifespan:
             mock_settings.seed_dev_data = False
 
             repo_classes = [
-                mock_tenant_repo_cls, mock_rules_repo_cls,
-                mock_feedback_repo_cls, mock_audit_repo_cls,
+                mock_tenant_repo_cls,
+                mock_rules_repo_cls,
+                mock_feedback_repo_cls,
+                mock_audit_repo_cls,
             ]
             for cls in repo_classes:
                 cls.return_value.init_schema = AsyncMock()

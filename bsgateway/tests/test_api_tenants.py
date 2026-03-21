@@ -372,7 +372,6 @@ class TestCrossTenantAccess:
             assert resp.status_code == 403
             assert "Admin scope required" in resp.json()["detail"]
 
-
     def test_tenant_can_read_own_data(self, client: TestClient):
         """A tenant with non-admin scopes can GET its own tenant record."""
         tid = uuid4()

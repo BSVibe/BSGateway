@@ -52,13 +52,9 @@ class Settings(BaseSettings):
         try:
             key = bytes.fromhex(self.encryption_key)
         except ValueError as e:
-            raise ValueError(
-                "ENCRYPTION_KEY must be a valid 64-character hex string"
-            ) from e
+            raise ValueError("ENCRYPTION_KEY must be a valid 64-character hex string") from e
         if len(key) != 32:
-            raise ValueError(
-                "ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)"
-            )
+            raise ValueError("ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)")
         return key
 
 

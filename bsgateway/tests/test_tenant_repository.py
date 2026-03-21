@@ -311,9 +311,7 @@ class TestModelCaching:
         await repo_cached.delete_model(uuid4(), tid)
         mock_cache.delete.assert_awaited_once()
 
-    async def test_no_cache_always_hits_db(
-        self, repo: TenantRepository, mock_conn: AsyncMock
-    ):
+    async def test_no_cache_always_hits_db(self, repo: TenantRepository, mock_conn: AsyncMock):
         mock_conn.fetch.return_value = []
         await repo.list_models(uuid4())
         mock_conn.fetch.assert_awaited_once()

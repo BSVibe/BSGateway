@@ -41,7 +41,7 @@ class TestParseJsonbValue:
         assert parse_jsonb_value({"a": 1}) == {"a": 1}
 
     def test_parse_jsonb_value_list(self):
-        result = parse_jsonb_value('[1, 2, 3]')
+        result = parse_jsonb_value("[1, 2, 3]")
         assert result == [1, 2, 3]
 
     def test_parse_jsonb_value_none(self):

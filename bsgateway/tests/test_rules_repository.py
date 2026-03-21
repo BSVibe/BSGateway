@@ -17,6 +17,7 @@ from bsgateway.rules.repository import RulesRepository
 # Helpers — reliable async-context-manager mocks for asyncpg pool/transaction
 # ---------------------------------------------------------------------------
 
+
 class _MockAcquire:
     """Mock for asyncpg pool.acquire() that supports ``async with``."""
 
@@ -43,6 +44,7 @@ class _MockTx:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_conn() -> AsyncMock:
@@ -92,6 +94,7 @@ def cached_repo(mock_pool: MagicMock, mock_cache: AsyncMock) -> RulesRepository:
 # ---------------------------------------------------------------------------
 # TestRulesCRUD
 # ---------------------------------------------------------------------------
+
 
 class TestRulesCRUD:
     """Tests for rule create / get / list / update / delete."""
@@ -223,6 +226,7 @@ class TestRulesCRUD:
 # TestConditionsCRUD
 # ---------------------------------------------------------------------------
 
+
 class TestConditionsCRUD:
     """Tests for condition create / list / replace / list_for_tenant."""
 
@@ -296,8 +300,11 @@ class TestConditionsCRUD:
         new_conditions = [
             {"condition_type": "header", "field": "x-a", "value": "1"},
             {
-                "condition_type": "header", "field": "x-b",
-                "value": "2", "operator": "neq", "negate": True,
+                "condition_type": "header",
+                "field": "x-b",
+                "value": "2",
+                "operator": "neq",
+                "negate": True,
             },
         ]
         mock_conn.fetchrow.return_value = {"id": uuid4()}
@@ -323,9 +330,12 @@ class TestConditionsCRUD:
         """Conditions without operator/negate should use defaults."""
         mock_conn.fetchrow.return_value = {"id": uuid4()}
 
-        await repo.replace_conditions(uuid4(), [
-            {"condition_type": "header", "field": "x-a", "value": "v"},
-        ])
+        await repo.replace_conditions(
+            uuid4(),
+            [
+                {"condition_type": "header", "field": "x-a", "value": "v"},
+            ],
+        )
 
         call_args = mock_conn.fetchrow.call_args[0]
         # arg order: sql, rule_id, condition_type, operator, field, value, negate
@@ -345,6 +355,7 @@ class TestConditionsCRUD:
 # ---------------------------------------------------------------------------
 # TestIntentsCRUD
 # ---------------------------------------------------------------------------
+
 
 class TestIntentsCRUD:
     """Tests for intent create / get / list / update / delete."""
@@ -368,8 +379,8 @@ class TestIntentsCRUD:
 
         args = mock_conn.fetchrow.call_args[0]
         # positional: sql, tenant_id, name, description, threshold
-        assert args[3] == ""       # description default
-        assert args[4] == 0.7      # threshold default
+        assert args[3] == ""  # description default
+        assert args[4] == 0.7  # threshold default
 
     @pytest.mark.asyncio
     async def test_get_intent(self, repo, mock_conn):
@@ -431,6 +442,7 @@ class TestIntentsCRUD:
 # ---------------------------------------------------------------------------
 # TestIntentExamples
 # ---------------------------------------------------------------------------
+
 
 class TestIntentExamples:
     """Tests for intent example add / list / delete / list_for_tenant."""
@@ -498,6 +510,7 @@ class TestIntentExamples:
 # TestCacheInvalidation
 # ---------------------------------------------------------------------------
 
+
 class TestCacheInvalidation:
     """Tests for cache hit, miss, and invalidation on mutations."""
 
@@ -515,9 +528,7 @@ class TestCacheInvalidation:
         mock_cache.get.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_list_rules_cache_miss_populates_cache(
-        self, cached_repo, mock_cache, mock_conn
-    ):
+    async def test_list_rules_cache_miss_populates_cache(self, cached_repo, mock_cache, mock_conn):
         tenant_id = uuid4()
         mock_cache.get.return_value = None
         db_rows = [MagicMock(), MagicMock()]
@@ -552,54 +563,38 @@ class TestCacheInvalidation:
         mock_cache.set.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_create_rule_invalidates_cache(
-        self, cached_repo, mock_cache, mock_conn
-    ):
+    async def test_create_rule_invalidates_cache(self, cached_repo, mock_cache, mock_conn):
         tenant_id = uuid4()
         mock_conn.fetchrow.return_value = {"id": uuid4()}
 
         await cached_repo.create_rule(tenant_id, "r", 1, "gpt-4o")
 
-        mock_cache.delete.assert_awaited_once_with(
-            cache_key_rules(str(tenant_id))
-        )
+        mock_cache.delete.assert_awaited_once_with(cache_key_rules(str(tenant_id)))
 
     @pytest.mark.asyncio
-    async def test_update_rule_invalidates_cache(
-        self, cached_repo, mock_cache, mock_conn
-    ):
+    async def test_update_rule_invalidates_cache(self, cached_repo, mock_cache, mock_conn):
         tenant_id = uuid4()
         mock_conn.fetchrow.return_value = {"id": uuid4()}
 
         await cached_repo.update_rule(uuid4(), tenant_id, "u", 1, False, "gpt-4o")
 
-        mock_cache.delete.assert_awaited_once_with(
-            cache_key_rules(str(tenant_id))
-        )
+        mock_cache.delete.assert_awaited_once_with(cache_key_rules(str(tenant_id)))
 
     @pytest.mark.asyncio
-    async def test_delete_rule_invalidates_cache(
-        self, cached_repo, mock_cache, mock_conn
-    ):
+    async def test_delete_rule_invalidates_cache(self, cached_repo, mock_cache, mock_conn):
         tenant_id = uuid4()
 
         await cached_repo.delete_rule(uuid4(), tenant_id)
 
-        mock_cache.delete.assert_awaited_once_with(
-            cache_key_rules(str(tenant_id))
-        )
+        mock_cache.delete.assert_awaited_once_with(cache_key_rules(str(tenant_id)))
 
     @pytest.mark.asyncio
-    async def test_reorder_rules_invalidates_cache(
-        self, cached_repo, mock_cache, mock_conn
-    ):
+    async def test_reorder_rules_invalidates_cache(self, cached_repo, mock_cache, mock_conn):
         tenant_id = uuid4()
 
         await cached_repo.reorder_rules(tenant_id, {uuid4(): 1})
 
-        mock_cache.delete.assert_awaited_once_with(
-            cache_key_rules(str(tenant_id))
-        )
+        mock_cache.delete.assert_awaited_once_with(cache_key_rules(str(tenant_id)))
 
     @pytest.mark.asyncio
     async def test_no_cache_no_invalidation(self, repo, mock_conn):
@@ -628,14 +623,13 @@ class TestCacheInvalidation:
 # TestInitSchema
 # ---------------------------------------------------------------------------
 
+
 class TestInitSchema:
     """Tests for init_schema method."""
 
     @pytest.mark.asyncio
     async def test_init_schema_executes_statements(self, repo, mock_conn):
-        repo._sql.schema.return_value = (
-            "CREATE TABLE a (id int);\nCREATE TABLE b (id int)"
-        )
+        repo._sql.schema.return_value = "CREATE TABLE a (id int);\nCREATE TABLE b (id int)"
 
         await repo.init_schema()
 
