@@ -65,7 +65,7 @@ async def get_auth_context(request: Request) -> AuthContext:
                 key_hash="",
             )
         except Exception:
-            pass  # Not a valid JWT — fall through to API key auth
+            logger.debug("jwt_decode_failed", exc_info=True)
 
     # Check superadmin key (compare hashes, never plaintext)
     superadmin_hash = getattr(request.app.state, "superadmin_key_hash", "")

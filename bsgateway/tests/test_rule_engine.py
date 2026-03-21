@@ -557,3 +557,301 @@ class TestRuleEngine:
         # First trace entry should show code-rule didn't match
         assert result.trace[0]["rule"] == "code-rule"
         assert result.trace[0]["matched"] is False
+
+
+# ---------------------------------------------------------------------------
+# Batch evaluation
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateBatch:
+    """Tests for RuleEngine.evaluate_batch and related helpers."""
+
+    def _make_tenant_config(self, rules: list[RoutingRule]) -> TenantConfig:
+        return TenantConfig(
+            tenant_id="test-tenant",
+            slug="test",
+            models={
+                "gpt4": TenantModel(
+                    model_name="gpt4",
+                    provider="openai",
+                    litellm_model="openai/gpt-4o",
+                )
+            },
+            rules=rules,
+            settings={},
+        )
+
+    async def test_batch_no_rules_returns_all_none(self):
+        from bsgateway.rules.engine import RuleEngine
+
+        config = self._make_tenant_config([])
+        engine = RuleEngine()
+        requests = [
+            {"messages": [{"role": "user", "content": "hi"}], "model": "auto"},
+            {"messages": [{"role": "user", "content": "hello"}], "model": "auto"},
+        ]
+        results = await engine.evaluate_batch(requests, config)
+        assert results == [None, None]
+
+    async def test_batch_evaluates_multiple_requests(self):
+        from bsgateway.rules.engine import RuleEngine
+
+        rules = [
+            RoutingRule(
+                id="r1",
+                tenant_id="t",
+                name="long-text",
+                priority=1,
+                is_active=True,
+                is_default=False,
+                target_model="premium",
+                conditions=[
+                    RuleCondition(
+                        condition_type="token_count",
+                        field="estimated_tokens",
+                        operator="gt",
+                        value=500,
+                    )
+                ],
+            ),
+            RoutingRule(
+                id="r-default",
+                tenant_id="t",
+                name="default",
+                priority=99,
+                is_active=True,
+                is_default=True,
+                target_model="economy",
+                conditions=[],
+            ),
+        ]
+        config = self._make_tenant_config(rules)
+        engine = RuleEngine()
+
+        requests = [
+            {"messages": [{"role": "user", "content": "x " * 1000}], "model": "auto"},
+            {"messages": [{"role": "user", "content": "short"}], "model": "auto"},
+        ]
+        results = await engine.evaluate_batch(requests, config)
+        assert len(results) == 2
+        assert results[0] is not None
+        assert results[0].target_model == "premium"
+        assert results[1] is not None
+        assert results[1].target_model == "economy"
+
+    async def test_batch_with_intent_classifier(self):
+        from unittest.mock import AsyncMock
+
+        from bsgateway.rules.engine import RuleEngine
+
+        classifier = AsyncMock()
+        classifier.classify = AsyncMock(return_value="code_generation")
+
+        rules = [
+            RoutingRule(
+                id="r1",
+                tenant_id="t",
+                name="code-intent",
+                priority=1,
+                is_active=True,
+                is_default=False,
+                target_model="premium",
+                conditions=[
+                    RuleCondition(
+                        condition_type="intent",
+                        field="classified_intent",
+                        operator="eq",
+                        value="code_generation",
+                    )
+                ],
+            ),
+        ]
+        config = self._make_tenant_config(rules)
+        engine = RuleEngine()
+
+        requests = [
+            {"messages": [{"role": "user", "content": "write code"}], "model": "auto"},
+        ]
+        results = await engine.evaluate_batch(requests, config, classifier)
+        assert results[0] is not None
+        assert results[0].target_model == "premium"
+        classifier.classify.assert_awaited()
+
+    async def test_batch_deduplicates_intent_classification(self):
+        from unittest.mock import AsyncMock
+
+        from bsgateway.rules.engine import RuleEngine
+
+        classifier = AsyncMock()
+        classifier.classify = AsyncMock(return_value="translation")
+
+        rules = [
+            RoutingRule(
+                id="r1",
+                tenant_id="t",
+                name="translate",
+                priority=1,
+                is_active=True,
+                is_default=False,
+                target_model="premium",
+                conditions=[
+                    RuleCondition(
+                        condition_type="intent",
+                        field="classified_intent",
+                        operator="eq",
+                        value="translation",
+                    )
+                ],
+            ),
+        ]
+        config = self._make_tenant_config(rules)
+        engine = RuleEngine()
+
+        # Same text in both requests — classifier should only be called once
+        same_text = "translate this to Korean"
+        requests = [
+            {"messages": [{"role": "user", "content": same_text}], "model": "auto"},
+            {"messages": [{"role": "user", "content": same_text}], "model": "auto"},
+        ]
+        results = await engine.evaluate_batch(requests, config, classifier)
+        assert len(results) == 2
+        # Both results should match via the intent
+        assert results[0] is not None
+        assert results[0].target_model == "premium"
+        assert results[1] is not None
+        assert results[1].target_model == "premium"
+
+
+class TestNeedsIntent:
+    """Tests for RuleEngine._needs_intent static method."""
+
+    def test_true_when_intent_condition_present(self):
+        from bsgateway.rules.engine import RuleEngine
+
+        rules = [
+            RoutingRule(
+                id="r1",
+                tenant_id="t",
+                name="intent-rule",
+                priority=1,
+                is_active=True,
+                is_default=False,
+                target_model="m",
+                conditions=[
+                    RuleCondition(
+                        condition_type="intent",
+                        field="classified_intent",
+                        operator="eq",
+                        value="code",
+                    )
+                ],
+            ),
+        ]
+        assert RuleEngine._needs_intent(rules) is True
+
+    def test_false_when_no_intent_conditions(self):
+        from bsgateway.rules.engine import RuleEngine
+
+        rules = [
+            RoutingRule(
+                id="r1",
+                tenant_id="t",
+                name="token-rule",
+                priority=1,
+                is_active=True,
+                is_default=False,
+                target_model="m",
+                conditions=[
+                    RuleCondition(
+                        condition_type="token_count",
+                        field="estimated_tokens",
+                        operator="gt",
+                        value=100,
+                    )
+                ],
+            ),
+        ]
+        assert RuleEngine._needs_intent(rules) is False
+
+    def test_skips_inactive_rules(self):
+        from bsgateway.rules.engine import RuleEngine
+
+        rules = [
+            RoutingRule(
+                id="r1",
+                tenant_id="t",
+                name="inactive-intent",
+                priority=1,
+                is_active=False,
+                is_default=False,
+                target_model="m",
+                conditions=[
+                    RuleCondition(
+                        condition_type="intent",
+                        field="classified_intent",
+                        operator="eq",
+                        value="code",
+                    )
+                ],
+            ),
+        ]
+        assert RuleEngine._needs_intent(rules) is False
+
+
+class TestEvaluateSingle:
+    """Tests for RuleEngine._evaluate_single."""
+
+    def _make_tenant_config(self, rules: list[RoutingRule]) -> TenantConfig:
+        return TenantConfig(
+            tenant_id="t",
+            slug="test",
+            models={},
+            rules=rules,
+            settings={},
+        )
+
+    async def test_with_cached_intent(self):
+        from bsgateway.rules.engine import RuleEngine
+
+        rules = [
+            RoutingRule(
+                id="r1",
+                tenant_id="t",
+                name="intent-rule",
+                priority=1,
+                is_active=True,
+                is_default=False,
+                target_model="premium",
+                conditions=[
+                    RuleCondition(
+                        condition_type="intent",
+                        field="classified_intent",
+                        operator="eq",
+                        value="code_gen",
+                    )
+                ],
+            ),
+        ]
+        config = self._make_tenant_config(rules)
+        engine = RuleEngine()
+
+        data = {"messages": [{"role": "user", "content": "write code"}], "model": "auto"}
+        intent_cache = {"write code": "code_gen"}
+
+        result = await engine._evaluate_single(data, config, intent_cache)
+        assert result is not None
+        assert result.target_model == "premium"
+
+    async def test_no_rules_returns_none(self):
+        from bsgateway.rules.engine import RuleEngine
+
+        config = self._make_tenant_config([])
+        engine = RuleEngine()
+
+        result = await engine._evaluate_single(
+            {"messages": [{"role": "user", "content": "hi"}], "model": "auto"},
+            config,
+            {},
+        )
+        assert result is None
