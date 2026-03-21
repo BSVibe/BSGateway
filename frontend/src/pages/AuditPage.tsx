@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, SESSION_KEYS } from '../api/client';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
-
-const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
 
 interface AuditLog {
   id: string;
@@ -16,10 +14,11 @@ interface AuditLog {
 }
 
 export function AuditPage() {
+  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [limit] = useState(50);
+  const limit = 50;
   const [offset, setOffset] = useState(0);
 
   useEffect(() => {
@@ -31,7 +30,7 @@ export function AuditPage() {
     setError(null);
     try {
       const res = await api.get<AuditLog[]>(
-        `/tenants/${TENANT_ID}/audit?limit=${limit}&offset=${offset}`
+        `/tenants/${tenantId}/audit?limit=${limit}&offset=${offset}`
       );
       setLogs(res);
     } catch (err) {

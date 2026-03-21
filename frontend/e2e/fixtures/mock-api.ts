@@ -379,6 +379,24 @@ export async function setupApiMocks(page: Page) {
       });
     }
 
+    // ── Error simulation ──────────────────────────
+    // POST to any /error-test path returns 500
+    if (path.includes('/error-test') && method === 'POST') {
+      return route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Internal server error (mock)' }),
+      });
+    }
+    // GET to any /forbidden path returns 403
+    if (path.includes('/forbidden')) {
+      return route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Access denied (mock)' }),
+      });
+    }
+
     // ── Fallback ───────────────────────────────────
     return route.fulfill({
       status: 404,

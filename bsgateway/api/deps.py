@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+SUPERADMIN_UUID = UUID("00000000-0000-0000-0000-000000000000")
+
 
 def get_pool(request: Request) -> asyncpg.Pool:
     """Extract the shared DB pool from app state."""
@@ -78,7 +80,7 @@ async def get_auth_context(request: Request) -> AuthContext:
     superadmin_hash = getattr(request.app.state, "superadmin_key_hash", "")
     if superadmin_hash and hmac.compare_digest(hash_api_key(token), superadmin_hash):
         return AuthContext(
-            tenant_id=UUID("00000000-0000-0000-0000-000000000000"),
+            tenant_id=SUPERADMIN_UUID,
             scopes=["admin"],
             key_hash="",
         )
@@ -148,9 +150,6 @@ def get_audit_service(request: Request) -> AuditService:
     return AuditService(AuditRepository(pool))
 
 
-_SUPERADMIN_UUID = UUID("00000000-0000-0000-0000-000000000000")
-
-
 def require_tenant_access(
     tenant_id: UUID,
     auth: AuthContext = Depends(get_auth_context),
@@ -160,7 +159,7 @@ def require_tenant_access(
     Superadmin (UUID 00000000-...) may access any tenant.
     All other callers must own the requested tenant_id.
     """
-    if auth.tenant_id == _SUPERADMIN_UUID:
+    if auth.tenant_id == SUPERADMIN_UUID:
         return auth
     if auth.tenant_id != tenant_id:
         raise HTTPException(

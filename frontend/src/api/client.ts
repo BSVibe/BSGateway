@@ -1,6 +1,20 @@
 const BASE_URL = '/api/v1';
 
+// Session storage keys — single source of truth
+export const SESSION_KEYS = {
+  token: 'bsg_token',
+  tenantId: 'bsg_tenant_id',
+  tenantSlug: 'bsg_tenant_slug',
+  tenantName: 'bsg_tenant_name',
+} as const;
+
+/** Clear all session data (shared by logout + 401 handler). */
+export function clearSession() {
+  Object.values(SESSION_KEYS).forEach((k) => sessionStorage.removeItem(k));
+}
+
 let authToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
@@ -8,6 +22,11 @@ export function setAuthToken(token: string | null) {
 
 export function getAuthToken(): string | null {
   return authToken;
+}
+
+/** Register a callback for 401 responses (called once, then ignored for concurrent requests). */
+export function setOnUnauthorized(cb: () => void) {
+  onUnauthorized = cb;
 }
 
 class ApiError extends Error {
@@ -40,6 +59,15 @@ async function request<T>(
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const message = body?.error?.message || body?.detail || response.statusText;
+
+    // Auto-logout on 401 — token expired or revoked
+    if (response.status === 401 && authToken) {
+      authToken = null;
+      clearSession();
+      onUnauthorized?.();
+      onUnauthorized = null; // prevent duplicate calls from concurrent requests
+    }
+
     throw new ApiError(response.status, message);
   }
 

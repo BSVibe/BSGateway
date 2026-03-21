@@ -17,7 +17,11 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Simple in-memory rate limiter for auth endpoint (per IP, 10 req/min)
+# Simple in-memory rate limiter for auth endpoint (per IP, 10 req/min).
+# Note: This is a single-process, in-memory sliding window.
+# In multi-process / multi-instance deployments, use Redis-backed rate limiting instead.
+# The check-then-append pattern is safe in async single-threaded context (no preemption
+# between the len() check and append within the same coroutine).
 _AUTH_RATE_LIMIT = 10
 _auth_attempts: dict[str, list[float]] = defaultdict(list)
 
@@ -33,6 +37,10 @@ def _check_auth_rate_limit(client_ip: str) -> None:
             detail="Too many authentication attempts. Try again later.",
         )
     window.append(now)
+    # Periodically prune stale IPs (every 100 checks)
+    if sum(1 for v in _auth_attempts.values() if not v) > 100:
+        for ip in [k for k, v in _auth_attempts.items() if not v]:
+            del _auth_attempts[ip]
 
 
 class TokenRequest(BaseModel):

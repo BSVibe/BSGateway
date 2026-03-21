@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { tenantsApi } from '../api/tenants';
+import { SESSION_KEYS } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { TenantModel, TenantModelCreate } from '../types/api';
 
-const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
-
 export function ModelsPage() {
+  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
   const { data: models, loading, error, refetch } = useApi(
-    () => tenantsApi.listModels(TENANT_ID),
-    [TENANT_ID],
+    () => tenantsApi.listModels(tenantId),
+    [tenantId],
   );
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<TenantModelCreate>({
@@ -18,16 +18,18 @@ export function ModelsPage() {
     litellm_model: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setSubmitting(true);
+    setCreateError(null);
     try {
-      await tenantsApi.createModel(TENANT_ID, formData);
+      await tenantsApi.createModel(tenantId, formData);
       setShowForm(false);
       setFormData({ model_name: '', litellm_model: '' });
       refetch();
-    } catch {
-      alert('Failed to create model');
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create model');
     } finally {
       setSubmitting(false);
     }
@@ -40,7 +42,7 @@ export function ModelsPage() {
     if (deleting === model.id) {
       setDeleteError(null);
       try {
-        await tenantsApi.deleteModel(TENANT_ID, model.id);
+        await tenantsApi.deleteModel(tenantId, model.id);
         setDeleting(null);
         refetch();
       } catch (err) {
@@ -66,6 +68,8 @@ export function ModelsPage() {
           {showForm ? 'Cancel' : 'Register Model'}
         </button>
       </div>
+
+      {createError && <ErrorBanner message={createError} onRetry={() => setCreateError(null)} />}
 
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 space-y-4">

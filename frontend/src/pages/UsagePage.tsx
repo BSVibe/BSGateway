@@ -3,11 +3,9 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { api } from '../api/client';
+import { api, SESSION_KEYS } from '../api/client';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
-
-const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
 
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
@@ -21,6 +19,7 @@ interface UsageStats {
 }
 
 export function UsagePage() {
+  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
   const [data, setData] = useState<UsageStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +34,7 @@ export function UsagePage() {
     setError(null);
     try {
       const res = await api.get<UsageStats>(
-        `/tenants/${TENANT_ID}/usage?period=${period}`
+        `/tenants/${tenantId}/usage?period=${period}`
       );
       setData(res);
     } catch (err) {

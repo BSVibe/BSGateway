@@ -67,6 +67,11 @@ async def lifespan(app: FastAPI):
             f"JWT_SECRET must be at least 32 characters (got {len(settings.jwt_secret)}). "
             "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
         )
+    elif len(set(settings.jwt_secret)) < 10:
+        raise RuntimeError(
+            "JWT_SECRET lacks sufficient entropy (too few unique characters). "
+            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
 
     # Global background task set for graceful shutdown tracking
     app.state.background_tasks: set = set()
@@ -134,7 +139,7 @@ def create_app() -> FastAPI:
         cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
     else:
         cors_origins = [f"http://localhost:{settings.api_port}"]
-        logger.warning(
+        logger.error(
             "cors_fallback_to_localhost",
             origins=cors_origins,
             hint="Set CORS_ALLOWED_ORIGINS for production",

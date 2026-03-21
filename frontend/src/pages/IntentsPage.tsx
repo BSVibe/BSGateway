@@ -3,23 +3,14 @@ import { useApi } from '../hooks/useApi';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { intentsApi } from '../api/intents';
-
-const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
-
-interface Intent {
-  id: string;
-  name: string;
-  description: string | null;
-  examples: string[];
-  target_model: string | null;
-  is_active: boolean;
-  created_at: string;
-}
+import { SESSION_KEYS } from '../api/client';
+import type { Intent } from '../types/api';
 
 export function IntentsPage() {
+  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
   const { data: intents, loading, error, refetch } = useApi(
-    () => intentsApi.list(TENANT_ID).catch(() => []),
-    [TENANT_ID],
+    () => intentsApi.list(tenantId).catch(() => []),
+    [tenantId],
   );
 
   const [showForm, setShowForm] = useState(false);
@@ -30,20 +21,23 @@ export function IntentsPage() {
     target_model: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setSubmitting(true);
+    setCreateError(null);
     try {
-      await intentsApi.create(TENANT_ID, {
+      await intentsApi.create(tenantId, {
         ...formData,
         examples: formData.examples.filter(e => e.trim()),
       });
       setShowForm(false);
       setFormData({ name: '', description: '', examples: [''], target_model: '' });
       refetch();
-    } catch {
-      alert('Failed to create intent');
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create intent');
     } finally {
       setSubmitting(false);
     }
@@ -51,15 +45,17 @@ export function IntentsPage() {
 
   const handleDelete = async (intent: Intent) => {
     if (deleting === intent.id) {
+      setDeleteError(null);
       try {
-        await intentsApi.delete(TENANT_ID, intent.id);
+        await intentsApi.delete(tenantId, intent.id);
         setDeleting(null);
         refetch();
-      } catch {
-        setDeleting(null);
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : 'Delete failed');
       }
     } else {
       setDeleting(intent.id);
+      setDeleteError(null);
     }
   };
 
@@ -77,6 +73,9 @@ export function IntentsPage() {
           {showForm ? 'Cancel' : 'New Intent'}
         </button>
       </div>
+
+      {createError && <ErrorBanner message={createError} onRetry={() => setCreateError(null)} />}
+      {deleteError && <ErrorBanner message={deleteError} onRetry={() => setDeleteError(null)} />}
 
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
@@ -176,7 +175,7 @@ export function IntentsPage() {
                   {intent.description && (
                     <p className="text-sm text-gray-500 mt-1">{intent.description}</p>
                   )}
-                  <p className="text-xs text-gray-400 mt-1">{intent.examples.length} example(s)</p>
+                  <p className="text-xs text-gray-400 mt-1">threshold: {intent.threshold}</p>
                 </div>
                 <button
                   onClick={() => handleDelete(intent)}

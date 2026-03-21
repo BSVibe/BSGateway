@@ -107,4 +107,3 @@ async def seed_dev_data(pool: asyncpg.Pool, encryption_key: bytes) -> None:
         hint="Save this key now — it will not be shown again",
         api_key_prefix=key_prefix,
     )
-    print(f"\n  [SEED] Dev API key: {dev_api_key}\n")

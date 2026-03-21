@@ -111,10 +111,10 @@ class TestSeedDevData:
     @patch("bsgateway.core.seed.encrypt_value", return_value="encrypted")
     @patch("bsgateway.core.seed.hash_api_key", return_value="hashed")
     @patch("bsgateway.core.seed.TenantRepository")
-    async def test_logs_prefix_only_prints_key(
+    async def test_logs_prefix_only_no_full_key(
         self, mock_repo_cls, mock_hash, mock_encrypt, _mock_genkey
     ):
-        """API key must NOT appear in structured logs; printed to stdout once."""
+        """Full API key must NOT appear in structured logs; only prefix is logged."""
         repo = AsyncMock()
         repo.get_tenant_by_slug = AsyncMock(return_value=None)
         mock_repo_cls.return_value = repo
@@ -124,22 +124,14 @@ class TestSeedDevData:
         conn.execute = AsyncMock()
         pool = self._make_pool(conn)
 
-        with (
-            patch("bsgateway.core.seed.logger") as mock_logger,
-            patch("builtins.print") as mock_print,
-        ):
+        with patch("bsgateway.core.seed.logger") as mock_logger:
             await seed_dev_data(pool, ENCRYPTION_KEY)
 
-            # Structured logs must NOT contain the full API key
+            # Full API key must NOT appear in any log kwargs
             for call in mock_logger.info.call_args_list:
-                assert "api_key" not in call.kwargs
-            assert mock_logger.warning.call_count == 0
+                for v in call.kwargs.values():
+                    assert v != _FAKE_KEY, "Full API key must not be logged"
 
             # Prefix logged via structlog info
             info_kwargs = mock_logger.info.call_args_list[-1].kwargs
             assert info_kwargs["api_key_prefix"] == _FAKE_PREFIX
-
-            # Full key printed to stdout (not structlog)
-            mock_print.assert_called_once()
-            printed = mock_print.call_args[0][0]
-            assert _FAKE_KEY in printed

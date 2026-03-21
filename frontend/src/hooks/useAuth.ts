@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { setAuthToken } from '../api/client';
+import { useCallback, useEffect, useState } from 'react';
+import { SESSION_KEYS, clearSession, setAuthToken, setOnUnauthorized } from '../api/client';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -11,36 +11,38 @@ interface AuthState {
 export function useAuth() {
   const [auth, setAuth] = useState<AuthState>(() => {
     // Token + tenant metadata stored in sessionStorage (tab-scoped, cleared on tab close)
-    const savedToken = sessionStorage.getItem('bsg_token');
+    const savedToken = sessionStorage.getItem(SESSION_KEYS.token);
     if (savedToken) setAuthToken(savedToken);
     return {
       isAuthenticated: !!savedToken,
-      tenantId: sessionStorage.getItem('bsg_tenant_id'),
-      tenantSlug: sessionStorage.getItem('bsg_tenant_slug'),
-      tenantName: sessionStorage.getItem('bsg_tenant_name'),
+      tenantId: sessionStorage.getItem(SESSION_KEYS.tenantId),
+      tenantSlug: sessionStorage.getItem(SESSION_KEYS.tenantSlug),
+      tenantName: sessionStorage.getItem(SESSION_KEYS.tenantName),
     };
   });
+
+  const logout = useCallback(() => {
+    setAuthToken(null);
+    clearSession();
+    setAuth({ isAuthenticated: false, tenantId: null, tenantSlug: null, tenantName: null });
+  }, []);
+
+  // Register 401 handler so the API client delegates to auth state
+  useEffect(() => {
+    setOnUnauthorized(logout);
+  }, [logout]);
 
   const login = useCallback(
     (token: string, tenantId: string, tenantSlug: string, tenantName: string) => {
       setAuthToken(token);
-      sessionStorage.setItem('bsg_token', token);
-      sessionStorage.setItem('bsg_tenant_id', tenantId);
-      sessionStorage.setItem('bsg_tenant_slug', tenantSlug);
-      sessionStorage.setItem('bsg_tenant_name', tenantName);
+      sessionStorage.setItem(SESSION_KEYS.token, token);
+      sessionStorage.setItem(SESSION_KEYS.tenantId, tenantId);
+      sessionStorage.setItem(SESSION_KEYS.tenantSlug, tenantSlug);
+      sessionStorage.setItem(SESSION_KEYS.tenantName, tenantName);
       setAuth({ isAuthenticated: true, tenantId, tenantSlug, tenantName });
     },
     [],
   );
-
-  const logout = useCallback(() => {
-    setAuthToken(null);
-    sessionStorage.removeItem('bsg_token');
-    sessionStorage.removeItem('bsg_tenant_id');
-    sessionStorage.removeItem('bsg_tenant_slug');
-    sessionStorage.removeItem('bsg_tenant_name');
-    setAuth({ isAuthenticated: false, tenantId: null, tenantSlug: null, tenantName: null });
-  }, []);
 
   return { ...auth, login, logout };
 }

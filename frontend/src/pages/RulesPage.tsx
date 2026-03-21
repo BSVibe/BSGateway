@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { rulesApi } from '../api/rules';
+import { SESSION_KEYS } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { Rule, RuleCreate } from '../types/api';
 
-const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
-
 export function RulesPage() {
+  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
   const { data: rules, loading, error, refetch } = useApi(
-    () => rulesApi.list(TENANT_ID),
-    [TENANT_ID],
+    () => rulesApi.list(tenantId),
+    [tenantId],
   );
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<RuleCreate>({
@@ -20,16 +20,18 @@ export function RulesPage() {
     is_default: false,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setSubmitting(true);
+    setCreateError(null);
     try {
-      await rulesApi.create(TENANT_ID, formData);
+      await rulesApi.create(tenantId, formData);
       setShowForm(false);
       setFormData({ name: '', priority: 0, target_model: '', is_default: false });
       refetch();
-    } catch {
-      alert('Failed to create rule');
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create rule');
     } finally {
       setSubmitting(false);
     }
@@ -42,7 +44,7 @@ export function RulesPage() {
     if (deleting === rule.id) {
       setDeleteError(null);
       try {
-        await rulesApi.delete(TENANT_ID, rule.id);
+        await rulesApi.delete(tenantId, rule.id);
         setDeleting(null);
         refetch();
       } catch (err) {
@@ -68,6 +70,8 @@ export function RulesPage() {
           {showForm ? 'Cancel' : 'New Rule'}
         </button>
       </div>
+
+      {createError && <ErrorBanner message={createError} onRetry={() => setCreateError(null)} />}
 
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 space-y-4">

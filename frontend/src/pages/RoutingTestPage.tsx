@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { tenantsApi } from '../api/tenants';
+import { SESSION_KEYS } from '../api/client';
 import { rulesApi } from '../api/rules';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
-
-const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
 
 interface TestMessage {
   role: 'user' | 'assistant' | 'system';
@@ -25,6 +24,7 @@ interface TestResult {
 }
 
 export function RoutingTestPage() {
+  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
   const [models, setModels] = useState<any[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [selectedModel, setSelectedModel] = useState('');
@@ -39,10 +39,7 @@ export function RoutingTestPage() {
 
   const loadModelsAndRules = async () => {
     try {
-      const [m] = await Promise.all([
-        tenantsApi.listModels(TENANT_ID),
-        rulesApi.list(TENANT_ID),
-      ]);
+      const m = await tenantsApi.listModels(tenantId);
       setModels(m || []);
       if (m && m.length > 0) {
         setSelectedModel(m[0].model_name);
@@ -63,7 +60,7 @@ export function RoutingTestPage() {
     setTesting(true);
     setError(null);
     try {
-      const data = await rulesApi.test(TENANT_ID, {
+      const data = await rulesApi.test(tenantId, {
         model: selectedModel,
         messages: messages.filter(m => m.content.trim()),
       });
