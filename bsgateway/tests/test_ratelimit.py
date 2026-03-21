@@ -81,6 +81,19 @@ class TestRateLimiter:
         result = await limiter.check("tenant-1", rpm=60)
 
         assert result.allowed is True  # Fail-open
+        assert result.degraded is True
+
+    async def test_expire_failure_still_returns_result(self):
+        """If redis.expire() fails after incr succeeds, the result is still valid."""
+        redis = AsyncMock()
+        redis.incr = AsyncMock(return_value=1)
+        redis.expire = AsyncMock(side_effect=ConnectionError("Redis expire failed"))
+
+        limiter = RateLimiter(redis)
+        # expire failure propagates as general exception → fail-open
+        result = await limiter.check("tenant-1", rpm=60)
+        assert result.allowed is True
+        assert result.degraded is True
 
     async def test_independent_per_tenant(self):
         redis = AsyncMock()

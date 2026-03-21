@@ -124,7 +124,9 @@ async def get_auth_context(request: Request) -> AuthContext:
         if not hasattr(request.app.state, "background_tasks"):
             request.app.state.background_tasks = set()
         bg_tasks: set = request.app.state.background_tasks
-        task = asyncio.create_task(repo.touch_api_key(key_hash))
+        task = asyncio.create_task(
+            asyncio.wait_for(repo.touch_api_key(key_hash), timeout=10.0)
+        )
         bg_tasks.add(task)
         task.add_done_callback(bg_tasks.discard)
 
@@ -169,7 +171,8 @@ def require_tenant_access(
     Superadmin (UUID 00000000-...) may access any tenant.
     All other callers must own the requested tenant_id.
     """
-    if auth.tenant_id == SUPERADMIN_UUID:
+    # Superadmin access: check scopes (not just UUID) for defense-in-depth
+    if "admin" in auth.scopes and auth.tenant_id == SUPERADMIN_UUID:
         return auth
     if auth.tenant_id != tenant_id:
         raise HTTPException(

@@ -54,14 +54,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
             <div className="relative">
               <input
-                type="text"
+                type={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="bsg_..."
-                className={`w-full border rounded-lg px-3 py-2 pr-16 text-sm font-mono ${
-                  !showKey && apiKey ? '[text-security:disc] [-webkit-text-security:disc]' : ''
-                }`}
-                style={!showKey && apiKey ? { WebkitTextSecurity: 'disc' } as React.CSSProperties : undefined}
+                className="w-full border rounded-lg px-3 py-2 pr-16 text-sm font-mono"
                 autoComplete="off"
                 autoFocus
               />

@@ -90,12 +90,14 @@ export function UsagePage() {
             <p className="text-gray-500 text-sm">Total Tokens</p>
             <p className="text-3xl font-bold text-gray-900 mt-2">{data.total_tokens.toLocaleString()}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 text-sm">Success Rate</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">
-              {Math.round(data.success_rate * 100)}%
-            </p>
-          </div>
+          {data.success_rate != null && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <p className="text-gray-500 text-sm">Success Rate</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">
+                {Math.round(data.success_rate * 100)}%
+              </p>
+            </div>
+          )}
         </div>
       )}
 

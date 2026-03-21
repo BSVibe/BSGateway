@@ -123,6 +123,8 @@ async def create_rule(
     tenant_id: UUID,
     body: RuleCreate,
     request: Request,
+    # Intentionally uses require_tenant_access (not require_admin) so that
+    # tenant members can manage their own rules without superadmin privilege.
     _auth: AuthContext = Depends(require_tenant_access),
 ) -> RuleResponse:
     await _validate_target_model(request, tenant_id, body.target_model)

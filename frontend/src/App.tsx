@@ -76,7 +76,7 @@ function App() {
           <Route path="test" element={<PageBoundary><RoutingTestPage /></PageBoundary>} />
           <Route path="usage" element={<PageBoundary><UsagePage /></PageBoundary>} />
           <Route path="audit" element={<PageBoundary><AuditPage /></PageBoundary>} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>

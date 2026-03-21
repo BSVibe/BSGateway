@@ -444,6 +444,91 @@ class TestCrossTenantAccess:
             )
             assert resp.status_code == 403
 
+    def _cross_tenant_patches(self, own_tid: UUID, scopes: list[str] | None = None):
+        """Context managers for cross-tenant test setup."""
+        return (
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
+                new_callable=AsyncMock,
+                return_value={
+                    "id": uuid4(),
+                    "tenant_id": own_tid,
+                    "key_hash": "fakehash",
+                    "key_prefix": "bsg_test1234",
+                    "name": "key",
+                    "scopes": scopes or ["chat"],
+                    "is_active": True,
+                    "expires_at": None,
+                    "last_used_at": None,
+                    "created_at": datetime.now(UTC),
+                    "tenant_is_active": True,
+                },
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.touch_api_key",
+                new_callable=AsyncMock,
+            ),
+        )
+
+    def test_tenant_cannot_update_other_tenant(self, client: TestClient):
+        """A non-admin tenant cannot PATCH another tenant (require_admin blocks)."""
+        own_tid = uuid4()
+        other_tid = uuid4()
+        auth_patch, touch_patch = self._cross_tenant_patches(own_tid)
+        with auth_patch, touch_patch:
+            resp = client.patch(
+                f"/api/v1/tenants/{other_tid}",
+                json={"name": "Hacked"},
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 403
+
+    def test_tenant_cannot_delete_other_tenant(self, client: TestClient):
+        """A non-admin tenant cannot DELETE another tenant."""
+        own_tid = uuid4()
+        other_tid = uuid4()
+        auth_patch, touch_patch = self._cross_tenant_patches(own_tid)
+        with auth_patch, touch_patch:
+            resp = client.delete(
+                f"/api/v1/tenants/{other_tid}",
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 403
+
+    def test_tenant_cannot_create_key_for_other_tenant(self, client: TestClient):
+        """A tenant with admin scope still cannot create keys for other tenants."""
+        own_tid = uuid4()
+        other_tid = uuid4()
+        auth_patch, touch_patch = self._cross_tenant_patches(
+            own_tid, scopes=["admin"]
+        )
+        with auth_patch, touch_patch:
+            resp = client.post(
+                f"/api/v1/tenants/{other_tid}/keys",
+                json={"name": "stolen-key"},
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 403
+
+    def test_tenant_cannot_create_model_for_other_tenant(self, client: TestClient):
+        """A tenant with admin scope still cannot create models for other tenants."""
+        own_tid = uuid4()
+        other_tid = uuid4()
+        auth_patch, touch_patch = self._cross_tenant_patches(
+            own_tid, scopes=["admin"]
+        )
+        with auth_patch, touch_patch:
+            resp = client.post(
+                f"/api/v1/tenants/{other_tid}/models",
+                json={
+                    "model_name": "stolen-model",
+                    "litellm_model": "openai/gpt-4o",
+                    "api_key": "sk-stolen",
+                },
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 403
+
 
 class TestModelEndpoints:
     def test_create_model(self, client: TestClient, admin_headers: dict):

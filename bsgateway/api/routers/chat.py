@@ -161,9 +161,10 @@ async def chat_completions(
                 async for chunk in response:
                     data = chunk.model_dump() if hasattr(chunk, "model_dump") else chunk
                     yield f"data: {json.dumps(data)}\n\n"
-                yield "data: [DONE]\n\n"
             except Exception as exc:
                 logger.error("stream_error", error=str(exc), exc_info=True)
+                # Send error as final event before closing the stream.
+                # Clients should treat any error event before [DONE] as terminal.
                 error_data = {
                     "error": {
                         "message": "Stream interrupted",
@@ -173,7 +174,7 @@ async def chat_completions(
                     }
                 }
                 yield f"data: {json.dumps(error_data)}\n\n"
-                yield "data: [DONE]\n\n"
+            yield "data: [DONE]\n\n"
 
         return StreamingResponse(
             event_stream(),

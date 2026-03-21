@@ -42,13 +42,17 @@ class Settings(BaseSettings):
 
     @property
     def encryption_key_bytes(self) -> bytes:
-        """Return the encryption key as raw bytes."""
+        """Return the encryption key as raw bytes.
+
+        Raises RuntimeError if ENCRYPTION_KEY is not set — provider API keys
+        require encryption and must not be stored in plaintext.
+        """
         if not self.encryption_key:
-            _config_logger.warning(
-                "encryption_key_not_set",
-                hint="provider API keys will not be encrypted",
+            raise RuntimeError(
+                "ENCRYPTION_KEY is required — provider API keys cannot be "
+                "stored without encryption. Generate one with: "
+                'python -c "import os; print(os.urandom(32).hex())"'
             )
-            return b""
         try:
             key = bytes.fromhex(self.encryption_key)
         except ValueError as e:

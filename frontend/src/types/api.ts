@@ -152,6 +152,7 @@ export interface DailyUsage {
 export interface UsageResponse {
   total_requests: number;
   total_tokens: number;
+  success_rate?: number;
   by_model: Record<string, ModelUsage>;
   by_rule: Record<string, number>;
   daily_breakdown: DailyUsage[];

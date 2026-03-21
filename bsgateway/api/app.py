@@ -67,11 +67,6 @@ async def lifespan(app: FastAPI):
             f"JWT_SECRET must be at least 32 characters (got {len(settings.jwt_secret)}). "
             'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(48))"'
         )
-    elif len(set(settings.jwt_secret)) < 10:
-        raise RuntimeError(
-            "JWT_SECRET lacks sufficient entropy (too few unique characters). "
-            'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(48))"'
-        )
 
     # Global background task set for graceful shutdown tracking.
     # Tasks auto-remove themselves on completion via done callback.

@@ -34,6 +34,7 @@ class CacheManager:
     def __init__(self, redis_client: redis.Redis):
         self._redis = redis_client
         self._consecutive_failures = 0
+        self._deserialization_errors = 0
 
     def _record_success(self) -> None:
         if self._consecutive_failures > 0:
@@ -60,7 +61,14 @@ class CacheManager:
             self._record_success()
             return result
         except json.JSONDecodeError:
-            logger.warning("cache_deserialization_failed", key=key, exc_info=True)
+            self._deserialization_errors += 1
+            log_level = "error" if self._deserialization_errors >= 5 else "warning"
+            getattr(logger, log_level)(
+                "cache_deserialization_failed",
+                key=key,
+                total_errors=self._deserialization_errors,
+                exc_info=True,
+            )
             await self.delete(key)
             return None
         except (redis.RedisError, ConnectionError, TimeoutError, OSError):

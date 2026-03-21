@@ -3,7 +3,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import structlog
+
 from bsgateway.rules.models import EvaluationContext, RuleCondition
+
+logger = structlog.get_logger(__name__)
 
 # Pre-compiled ReDoS detection pattern (nested quantifiers)
 _REDOS_PATTERN = re.compile(r"\(.+[*+]\)[*+?]|\[.+[*+]\][*+?]")
@@ -38,6 +42,12 @@ def evaluate_condition(condition: RuleCondition, ctx: EvaluationContext) -> bool
     Returns True if the condition matches (before negate is applied).
     """
     if condition.field not in _ALLOWED_FIELDS:
+        logger.warning(
+            "invalid_condition_field",
+            field=condition.field,
+            allowed=sorted(_ALLOWED_FIELDS),
+            hint="condition will never match — check for typos",
+        )
         return False
     result = _evaluate_raw(condition, ctx)
     return (not result) if condition.negate else result

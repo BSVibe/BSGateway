@@ -11,6 +11,11 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:8000',
     },
+    headers: {
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+    },
   },
   build: {
     // Code splitting strategy for better caching

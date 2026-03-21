@@ -54,6 +54,8 @@ services:
     command: >
       sh -c '[ -n "$$REDIS_PASSWORD" ] && exec redis-server --requirepass "$$REDIS_PASSWORD" || exec redis-server'
     environment:
+      # WARNING: Empty default means Redis runs WITHOUT authentication.
+      # Set REDIS_PASSWORD in .env for production deployments.
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     restart: unless-stopped
     healthcheck:

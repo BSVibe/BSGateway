@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { tenantsApi } from '../api/tenants';
 import { SESSION_KEYS } from '../api/client';
 import { rulesApi } from '../api/rules';
+import type { TenantModel } from '../types/api';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 
@@ -25,7 +26,7 @@ interface TestResult {
 
 export function RoutingTestPage() {
   const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
-  const [models, setModels] = useState<{ model_name: string }[]>([]);
+  const [models, setModels] = useState<TenantModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [selectedModel, setSelectedModel] = useState('');
   const [messages, setMessages] = useState<TestMessage[]>([{ role: 'user', content: '' }]);
