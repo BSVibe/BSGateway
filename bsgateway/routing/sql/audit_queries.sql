@@ -9,3 +9,6 @@ FROM audit_logs
 WHERE tenant_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: count_audit_logs
+SELECT COUNT(*) as total FROM audit_logs WHERE tenant_id = $1;

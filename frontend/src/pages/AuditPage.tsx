@@ -13,9 +13,15 @@ interface AuditLog {
   details: Record<string, any> | null;
 }
 
+interface AuditLogListResponse {
+  items: AuditLog[];
+  total: number;
+}
+
 export function AuditPage() {
   const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
   const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const limit = 50;
@@ -29,10 +35,11 @@ export function AuditPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<AuditLog[]>(
+      const res = await api.get<AuditLogListResponse>(
         `/tenants/${tenantId}/audit?limit=${limit}&offset=${offset}`
       );
-      setLogs(res);
+      setLogs(res.items);
+      setTotal(res.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load audit logs');
     } finally {
@@ -111,8 +118,8 @@ export function AuditPage() {
       </div>
 
       {/* Pagination */}
-      {logs.length >= limit && (
-        <div className="flex justify-center gap-2">
+      {total > limit && (
+        <div className="flex justify-center items-center gap-2">
           <button
             onClick={() => setOffset(Math.max(0, offset - limit))}
             disabled={offset === 0}
@@ -120,9 +127,13 @@ export function AuditPage() {
           >
             ← Previous
           </button>
+          <span className="text-sm text-gray-500">
+            {offset + 1}–{Math.min(offset + limit, total)} of {total}
+          </span>
           <button
             onClick={() => setOffset(offset + limit)}
-            className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+            disabled={offset + limit >= total}
+            className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
           >
             Next →
           </button>

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import warnings
 from pathlib import Path
 
+import structlog
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_config_logger = structlog.get_logger(__name__)
 
 
 class Settings(BaseSettings):
@@ -42,9 +44,9 @@ class Settings(BaseSettings):
     def encryption_key_bytes(self) -> bytes:
         """Return the encryption key as raw bytes."""
         if not self.encryption_key:
-            warnings.warn(
-                "ENCRYPTION_KEY is not set; provider API keys will not be encrypted",
-                stacklevel=2,
+            _config_logger.warning(
+                "encryption_key_not_set",
+                hint="provider API keys will not be encrypted",
             )
             return b""
         try:

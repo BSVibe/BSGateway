@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { rulesApi } from '../api/rules';
 import { SESSION_KEYS } from '../api/client';
 import { useApi } from '../hooks/useApi';
+import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { Rule, RuleCreate } from '../types/api';
@@ -37,24 +38,7 @@ export function RulesPage() {
     }
   };
 
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const handleDelete = async (rule: Rule) => {
-    if (deleting === rule.id) {
-      setDeleteError(null);
-      try {
-        await rulesApi.delete(tenantId, rule.id);
-        setDeleting(null);
-        refetch();
-      } catch (err) {
-        setDeleteError(err instanceof Error ? err.message : 'Delete failed');
-      }
-    } else {
-      setDeleting(rule.id);
-      setDeleteError(null);
-    }
-  };
+  const { deleting, deleteError, handleDelete: onDelete, setDeleteError } = useDeleteConfirm();
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorBanner message={error} onRetry={refetch} />;
@@ -154,8 +138,7 @@ export function RulesPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => handleDelete(rule)}
-                  onBlur={() => setDeleting(null)}
+                  onClick={() => onDelete(rule.id, () => rulesApi.delete(tenantId, rule.id), refetch)}
                   className={`text-sm ${
                     deleting === rule.id
                       ? 'text-white bg-red-600 px-3 py-1 rounded'

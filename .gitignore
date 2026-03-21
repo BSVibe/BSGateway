@@ -47,8 +47,6 @@ docker-compose.override.yml
 
 # Node modules (root-level, e.g. Playwright devDependency)
 node_modules/
-package.json
-package-lock.json
 
 # Playwright
 /test-results/

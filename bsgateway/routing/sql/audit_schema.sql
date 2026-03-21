@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     actor TEXT NOT NULL DEFAULT '',
     action TEXT NOT NULL,
     resource_type TEXT NOT NULL,

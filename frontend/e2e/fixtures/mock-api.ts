@@ -99,6 +99,7 @@ export const MOCK_INTENTS = [
     description: 'Requests asking to summarize content',
     examples: ['Please summarize this article', 'TL;DR of the above'],
     target_model: 'gpt-4o',
+    threshold: 0.7,
     is_active: true,
     created_at: '2026-03-17T10:00:00+00:00',
     updated_at: '2026-03-17T10:00:00+00:00',
@@ -110,6 +111,7 @@ export const MOCK_INTENTS = [
     description: 'Requests to generate code',
     examples: ['Write a function that...'],
     target_model: 'claude-sonnet',
+    threshold: 0.7,
     is_active: false,
     created_at: '2026-03-17T10:00:00+00:00',
     updated_at: '2026-03-17T10:00:00+00:00',
@@ -344,6 +346,7 @@ export async function setupApiMocks(page: Page) {
         description: body.description || null,
         examples: body.examples || [],
         target_model: body.target_model || null,
+        threshold: body.threshold ?? 0.7,
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -375,7 +378,7 @@ export async function setupApiMocks(page: Page) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(MOCK_AUDIT_LOGS),
+        body: JSON.stringify({ items: MOCK_AUDIT_LOGS, total: MOCK_AUDIT_LOGS.length }),
       });
     }
 

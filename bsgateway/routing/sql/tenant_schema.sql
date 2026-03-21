@@ -48,3 +48,5 @@ ALTER TABLE routing_logs ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tena
 ALTER TABLE routing_logs ADD COLUMN IF NOT EXISTS rule_id UUID;
 
 CREATE INDEX IF NOT EXISTS idx_routing_logs_tenant ON routing_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_routing_logs_tenant_time ON routing_logs(tenant_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_routing_logs_rule_id ON routing_logs(rule_id);

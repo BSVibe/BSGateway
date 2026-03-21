@@ -1,13 +1,19 @@
 #!/bin/bash
 set -e
 
+# Resolve project root relative to this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Configurable temp directory (avoid hardcoded /tmp for security)
+# Configurable ports and temp directory
+BACKEND_PORT="${BACKEND_PORT:-8000}"
+FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 TMP_DIR="${E2E_TMP_DIR:-$(mktemp -d)}"
 mkdir -p "$TMP_DIR"
 
@@ -36,7 +42,7 @@ echo -e "${GREEN}✓${NC} npm and uv are installed\n"
 
 # Install frontend dependencies
 echo -e "${YELLOW}[2/5]${NC} Installing frontend dependencies..."
-cd /workspace/frontend
+cd "$PROJECT_ROOT/frontend"
 npm install --silent
 echo -e "${GREEN}✓${NC} Frontend dependencies installed\n"
 
@@ -47,11 +53,11 @@ echo -e "${GREEN}✓${NC} Frontend built successfully\n"
 
 # Start backend in background
 echo -e "${YELLOW}[4/5]${NC} Starting backend API server..."
-cd /workspace
+cd "$PROJECT_ROOT"
 uv run uvicorn bsgateway.api.app:create_app \
   --factory \
   --host 127.0.0.1 \
-  --port 8000 \
+  --port "$BACKEND_PORT" \
   --log-level error > "$TMP_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo "Backend PID: $BACKEND_PID"
@@ -60,7 +66,7 @@ echo "Backend PID: $BACKEND_PID"
 echo "Waiting for API to be ready..."
 max_attempts=30
 attempt=0
-while ! curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; do
+while ! curl -sf "http://127.0.0.1:${BACKEND_PORT}/health" > /dev/null 2>&1; do
   attempt=$((attempt + 1))
   if [ $attempt -gt $max_attempts ]; then
     echo -e "${RED}✗ API server failed to start${NC}"
@@ -74,7 +80,7 @@ echo -e "${GREEN}✓${NC} API server is ready\n"
 
 # Start frontend dev server in background
 echo -e "${YELLOW}[5/5]${NC} Starting frontend dev server..."
-cd /workspace/frontend
+cd "$PROJECT_ROOT/frontend"
 npm run dev > "$TMP_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 echo "Frontend PID: $FRONTEND_PID"
@@ -83,7 +89,7 @@ echo "Frontend PID: $FRONTEND_PID"
 echo "Waiting for frontend to be ready..."
 max_attempts=30
 attempt=0
-while ! curl -sf http://localhost:5173 > /dev/null 2>&1; do
+while ! curl -sf "http://localhost:${FRONTEND_PORT}" > /dev/null 2>&1; do
   attempt=$((attempt + 1))
   if [ $attempt -gt $max_attempts ]; then
     echo -e "${RED}✗ Frontend dev server failed to start${NC}"
@@ -97,7 +103,7 @@ echo -e "${GREEN}✓${NC} Frontend dev server is ready\n"
 
 # Run E2E tests
 echo -e "${YELLOW}[Running E2E Tests]${NC}\n"
-cd /workspace/frontend
+cd "$PROJECT_ROOT/frontend"
 E2E_RESULT=0
 npm run test:e2e || E2E_RESULT=$?
 

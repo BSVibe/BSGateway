@@ -73,7 +73,8 @@ async def lifespan(app: FastAPI):
             "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
         )
 
-    # Global background task set for graceful shutdown tracking
+    # Global background task set for graceful shutdown tracking.
+    # Tasks auto-remove themselves on completion via done callback.
     app.state.background_tasks: set = set()
 
     # Initialize Redis (optional, used for rate limiting and caching)
@@ -139,7 +140,7 @@ def create_app() -> FastAPI:
         cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
     else:
         cors_origins = [f"http://localhost:{settings.api_port}"]
-        logger.error(
+        logger.warning(
             "cors_fallback_to_localhost",
             origins=cors_origins,
             hint="Set CORS_ALLOWED_ORIGINS for production",

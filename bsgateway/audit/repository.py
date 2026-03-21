@@ -66,3 +66,12 @@ class AuditRepository:
                 limit,
                 offset,
             )
+
+    async def count_by_tenant(self, tenant_id: UUID) -> int:
+        """Count total audit logs for a tenant."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                _sql.query("count_audit_logs"),
+                tenant_id,
+            )
+            return row["total"] if row else 0

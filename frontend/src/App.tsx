@@ -13,7 +13,7 @@ import { useAuth } from './hooks/useAuth';
 import './index.css';
 
 class ErrorBoundary extends Component<
-  { children: ReactNode },
+  { children: ReactNode; fallback?: 'page' | 'app' },
   { hasError: boolean; message: string }
 > {
   state = { hasError: false, message: '' };
@@ -24,16 +24,23 @@ class ErrorBoundary extends Component<
 
   render() {
     if (this.state.hasError) {
+      const isPage = this.props.fallback === 'page';
       return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className={`flex items-center justify-center ${isPage ? 'min-h-[50vh]' : 'min-h-screen'} bg-gray-50`}>
           <div className="text-center p-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h1>
             <p className="text-gray-600 mb-4">{this.state.message}</p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                if (isPage) {
+                  this.setState({ hasError: false, message: '' });
+                } else {
+                  window.location.reload();
+                }
+              }}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
             >
-              Reload Page
+              {isPage ? 'Try Again' : 'Reload Page'}
             </button>
           </div>
         </div>
@@ -41,6 +48,10 @@ class ErrorBoundary extends Component<
     }
     return this.props.children;
   }
+}
+
+function PageBoundary({ children }: { children: ReactNode }) {
+  return <ErrorBoundary fallback="page">{children}</ErrorBoundary>;
 }
 
 function App() {
@@ -58,13 +69,13 @@ function App() {
     <BrowserRouter basename="/dashboard">
       <Routes>
         <Route element={<Layout onLogout={logout} tenantSlug={tenantSlug} tenantName={tenantName} />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="rules" element={<RulesPage />} />
-          <Route path="models" element={<ModelsPage />} />
-          <Route path="intents" element={<IntentsPage />} />
-          <Route path="test" element={<RoutingTestPage />} />
-          <Route path="usage" element={<UsagePage />} />
-          <Route path="audit" element={<AuditPage />} />
+          <Route index element={<PageBoundary><DashboardPage /></PageBoundary>} />
+          <Route path="rules" element={<PageBoundary><RulesPage /></PageBoundary>} />
+          <Route path="models" element={<PageBoundary><ModelsPage /></PageBoundary>} />
+          <Route path="intents" element={<PageBoundary><IntentsPage /></PageBoundary>} />
+          <Route path="test" element={<PageBoundary><RoutingTestPage /></PageBoundary>} />
+          <Route path="usage" element={<PageBoundary><UsagePage /></PageBoundary>} />
+          <Route path="audit" element={<PageBoundary><AuditPage /></PageBoundary>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>

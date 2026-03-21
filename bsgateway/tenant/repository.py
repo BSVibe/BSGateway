@@ -165,6 +165,9 @@ class TenantRepository:
         api_base: str | None = None,
         extra_params: dict | None = None,
     ) -> asyncpg.Record:
+        # Invalidate cache before returning to prevent stale reads
+        cache_k = cache_key_models(str(tenant_id)) if self._cache else None
+
         async with self._pool.acquire() as conn:
             try:
                 row = await conn.fetchrow(
@@ -180,10 +183,8 @@ class TenantRepository:
             except asyncpg.UniqueViolationError as e:
                 raise DuplicateError(f"Model '{model_name}' already exists for this tenant") from e
 
-        # Invalidate cache
-        if self._cache:
-            key = cache_key_models(str(tenant_id))
-            await self._cache.delete(key)
+        if self._cache and cache_k:
+            await self._cache.delete(cache_k)
 
         return row
 
@@ -246,10 +247,8 @@ class TenantRepository:
                 json.dumps(extra_params),
             )
 
-        # Invalidate cache
         if self._cache:
-            key = cache_key_models(str(tenant_id))
-            await self._cache.delete(key)
+            await self._cache.delete(cache_key_models(str(tenant_id)))
 
         return row
 
@@ -257,7 +256,5 @@ class TenantRepository:
         async with self._pool.acquire() as conn:
             await conn.execute(sql.query("delete_tenant_model"), model_id, tenant_id)
 
-        # Invalidate cache
         if self._cache:
-            key = cache_key_models(str(tenant_id))
-            await self._cache.delete(key)
+            await self._cache.delete(cache_key_models(str(tenant_id)))

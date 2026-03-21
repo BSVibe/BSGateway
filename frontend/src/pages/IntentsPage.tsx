@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApi } from '../hooks/useApi';
+import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { intentsApi } from '../api/intents';
@@ -22,8 +23,7 @@ export function IntentsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { deleting, deleteError, handleDelete: onDelete, setDeleteError } = useDeleteConfirm();
 
   const handleCreate = async () => {
     setSubmitting(true);
@@ -40,22 +40,6 @@ export function IntentsPage() {
       setCreateError(err instanceof Error ? err.message : 'Failed to create intent');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (intent: Intent) => {
-    if (deleting === intent.id) {
-      setDeleteError(null);
-      try {
-        await intentsApi.delete(tenantId, intent.id);
-        setDeleting(null);
-        refetch();
-      } catch (err) {
-        setDeleteError(err instanceof Error ? err.message : 'Delete failed');
-      }
-    } else {
-      setDeleting(intent.id);
-      setDeleteError(null);
     }
   };
 
@@ -178,8 +162,7 @@ export function IntentsPage() {
                   <p className="text-xs text-gray-400 mt-1">threshold: {intent.threshold}</p>
                 </div>
                 <button
-                  onClick={() => handleDelete(intent)}
-                  onBlur={() => setDeleting(null)}
+                  onClick={() => onDelete(intent.id, () => intentsApi.delete(tenantId, intent.id), refetch)}
                   className={`text-sm ${
                     deleting === intent.id
                       ? 'text-white bg-red-600 px-3 py-1 rounded'

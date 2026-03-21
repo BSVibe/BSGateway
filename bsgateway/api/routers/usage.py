@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
 import structlog
@@ -45,12 +45,12 @@ def _parse_period(
     from_date: date | None,
     to_date: date | None,
 ) -> tuple[datetime, datetime]:
-    """Convert period + optional dates into a (start, end) datetime range."""
-    today = date.today()
+    """Convert period + optional dates into a (start, end) UTC datetime range."""
+    today = datetime.now(UTC).date()
     if from_date and to_date:
-        return datetime.combine(from_date, datetime.min.time()), datetime.combine(
-            to_date + timedelta(days=1),
-            datetime.min.time(),
+        return (
+            datetime.combine(from_date, datetime.min.time(), tzinfo=UTC),
+            datetime.combine(to_date + timedelta(days=1), datetime.min.time(), tzinfo=UTC),
         )
     if period == "day":
         start = today
@@ -60,9 +60,9 @@ def _parse_period(
         start = today - timedelta(days=30)
     else:
         start = today
-    return datetime.combine(start, datetime.min.time()), datetime.combine(
-        today + timedelta(days=1),
-        datetime.min.time(),
+    return (
+        datetime.combine(start, datetime.min.time(), tzinfo=UTC),
+        datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=UTC),
     )
 
 

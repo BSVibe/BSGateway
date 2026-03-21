@@ -43,10 +43,11 @@ class AuditService:
                 resource_id=resource_id,
             )
         except Exception:
-            logger.error(
+            logger.warning(
                 "audit_record_failed",
                 action=action,
                 resource_type=resource_type,
                 resource_id=resource_id,
+                tenant_id=str(tenant_id),
                 exc_info=True,
             )

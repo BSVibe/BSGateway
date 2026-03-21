@@ -1,4 +1,4 @@
-const BASE_URL = '/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 // Session storage keys — single source of truth
 export const SESSION_KEYS = {
@@ -15,6 +15,7 @@ export function clearSession() {
 
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
+let isLoggingOut = false;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
@@ -38,6 +39,8 @@ class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -51,21 +54,32 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const message = body?.error?.message || body?.detail || response.statusText;
 
     // Auto-logout on 401 — token expired or revoked
-    if (response.status === 401 && authToken) {
+    if (response.status === 401 && authToken && !isLoggingOut) {
+      isLoggingOut = true;
       authToken = null;
       clearSession();
       onUnauthorized?.();
-      onUnauthorized = null; // prevent duplicate calls from concurrent requests
+      // Reset after a tick to allow any remaining concurrent requests to see the flag
+      setTimeout(() => { isLoggingOut = false; }, 0);
     }
 
     throw new ApiError(response.status, message);

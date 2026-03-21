@@ -209,6 +209,10 @@ class TestAuditAPI:
             "bsgateway.audit.repository.AuditRepository.list_by_tenant",
             new_callable=AsyncMock,
             return_value=audit_rows,
+        ), patch(
+            "bsgateway.audit.repository.AuditRepository.count_by_tenant",
+            new_callable=AsyncMock,
+            return_value=2,
         ):
             resp = client.get(
                 f"/api/v1/tenants/{TENANT_ID}/audit",
@@ -217,17 +221,22 @@ class TestAuditAPI:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) == 2
-        assert data[0]["action"] == "rule.created"
-        assert data[0]["details"] == {"name": "test-rule"}
-        assert data[1]["actor"] == "bsg_test"
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+        assert data["items"][0]["action"] == "rule.created"
+        assert data["items"][0]["details"] == {"name": "test-rule"}
+        assert data["items"][1]["actor"] == "bsg_test"
 
     def test_audit_pagination(self, client, mock_pool, admin_headers):
         with patch(
             "bsgateway.audit.repository.AuditRepository.list_by_tenant",
             new_callable=AsyncMock,
             return_value=[],
-        ) as mock_list:
+        ) as mock_list, patch(
+            "bsgateway.audit.repository.AuditRepository.count_by_tenant",
+            new_callable=AsyncMock,
+            return_value=0,
+        ):
             resp = client.get(
                 f"/api/v1/tenants/{TENANT_ID}/audit?limit=10&offset=20",
                 headers=admin_headers,

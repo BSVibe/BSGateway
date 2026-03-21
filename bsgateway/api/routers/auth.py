@@ -18,8 +18,9 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Simple in-memory rate limiter for auth endpoint (per IP, 10 req/min).
-# Note: This is a single-process, in-memory sliding window.
-# In multi-process / multi-instance deployments, use Redis-backed rate limiting instead.
+# WARNING: This is a single-process, in-memory sliding window.
+# It does NOT work with multiple uvicorn workers (--workers > 1) or multi-instance
+# deployments. In those cases, use Redis-backed rate limiting instead.
 # The check-then-append pattern is safe in async single-threaded context (no preemption
 # between the len() check and append within the same coroutine).
 _AUTH_RATE_LIMIT = 10

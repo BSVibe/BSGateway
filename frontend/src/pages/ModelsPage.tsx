@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { tenantsApi } from '../api/tenants';
 import { SESSION_KEYS } from '../api/client';
 import { useApi } from '../hooks/useApi';
+import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { TenantModel, TenantModelCreate } from '../types/api';
@@ -35,24 +36,7 @@ export function ModelsPage() {
     }
   };
 
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const handleDelete = async (model: TenantModel) => {
-    if (deleting === model.id) {
-      setDeleteError(null);
-      try {
-        await tenantsApi.deleteModel(tenantId, model.id);
-        setDeleting(null);
-        refetch();
-      } catch (err) {
-        setDeleteError(err instanceof Error ? err.message : 'Delete failed');
-      }
-    } else {
-      setDeleting(model.id);
-      setDeleteError(null);
-    }
-  };
+  const { deleting, deleteError, handleDelete: onDelete, setDeleteError } = useDeleteConfirm();
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorBanner message={error} onRetry={refetch} />;
@@ -156,8 +140,7 @@ export function ModelsPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => handleDelete(model)}
-                  onBlur={() => setDeleting(null)}
+                  onClick={() => onDelete(model.id, () => tenantsApi.deleteModel(tenantId, model.id), refetch)}
                   className={`text-sm ${
                     deleting === model.id
                       ? 'text-white bg-red-600 px-3 py-1 rounded'

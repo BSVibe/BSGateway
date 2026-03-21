@@ -5,9 +5,9 @@ export default defineConfig({
   plugins: [react()],
   base: '/dashboard/',
   server: {
-    allowedHosts: (process.env.VITE_ALLOWED_HOSTS || 'bsserver')
-      .split(',')
-      .map((h) => h.trim()),
+    allowedHosts: process.env.VITE_ALLOWED_HOSTS
+      ? process.env.VITE_ALLOWED_HOSTS.split(',').map((h) => h.trim())
+      : true,
     proxy: {
       '/api': 'http://localhost:8000',
     },

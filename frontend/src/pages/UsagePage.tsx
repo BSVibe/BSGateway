@@ -76,7 +76,7 @@ export function UsagePage() {
         </div>
         <select
           value={period}
-          onChange={(e) => setPeriod(e.target.value as any)}
+          onChange={(e) => setPeriod(e.target.value as 'day' | 'week' | 'month')}
           className="border rounded-lg px-3 py-2 text-sm"
         >
           <option value="day">Today</option>
