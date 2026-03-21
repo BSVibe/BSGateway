@@ -1,52 +1,41 @@
-import { useState } from 'react';
 import { useApi } from '../hooks/useApi';
+import { useForm } from '../hooks/useForm';
 import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { intentsApi } from '../api/intents';
-import { SESSION_KEYS } from '../api/client';
-import type { Intent } from '../types/api';
+import { useAuth } from '../hooks/useAuth';
+
+
+interface IntentFormData {
+  name: string;
+  description: string;
+  examples: string[];
+  target_model: string;
+}
+
+const INITIAL_INTENT: IntentFormData = { name: '', description: '', examples: [''], target_model: '' };
 
 export function IntentsPage() {
-  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
+  const { tenantId } = useAuth();
+  const tid = tenantId || '';
   const { data: intents, loading, error, refetch } = useApi(
-    () => intentsApi.list(tenantId).catch(() => []),
-    [tenantId],
+    () => intentsApi.list(tid).catch(() => []),
+    [tid],
   );
 
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    examples: [''],
-    target_model: '',
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const { deleting, deleteError, handleDelete: onDelete, setDeleteError } = useDeleteConfirm();
-
-  const handleCreate = async () => {
-    setSubmitting(true);
-    setCreateError(null);
-    try {
-      if (!formData.name.trim()) {
-        setCreateError('Name is required');
-        setSubmitting(false);
-        return;
-      }
-      await intentsApi.create(tenantId, {
-        ...formData,
-        examples: formData.examples.filter(e => e.trim()),
-      });
-      setShowForm(false);
-      setFormData({ name: '', description: '', examples: [''], target_model: '' });
+  const {
+    formData, setFormData, showForm, setShowForm,
+    submitting, createError, setCreateError, handleCreate,
+  } = useForm<IntentFormData>({
+    initialValues: INITIAL_INTENT,
+    validate: (v) => !v.name.trim() ? 'Name is required' : null,
+    onSubmit: async (v) => {
+      await intentsApi.create(tid, { ...v, examples: v.examples.filter(e => e.trim()) });
       refetch();
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create intent');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    },
+  });
+  const { deleting, deleteError, handleDelete: onDelete, setDeleteError } = useDeleteConfirm();
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorBanner message={error} onRetry={refetch} />;
@@ -139,7 +128,7 @@ export function IntentsPage() {
           </div>
           <button
             onClick={handleCreate}
-            disabled={submitting || !formData.name || formData.examples.every(e => !e.trim())}
+            disabled={submitting || !formData.name.trim() || formData.examples.every(e => !e.trim())}
             className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
           >
             {submitting ? 'Creating...' : 'Create Intent'}
@@ -167,7 +156,7 @@ export function IntentsPage() {
                   <p className="text-xs text-gray-400 mt-1">threshold: {intent.threshold}</p>
                 </div>
                 <button
-                  onClick={() => onDelete(intent.id, () => intentsApi.delete(tenantId, intent.id), refetch)}
+                  onClick={() => onDelete(intent.id, () => intentsApi.delete(tid, intent.id), refetch)}
                   className={`text-sm ${
                     deleting === intent.id
                       ? 'text-white bg-red-600 px-3 py-1 rounded'

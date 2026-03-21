@@ -7,7 +7,15 @@ from uuid import UUID
 import asyncpg
 import structlog
 
-from bsgateway.core.cache import CACHE_TTL_MODELS, CacheManager, cache_key_models
+from bsgateway.core.cache import (
+    CACHE_TTL_API_KEYS,
+    CACHE_TTL_MODELS,
+    CACHE_TTL_TENANTS,
+    CacheManager,
+    cache_key_api_keys,
+    cache_key_models,
+    cache_key_tenants,
+)
 from bsgateway.core.exceptions import DuplicateError
 
 logger = structlog.get_logger(__name__)
@@ -73,7 +81,7 @@ class TenantRepository:
     ) -> asyncpg.Record:
         async with self._pool.acquire() as conn:
             try:
-                return await conn.fetchrow(
+                row = await conn.fetchrow(
                     sql.query("insert_tenant"),
                     name,
                     slug,
@@ -85,6 +93,11 @@ class TenantRepository:
                     f"Tenant with this name or slug already exists: {detail}"
                 ) from e
 
+        if self._cache:
+            await self._cache.delete(cache_key_tenants())
+
+        return row
+
     async def get_tenant(self, tenant_id: UUID) -> asyncpg.Record | None:
         async with self._pool.acquire() as conn:
             return await conn.fetchrow(sql.query("get_tenant_by_id"), tenant_id)
@@ -94,8 +107,20 @@ class TenantRepository:
             return await conn.fetchrow(sql.query("get_tenant_by_slug"), slug)
 
     async def list_tenants(self, limit: int = 50, offset: int = 0) -> list[asyncpg.Record]:
+        if self._cache:
+            key = cache_key_tenants()
+            cached = await self._cache.get(key)
+            if cached is not None:
+                return [dict(row) for row in cached]
+
         async with self._pool.acquire() as conn:
-            return await conn.fetch(sql.query("list_tenants"), limit, offset)
+            rows = await conn.fetch(sql.query("list_tenants"), limit, offset)
+
+        if self._cache and rows:
+            key = cache_key_tenants()
+            await self._cache.set(key, [dict(row) for row in rows], CACHE_TTL_TENANTS)
+
+        return rows
 
     async def update_tenant(
         self,
@@ -105,7 +130,7 @@ class TenantRepository:
         settings: dict,
     ) -> asyncpg.Record | None:
         async with self._pool.acquire() as conn:
-            return await conn.fetchrow(
+            row = await conn.fetchrow(
                 sql.query("update_tenant"),
                 tenant_id,
                 name,
@@ -113,9 +138,17 @@ class TenantRepository:
                 json.dumps(settings),
             )
 
+        if self._cache:
+            await self._cache.delete(cache_key_tenants())
+
+        return row
+
     async def deactivate_tenant(self, tenant_id: UUID) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(sql.query("deactivate_tenant"), tenant_id)
+
+        if self._cache:
+            await self._cache.delete(cache_key_tenants())
 
     # -- API Keys --
 
@@ -128,7 +161,7 @@ class TenantRepository:
         scopes: list[str] | None = None,
     ) -> asyncpg.Record:
         async with self._pool.acquire() as conn:
-            return await conn.fetchrow(
+            row = await conn.fetchrow(
                 sql.query("insert_api_key"),
                 tenant_id,
                 key_hash,
@@ -137,17 +170,37 @@ class TenantRepository:
                 scopes or [],
             )
 
+        if self._cache:
+            await self._cache.delete(cache_key_api_keys(str(tenant_id)))
+
+        return row
+
     async def get_api_key_by_hash(self, key_hash: str) -> asyncpg.Record | None:
         async with self._pool.acquire() as conn:
             return await conn.fetchrow(sql.query("get_api_key_by_hash"), key_hash)
 
     async def list_api_keys(self, tenant_id: UUID) -> list[asyncpg.Record]:
+        if self._cache:
+            key = cache_key_api_keys(str(tenant_id))
+            cached = await self._cache.get(key)
+            if cached is not None:
+                return [dict(row) for row in cached]
+
         async with self._pool.acquire() as conn:
-            return await conn.fetch(sql.query("list_api_keys"), tenant_id)
+            rows = await conn.fetch(sql.query("list_api_keys"), tenant_id)
+
+        if self._cache and rows:
+            key = cache_key_api_keys(str(tenant_id))
+            await self._cache.set(key, [dict(row) for row in rows], CACHE_TTL_API_KEYS)
+
+        return rows
 
     async def revoke_api_key(self, key_id: UUID, tenant_id: UUID) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(sql.query("revoke_api_key"), key_id, tenant_id)
+
+        if self._cache:
+            await self._cache.delete(cache_key_api_keys(str(tenant_id)))
 
     async def touch_api_key(self, key_hash: str) -> None:
         async with self._pool.acquire() as conn:

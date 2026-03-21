@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime
+from datetime import date
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -13,28 +13,12 @@ from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
 from bsgateway.core.security import hash_api_key
-from bsgateway.tests.conftest import make_mock_pool
+from bsgateway.tests.conftest import make_api_key_row, make_mock_pool
 
 SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 TENANT_ID = uuid4()
 TENANT_KEY = "bsg_test-tenant-usage-key"
-
-
-def _make_api_key_row(tenant_id=None, scopes=None):
-    return {
-        "id": uuid4(),
-        "tenant_id": tenant_id or TENANT_ID,
-        "key_hash": hash_api_key(TENANT_KEY),
-        "key_prefix": "bsg_test",
-        "name": "test-key",
-        "scopes": scopes or ["admin"],
-        "is_active": True,
-        "expires_at": None,
-        "last_used_at": None,
-        "created_at": datetime.now(UTC),
-        "tenant_is_active": True,
-    }
 
 
 @pytest.fixture
@@ -72,7 +56,11 @@ def _patch_auth(tenant_id=None, scopes=None):
     return patch(
         "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
         new_callable=AsyncMock,
-        return_value=_make_api_key_row(tenant_id, scopes),
+        return_value=make_api_key_row(
+            tenant_id=tenant_id or TENANT_ID,
+            scopes=scopes or ["admin"],
+            key_hash=hash_api_key(TENANT_KEY),
+        ),
     )
 
 

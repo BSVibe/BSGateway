@@ -499,9 +499,7 @@ class TestCrossTenantAccess:
         """A tenant with admin scope still cannot create keys for other tenants."""
         own_tid = uuid4()
         other_tid = uuid4()
-        auth_patch, touch_patch = self._cross_tenant_patches(
-            own_tid, scopes=["admin"]
-        )
+        auth_patch, touch_patch = self._cross_tenant_patches(own_tid, scopes=["admin"])
         with auth_patch, touch_patch:
             resp = client.post(
                 f"/api/v1/tenants/{other_tid}/keys",
@@ -514,9 +512,7 @@ class TestCrossTenantAccess:
         """A tenant with admin scope still cannot create models for other tenants."""
         own_tid = uuid4()
         other_tid = uuid4()
-        auth_patch, touch_patch = self._cross_tenant_patches(
-            own_tid, scopes=["admin"]
-        )
+        auth_patch, touch_patch = self._cross_tenant_patches(own_tid, scopes=["admin"])
         with auth_patch, touch_patch:
             resp = client.post(
                 f"/api/v1/tenants/{other_tid}/models",

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { rulesApi } from '../api/rules';
 import { tenantsApi } from '../api/tenants';
-import { api, SESSION_KEYS } from '../api/client';
+import { api } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { UsageResponse } from '../types/api';
@@ -19,7 +20,8 @@ interface UsageData {
 }
 
 export function DashboardPage() {
-  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
+  const { tenantId } = useAuth();
+  const tid = tenantId || '';
   const [stats, setStats] = useState<Stat[]>([]);
   const [usageData, setUsageData] = useState<UsageData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,9 +36,9 @@ export function DashboardPage() {
     setError(null);
     try {
       const [rules, models, usage] = await Promise.all([
-        rulesApi.list(tenantId).catch(() => []),
-        tenantsApi.listModels(tenantId).catch(() => []),
-        api.get<UsageResponse>(`/tenants/${tenantId}/usage?period=week`).catch(() => null),
+        rulesApi.list(tid).catch(() => []),
+        tenantsApi.listModels(tid).catch(() => []),
+        api.get<UsageResponse>(`/tenants/${tid}/usage?period=week`).catch(() => null),
       ]);
 
       const ruleCount = Array.isArray(rules) ? rules.length : 0;

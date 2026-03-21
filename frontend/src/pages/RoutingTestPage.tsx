@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { tenantsApi } from '../api/tenants';
-import { SESSION_KEYS } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import { rulesApi } from '../api/rules';
 import type { TenantModel } from '../types/api';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -25,7 +25,8 @@ interface TestResult {
 }
 
 export function RoutingTestPage() {
-  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
+  const { tenantId } = useAuth();
+  const tid = tenantId || '';
   const [models, setModels] = useState<TenantModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [selectedModel, setSelectedModel] = useState('');
@@ -40,7 +41,7 @@ export function RoutingTestPage() {
 
   const loadModelsAndRules = async () => {
     try {
-      const m = await tenantsApi.listModels(tenantId);
+      const m = await tenantsApi.listModels(tid);
       setModels(m || []);
       if (m && m.length > 0) {
         setSelectedModel(m[0].model_name);
@@ -61,7 +62,7 @@ export function RoutingTestPage() {
     setTesting(true);
     setError(null);
     try {
-      const data = await rulesApi.test(tenantId, {
+      const data = await rulesApi.test(tid, {
         model: selectedModel,
         messages: messages.filter(m => m.content.trim()),
       });

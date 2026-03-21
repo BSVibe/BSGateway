@@ -152,8 +152,20 @@ def cache_key_models(tenant_id: str) -> str:
     return f"cache:models:{tenant_id}"
 
 
+def cache_key_tenants() -> str:
+    """Cache key for tenants list."""
+    return "tenants:list"
+
+
+def cache_key_api_keys(tenant_id: str) -> str:
+    """Cache key for tenant API keys."""
+    return f"tenant:{tenant_id}:api_keys"
+
+
 # Cache TTLs
 CACHE_TTL_RULES = timedelta(minutes=15)
 CACHE_TTL_MODELS = timedelta(minutes=15)
 CACHE_TTL_USAGE = timedelta(minutes=5)
 CACHE_TTL_TENANT_CONFIG = timedelta(minutes=10)
+CACHE_TTL_TENANTS = timedelta(seconds=300)
+CACHE_TTL_API_KEYS = timedelta(seconds=120)

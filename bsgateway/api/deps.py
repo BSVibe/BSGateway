@@ -124,9 +124,7 @@ async def get_auth_context(request: Request) -> AuthContext:
         if not hasattr(request.app.state, "background_tasks"):
             request.app.state.background_tasks = set()
         bg_tasks: set = request.app.state.background_tasks
-        task = asyncio.create_task(
-            asyncio.wait_for(repo.touch_api_key(key_hash), timeout=10.0)
-        )
+        task = asyncio.create_task(asyncio.wait_for(repo.touch_api_key(key_hash), timeout=10.0))
         bg_tasks.add(task)
         task.add_done_callback(bg_tasks.discard)
 

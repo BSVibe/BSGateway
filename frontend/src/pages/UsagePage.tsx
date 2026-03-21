@@ -3,7 +3,8 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { api, SESSION_KEYS } from '../api/client';
+import { api } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { UsageResponse } from '../types/api';
@@ -11,7 +12,8 @@ import type { UsageResponse } from '../types/api';
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
 export function UsagePage() {
-  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
+  const { tenantId } = useAuth();
+  const tid = tenantId || '';
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
   const [data, setData] = useState<UsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ export function UsagePage() {
     setError(null);
     try {
       const res = await api.get<UsageResponse>(
-        `/tenants/${tenantId}/usage?period=${period}`
+        `/tenants/${tid}/usage?period=${period}`
       );
       setData(res);
     } catch (err) {

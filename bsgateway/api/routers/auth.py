@@ -15,6 +15,10 @@ from bsgateway.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
 
+_REDIS_AUTH_RL_PREFIX = "auth_rl:"
+_REDIS_AUTH_RL_WINDOW = 60  # seconds
+_REDIS_AUTH_RL_LIMIT = 10
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ⚠ Single-process in-memory rate limiter for auth endpoint (per IP, 10 req/min).
@@ -58,6 +62,22 @@ def _check_auth_rate_limit(client_ip: str) -> None:
             del _auth_attempts[ip]
 
 
+async def _check_auth_rate_limit_redis(client_ip: str, redis_client: object) -> None:
+    """Redis-backed rate limit check: INCR + EXPIRE (sliding window, 10 req/60s).
+
+    Raises HTTPException(429) if limit exceeded.
+    """
+    key = f"{_REDIS_AUTH_RL_PREFIX}{client_ip}"
+    current = await redis_client.incr(key)  # type: ignore[union-attr]
+    if current == 1:
+        await redis_client.expire(key, _REDIS_AUTH_RL_WINDOW)  # type: ignore[union-attr]
+    if current > _REDIS_AUTH_RL_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts. Try again later.",
+        )
+
+
 class TokenRequest(BaseModel):
     """Exchange an API key for a JWT."""
 
@@ -87,7 +107,17 @@ async def create_token(body: TokenRequest, request: Request) -> TokenResponse:
     Returns a JWT token along with tenant metadata for the dashboard.
     """
     client_ip = request.client.host if request.client else "unknown"
-    _check_auth_rate_limit(client_ip)
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client is not None:
+        try:
+            await _check_auth_rate_limit_redis(client_ip, redis_client)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.warning("redis_auth_rate_limit_failed", exc_info=True)
+            _check_auth_rate_limit(client_ip)
+    else:
+        _check_auth_rate_limit(client_ip)
 
     pool = request.app.state.db_pool
     jwt_secret = request.app.state.jwt_secret

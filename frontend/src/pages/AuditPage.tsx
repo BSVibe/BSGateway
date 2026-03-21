@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, SESSION_KEYS } from '../api/client';
+import { api } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { AuditLog } from '../types/api';
@@ -10,7 +11,8 @@ interface AuditLogListResponse {
 }
 
 export function AuditPage() {
-  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
+  const { tenantId } = useAuth();
+  const tid = tenantId || '';
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ export function AuditPage() {
     setError(null);
     try {
       const res = await api.get<AuditLogListResponse>(
-        `/tenants/${tenantId}/audit?limit=${limit}&offset=${offset}`
+        `/tenants/${tid}/audit?limit=${limit}&offset=${offset}`
       );
       setLogs(res.items);
       setTotal(res.total);

@@ -123,23 +123,23 @@ export const MOCK_USAGE = {
   total_tokens: 523800,
   success_rate: 0.986,
   by_model: {
-    'gpt-4o': 520,
-    'claude-sonnet': 430,
-    'gpt-4o-mini': 297,
+    'gpt-4o': { requests: 520, tokens: 218400 },
+    'claude-sonnet': { requests: 430, tokens: 180600 },
+    'gpt-4o-mini': { requests: 297, tokens: 124800 },
   },
   by_rule: {
     'High-priority rule': 430,
     'Default fallback': 817,
   },
-  daily_breakdown: {
-    '2026-03-13': 145,
-    '2026-03-14': 189,
-    '2026-03-15': 210,
-    '2026-03-16': 178,
-    '2026-03-17': 195,
-    '2026-03-18': 162,
-    '2026-03-19': 168,
-  },
+  daily_breakdown: [
+    { date: '2026-03-13', requests: 145, tokens: 60900 },
+    { date: '2026-03-14', requests: 189, tokens: 79380 },
+    { date: '2026-03-15', requests: 210, tokens: 88200 },
+    { date: '2026-03-16', requests: 178, tokens: 74760 },
+    { date: '2026-03-17', requests: 195, tokens: 81900 },
+    { date: '2026-03-18', requests: 162, tokens: 68040 },
+    { date: '2026-03-19', requests: 168, tokens: 70560 },
+  ],
 };
 
 export const MOCK_AUDIT_LOGS = [
@@ -176,11 +176,14 @@ export const MOCK_AUDIT_LOGS = [
 ];
 
 export const MOCK_TEST_RESULT = {
-  selected_model: 'claude-sonnet',
-  matched_rule: 'High-priority rule',
-  latency_ms: 4.2,
-  conditions_matched: {
-    'keyword:content:contains:urgent': true,
+  matched_rule: { id: 'r-001', name: 'High-priority rule', priority: 1 },
+  target_model: 'claude-sonnet',
+  evaluation_trace: [
+    { rule: 'High-priority rule', matched: true, reason: 'keyword condition met' },
+  ],
+  context: {
+    token_count: 15,
+    message_count: 1,
   },
 };
 
@@ -277,6 +280,17 @@ export async function setupApiMocks(page: Page) {
         body: JSON.stringify(newModel),
       });
     }
+    if (path.match(/\/tenants\/[^/]+\/models\/[^/]+$/) && method === 'PATCH') {
+      const modelId = path.split('/').pop()!;
+      const body = route.request().postDataJSON();
+      models = models.map((m) => (m.id === modelId ? { ...m, ...body, updated_at: new Date().toISOString() } : m));
+      const updated = models.find((m) => m.id === modelId);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(updated),
+      });
+    }
     if (path.match(/\/tenants\/[^/]+\/models\/[^/]+$/) && method === 'DELETE') {
       const modelId = path.split('/').pop()!;
       models = models.filter((m) => m.id !== modelId);
@@ -310,6 +324,17 @@ export async function setupApiMocks(page: Page) {
         status: 201,
         contentType: 'application/json',
         body: JSON.stringify(newRule),
+      });
+    }
+    if (path.match(/\/tenants\/[^/]+\/rules\/[^/]+$/) && !path.includes('/test') && method === 'PATCH') {
+      const ruleId = path.split('/').pop()!;
+      const body = route.request().postDataJSON();
+      rules = rules.map((r) => (r.id === ruleId ? { ...r, ...body, updated_at: new Date().toISOString() } : r));
+      const updated = rules.find((r) => r.id === ruleId);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(updated),
       });
     }
     if (path.match(/\/tenants\/[^/]+\/rules\/test$/) && method === 'POST') {
@@ -356,6 +381,17 @@ export async function setupApiMocks(page: Page) {
         status: 201,
         contentType: 'application/json',
         body: JSON.stringify(newIntent),
+      });
+    }
+    if (path.match(/\/tenants\/[^/]+\/intents\/[^/]+$/) && method === 'PATCH') {
+      const intentId = path.split('/').pop()!;
+      const body = route.request().postDataJSON();
+      intents = intents.map((i) => (i.id === intentId ? { ...i, ...body, updated_at: new Date().toISOString() } : i));
+      const updated = intents.find((i) => i.id === intentId);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(updated),
       });
     }
     if (path.match(/\/tenants\/[^/]+\/intents\/[^/]+$/) && method === 'DELETE') {

@@ -16,6 +16,7 @@ services:
     environment:
       - GATEWAY_CONFIG_PATH=/app/gateway.yaml
       - PYTHONPATH=/app
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme-dev}
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,9 +55,7 @@ services:
     command: >
       sh -c '[ -n "$$REDIS_PASSWORD" ] && exec redis-server --requirepass "$$REDIS_PASSWORD" || exec redis-server'
     environment:
-      # WARNING: Empty default means Redis runs WITHOUT authentication.
-      # Set REDIS_PASSWORD in .env for production deployments.
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme-dev}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a $REDIS_PASSWORD --no-auth-warning} ping"]

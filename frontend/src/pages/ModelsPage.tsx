@@ -1,44 +1,30 @@
-import { useState } from 'react';
 import { tenantsApi } from '../api/tenants';
-import { SESSION_KEYS } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import { useApi } from '../hooks/useApi';
+import { useForm } from '../hooks/useForm';
 import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
-import type { TenantModel, TenantModelCreate } from '../types/api';
+import type { TenantModelCreate } from '../types/api';
+
+const INITIAL_MODEL: TenantModelCreate = { model_name: '', litellm_model: '' };
 
 export function ModelsPage() {
-  const tenantId = sessionStorage.getItem(SESSION_KEYS.tenantId) || '';
+  const { tenantId } = useAuth();
+  const tid = tenantId || '';
   const { data: models, loading, error, refetch } = useApi(
-    () => tenantsApi.listModels(tenantId),
-    [tenantId],
+    () => tenantsApi.listModels(tid),
+    [tid],
   );
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState<TenantModelCreate>({
-    model_name: '',
-    litellm_model: '',
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
 
-  const handleCreate = async () => {
-    if (!formData.model_name.trim() || !formData.litellm_model.trim()) {
-      setCreateError('Alias and model name are required');
-      return;
-    }
-    setSubmitting(true);
-    setCreateError(null);
-    try {
-      await tenantsApi.createModel(tenantId, formData);
-      setShowForm(false);
-      setFormData({ model_name: '', litellm_model: '' });
-      refetch();
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create model');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const {
+    formData, setFormData, showForm, setShowForm,
+    submitting, createError, setCreateError, handleCreate,
+  } = useForm<TenantModelCreate>({
+    initialValues: INITIAL_MODEL,
+    validate: (v) => (!v.model_name.trim() || !v.litellm_model.trim()) ? 'Alias and model name are required' : null,
+    onSubmit: async (v) => { await tenantsApi.createModel(tid, v); refetch(); },
+  });
 
   const { deleting, deleteError, handleDelete: onDelete, setDeleteError } = useDeleteConfirm();
 
@@ -111,7 +97,7 @@ export function ModelsPage() {
           </div>
           <button
             onClick={handleCreate}
-            disabled={submitting || !formData.model_name || !formData.litellm_model}
+            disabled={submitting || !formData.model_name.trim() || !formData.litellm_model.trim()}
             className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
           >
             {submitting ? 'Registering...' : 'Register Model'}
@@ -144,7 +130,7 @@ export function ModelsPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => onDelete(model.id, () => tenantsApi.deleteModel(tenantId, model.id), refetch)}
+                  onClick={() => onDelete(model.id, () => tenantsApi.deleteModel(tid, model.id), refetch)}
                   className={`text-sm ${
                     deleting === model.id
                       ? 'text-white bg-red-600 px-3 py-1 rounded'

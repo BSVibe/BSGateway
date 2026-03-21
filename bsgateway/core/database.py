@@ -33,7 +33,8 @@ async def close_pool() -> None:
 async def execute_schema(pool: asyncpg.Pool, schema_sql: str) -> None:
     """Execute a schema SQL string (multiple statements separated by semicolons)."""
     async with pool.acquire() as conn:
-        for statement in schema_sql.split(";"):
-            statement = statement.strip()
-            if statement:
-                await conn.execute(statement)
+        async with conn.transaction():
+            for statement in schema_sql.split(";"):
+                statement = statement.strip()
+                if statement:
+                    await conn.execute(statement)
