@@ -332,6 +332,18 @@ export async function setupApiMocks(page: Page) {
         body: JSON.stringify(updated),
       });
     }
+    if (path.match(/\/tenants\/[^/]+\/rules\/reorder$/) && method === 'POST') {
+      const body = route.request().postDataJSON();
+      if (Array.isArray(body?.rule_ids)) {
+        const ordered: typeof rules = [];
+        for (const id of body.rule_ids) {
+          const r = rules.find((r) => r.id === id);
+          if (r) ordered.push(r);
+        }
+        rules = ordered;
+      }
+      return route.fulfill({ status: 204 });
+    }
     if (path.match(/\/tenants\/[^/]+\/rules\/test$/) && method === 'POST') {
       return route.fulfill({
         status: 200,

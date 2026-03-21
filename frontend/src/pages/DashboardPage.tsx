@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { rulesApi } from '../api/rules';
 import { tenantsApi } from '../api/tenants';
-import { api } from '../api/client';
+import { usageApi } from '../api/usage';
 import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
-import type { UsageResponse } from '../types/api';
 
 interface Stat {
   label: string;
@@ -38,7 +37,7 @@ export function DashboardPage() {
       const [rules, models, usage] = await Promise.all([
         rulesApi.list(tid).catch(() => []),
         tenantsApi.listModels(tid).catch(() => []),
-        api.get<UsageResponse>(`/tenants/${tid}/usage?period=week`).catch(() => null),
+        usageApi.get(tid, 'week').catch(() => null),
       ]);
 
       const ruleCount = Array.isArray(rules) ? rules.length : 0;

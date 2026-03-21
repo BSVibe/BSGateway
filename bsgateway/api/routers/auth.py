@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request, status
@@ -13,23 +14,19 @@ from pydantic import BaseModel, Field
 from bsgateway.core.security import create_jwt, hash_api_key
 from bsgateway.tenant.repository import TenantRepository
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
 logger = structlog.get_logger(__name__)
 
-_REDIS_AUTH_RL_PREFIX = "auth_rl:"
-_REDIS_AUTH_RL_WINDOW = 60  # seconds
-_REDIS_AUTH_RL_LIMIT = 10
+_AUTH_RL_PREFIX = "auth_rl:"
+_AUTH_RL_WINDOW = 60  # seconds
+_AUTH_RL_LIMIT = 10
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# ⚠ Single-process in-memory rate limiter for auth endpoint (per IP, 10 req/min).
-#
-# LIMITATION: Does NOT work with multiple uvicorn workers (--workers > 1) or
-# multi-instance deployments. Each worker maintains its own counter, so the
-# effective limit becomes (N workers x 10 req/min). For production with
-# multiple workers, use Redis-backed rate limiting (see chat/ratelimit.py).
-#
-# The check-then-append pattern is safe in asyncio single-threaded context.
-_AUTH_RATE_LIMIT = 10
+# In-memory rate limiter fallback (single-process only).
+# With multiple workers, effective limit = N workers x _AUTH_RL_LIMIT/min.
 _AUTH_MAX_IPS = 10_000
 _auth_attempts: dict[str, list[float]] = defaultdict(list)
 _auth_call_count = 0
@@ -40,9 +37,9 @@ def _check_auth_rate_limit(client_ip: str) -> None:
     global _auth_call_count
     _auth_call_count += 1
     now = time.monotonic()
-    window = [t for t in _auth_attempts[client_ip] if now - t < 60]
+    window = [t for t in _auth_attempts[client_ip] if now - t < _AUTH_RL_WINDOW]
     _auth_attempts[client_ip] = window
-    if len(window) >= _AUTH_RATE_LIMIT:
+    if len(window) >= _AUTH_RL_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many authentication attempts. Try again later.",
@@ -62,16 +59,16 @@ def _check_auth_rate_limit(client_ip: str) -> None:
             del _auth_attempts[ip]
 
 
-async def _check_auth_rate_limit_redis(client_ip: str, redis_client: object) -> None:
-    """Redis-backed rate limit check: INCR + EXPIRE (sliding window, 10 req/60s).
+async def _check_auth_rate_limit_redis(client_ip: str, redis_client: Redis) -> None:
+    """Redis-backed rate limit check (fixed window).
 
     Raises HTTPException(429) if limit exceeded.
     """
-    key = f"{_REDIS_AUTH_RL_PREFIX}{client_ip}"
-    current = await redis_client.incr(key)  # type: ignore[union-attr]
+    key = f"{_AUTH_RL_PREFIX}{client_ip}"
+    current = await redis_client.incr(key)
     if current == 1:
-        await redis_client.expire(key, _REDIS_AUTH_RL_WINDOW)  # type: ignore[union-attr]
-    if current > _REDIS_AUTH_RL_LIMIT:
+        await redis_client.expire(key, _AUTH_RL_WINDOW)
+    if current > _AUTH_RL_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many authentication attempts. Try again later.",
@@ -114,7 +111,7 @@ async def create_token(body: TokenRequest, request: Request) -> TokenResponse:
         except HTTPException:
             raise
         except Exception:
-            logger.warning("redis_auth_rate_limit_failed", exc_info=True)
+            logger.error("redis_auth_rate_limit_failed", exc_info=True)
             _check_auth_rate_limit(client_ip)
     else:
         _check_auth_rate_limit(client_ip)

@@ -32,9 +32,8 @@ test.describe('Usage Analytics Page', () => {
     await expect(page.locator('text=Total Tokens')).toBeVisible();
     await expect(page.locator('text=523,800')).toBeVisible();
 
-    // Success Rate
-    await expect(page.locator('text=Success Rate')).toBeVisible();
-    await expect(page.locator('text=99%')).toBeVisible();
+    // Models Used
+    await expect(page.locator('text=Models Used')).toBeVisible();
   });
 
   test('shows daily requests chart', async ({ page }) => {

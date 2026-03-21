@@ -12,6 +12,10 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): UseA
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const fetcherRef = useRef(fetcher);
+
+  // Keep fetcherRef current without triggering re-renders
+  fetcherRef.current = fetcher;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -22,7 +26,7 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): UseA
     setLoading(true);
     setError(null);
     try {
-      const result = await fetcher();
+      const result = await fetcherRef.current();
       if (mountedRef.current) {
         setData(result);
       }

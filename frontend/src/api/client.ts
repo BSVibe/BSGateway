@@ -19,6 +19,9 @@ let isLoggingOut = false;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
+  if (token) {
+    isLoggingOut = false;
+  }
 }
 
 export function getAuthToken(): string | null {
@@ -72,21 +75,22 @@ async function request<T>(
     const body = await response.json().catch(() => ({}));
     const message = body?.error?.message || body?.detail || response.statusText;
 
-    // Auto-logout on 401 — token expired or revoked
+    // Auto-logout on 401 — token expired or revoked.
+    // The isLoggingOut flag prevents concurrent 401 responses from triggering
+    // multiple logout callbacks. It stays true permanently for this session
+    // since the user must re-authenticate (page reload resets module state).
     if (response.status === 401 && authToken && !isLoggingOut) {
       isLoggingOut = true;
       authToken = null;
       clearSession();
       onUnauthorized?.();
-      // Reset after a tick to allow any remaining concurrent requests to see the flag
-      setTimeout(() => { isLoggingOut = false; }, 0);
     }
 
     throw new ApiError(response.status, message);
   }
 
   if (response.status === 204) {
-    return undefined as T;
+    return undefined as unknown as T;
   }
 
   return response.json();

@@ -23,8 +23,7 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('text=Daily Requests')).toBeVisible();
     await expect(page.locator(`text=${MOCK_USAGE.total_requests}`)).toBeVisible();
 
-    await expect(page.locator('text=Success Rate')).toBeVisible();
-    await expect(page.locator('text=99%')).toBeVisible();
+    await expect(page.locator('text=Total Tokens')).toBeVisible();
   });
 
   test('shows usage trend chart', async ({ page }) => {

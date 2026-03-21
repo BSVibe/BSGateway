@@ -154,7 +154,6 @@ class TenantModelCreate(BaseModel):
 
 class TenantModelUpdate(BaseModel):
     model_name: str | None = Field(None, min_length=1, max_length=255)
-    provider: str | None = Field(None, min_length=1, max_length=100)
     litellm_model: str | None = Field(None, min_length=1, max_length=255)
     api_key: str | None = None
     api_base: str | None = None

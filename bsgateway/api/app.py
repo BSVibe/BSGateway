@@ -42,7 +42,7 @@ async def _init_redis() -> Redis | None:
         logger.info("redis_connected", host=settings.redis_host, port=settings.redis_port)
         return client
     except Exception:
-        logger.warning("redis_connection_failed", exc_info=True)
+        logger.error("redis_connection_failed", exc_info=True)
         return None
 
 
@@ -53,9 +53,12 @@ async def lifespan(app: FastAPI):
         logger.error("database_url_not_configured")
         raise RuntimeError("collector_database_url is required for the API server")
 
+    # Validate encryption key early — fail fast on misconfiguration
+    encryption_key = settings.encryption_key_bytes
+
     pool = await get_pool(settings.collector_database_url)
     app.state.db_pool = pool
-    app.state.encryption_key = settings.encryption_key_bytes
+    app.state.encryption_key = encryption_key
     app.state.superadmin_key_hash = (
         hash_api_key(settings.superadmin_key) if settings.superadmin_key else ""
     )
@@ -111,6 +114,7 @@ async def lifespan(app: FastAPI):
             timed_out=len(_pending),
         )
         for t in _pending:
+            logger.warning("cancelling_background_task", task=t.get_name())
             t.cancel()
 
     # Cleanup Redis

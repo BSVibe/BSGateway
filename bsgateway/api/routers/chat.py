@@ -4,9 +4,11 @@ import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
+import asyncpg
 import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 from bsgateway.api.deps import (
     AuthContext,
@@ -26,6 +28,13 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
+
+
+class ChatMessage(BaseModel):
+    """Validates individual chat message structure."""
+
+    role: str = Field(..., min_length=1, max_length=50)
+    content: str | list | None = None
 
 
 def _get_redis(request: Request) -> Redis | None:
@@ -56,8 +65,8 @@ def _error_response(
 async def _check_rate_limit(
     request: Request,
     auth: AuthContext,
-    pool: Any,
-    redis: Any,
+    pool: asyncpg.Pool,
+    redis: Redis | None,
 ) -> JSONResponse | None:
     """Check per-tenant rate limit. Returns 429 response or None if allowed."""
     if not redis:
@@ -132,6 +141,16 @@ async def chat_completions(
             "invalid_request_error",
             "invalid_messages",
         )
+
+    # Validate each message has required 'role' field
+    for i, msg in enumerate(body["messages"]):
+        if not isinstance(msg, dict) or "role" not in msg:
+            return _error_response(
+                400,
+                f"messages[{i}] must be an object with a 'role' field",
+                "invalid_request_error",
+                "invalid_messages",
+            )
 
     pool = get_pool(request)
     encryption_key = get_encryption_key(request)

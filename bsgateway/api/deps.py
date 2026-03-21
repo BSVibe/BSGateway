@@ -124,9 +124,18 @@ async def get_auth_context(request: Request) -> AuthContext:
         if not hasattr(request.app.state, "background_tasks"):
             request.app.state.background_tasks = set()
         bg_tasks: set = request.app.state.background_tasks
+
+        def _on_touch_done(t: asyncio.Task) -> None:
+            bg_tasks.discard(t)
+            if not t.cancelled():
+                exc = t.exception()
+                if exc:
+                    exc_tuple = (type(exc), exc, exc.__traceback__)
+                    logger.warning("touch_api_key_failed", error=str(exc), exc_info=exc_tuple)
+
         task = asyncio.create_task(asyncio.wait_for(repo.touch_api_key(key_hash), timeout=10.0))
         bg_tasks.add(task)
-        task.add_done_callback(bg_tasks.discard)
+        task.add_done_callback(_on_touch_done)
 
     logger.info(
         "auth_success",
