@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import structlog
@@ -154,7 +155,7 @@ async def chat_completions(
     # Streaming response
     if body.get("stream"):
 
-        async def event_stream():
+        async def event_stream() -> AsyncGenerator[str, None]:
             try:
                 async for chunk in response:
                     data = chunk.model_dump() if hasattr(chunk, "model_dump") else chunk

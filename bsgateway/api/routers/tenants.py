@@ -88,7 +88,7 @@ async def list_tenants(
 async def get_tenant(
     tenant_id: UUID,
     request: Request,
-    _auth: AuthContext = Depends(require_admin),
+    _auth: AuthContext = Depends(require_tenant_access),
 ) -> TenantResponse:
     svc = get_tenant_service(request)
     tenant = await svc.get_tenant(tenant_id)

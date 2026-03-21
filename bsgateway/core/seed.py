@@ -102,8 +102,9 @@ async def seed_dev_data(pool: asyncpg.Pool, encryption_key: bytes) -> None:
         api_key_prefix=key_prefix,
         models=[m[0] for m in models],
     )
-    logger.warning(
-        "seed_dev_api_key",
+    logger.info(
+        "seed_dev_api_key_created",
         hint="Save this key now — it will not be shown again",
-        api_key=dev_api_key,
+        api_key_prefix=key_prefix,
     )
+    print(f"\n  [SEED] Dev API key: {dev_api_key}\n")

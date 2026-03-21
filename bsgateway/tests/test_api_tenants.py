@@ -377,6 +377,79 @@ class TestCrossTenantAccess:
             assert "Admin scope required" in resp.json()["detail"]
 
 
+    def test_tenant_can_read_own_data(self, client: TestClient):
+        """A tenant with non-admin scopes can GET its own tenant record."""
+        tid = uuid4()
+        row = _make_tenant_row(tenant_id=tid)
+        with (
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
+                new_callable=AsyncMock,
+                return_value={
+                    "id": uuid4(),
+                    "tenant_id": tid,
+                    "key_hash": "fakehash",
+                    "key_prefix": "bsg_test1234",
+                    "name": "key",
+                    "scopes": ["chat"],  # no admin scope
+                    "is_active": True,
+                    "expires_at": None,
+                    "last_used_at": None,
+                    "created_at": datetime.now(UTC),
+                    "tenant_is_active": True,
+                },
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.touch_api_key",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_tenant",
+                new_callable=AsyncMock,
+                return_value=row,
+            ),
+        ):
+            resp = client.get(
+                f"/api/v1/tenants/{tid}",
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["id"] == str(tid)
+
+    def test_tenant_cannot_read_other_tenant(self, client: TestClient):
+        """A tenant cannot GET another tenant's record."""
+        own_tid = uuid4()
+        other_tid = uuid4()
+        with (
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
+                new_callable=AsyncMock,
+                return_value={
+                    "id": uuid4(),
+                    "tenant_id": own_tid,
+                    "key_hash": "fakehash",
+                    "key_prefix": "bsg_test1234",
+                    "name": "key",
+                    "scopes": ["chat"],
+                    "is_active": True,
+                    "expires_at": None,
+                    "last_used_at": None,
+                    "created_at": datetime.now(UTC),
+                    "tenant_is_active": True,
+                },
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.touch_api_key",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = client.get(
+                f"/api/v1/tenants/{other_tid}",
+                headers={"Authorization": "Bearer tenant-key"},
+            )
+            assert resp.status_code == 403
+
+
 class TestModelEndpoints:
     def test_create_model(self, client: TestClient, admin_headers: dict):
         tid = uuid4()

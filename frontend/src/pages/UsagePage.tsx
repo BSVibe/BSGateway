@@ -7,7 +7,7 @@ import { api } from '../api/client';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 
-const TENANT_ID = localStorage.getItem('bsg_tenant_id') || '';
+const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
 
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 

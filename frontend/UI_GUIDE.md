@@ -38,7 +38,7 @@ The BSGateway Dashboard is a multi-tenant LLM routing control panel built with R
 **Flow**:
 1. User enters API key (bsg_...)
 2. Calls `POST /api/v1/auth/token`
-3. Stores JWT + tenant metadata in localStorage
+3. Stores JWT + tenant metadata in sessionStorage
 4. Redirects to dashboard
 
 **Form Fields**:

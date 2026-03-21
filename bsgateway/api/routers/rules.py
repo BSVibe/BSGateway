@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -56,7 +57,7 @@ async def _validate_target_model(
         )
 
 
-def _parse_value(raw):
+def _parse_value(raw: Any) -> Any:
     """Parse JSONB value from DB record."""
     if isinstance(raw, str):
         try:

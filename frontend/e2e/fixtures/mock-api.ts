@@ -184,26 +184,26 @@ export const MOCK_TEST_RESULT = {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Inject auth state into localStorage before page load. */
+/** Inject auth state into sessionStorage before page load. */
 export async function setupAuth(page: Page) {
   await page.addInitScript(
     ({ t }) => {
-      localStorage.setItem('bsg_token', t.token);
-      localStorage.setItem('bsg_tenant_id', t.id);
-      localStorage.setItem('bsg_tenant_slug', t.slug);
-      localStorage.setItem('bsg_tenant_name', t.name);
+      sessionStorage.setItem('bsg_token', t.token);
+      sessionStorage.setItem('bsg_tenant_id', t.id);
+      sessionStorage.setItem('bsg_tenant_slug', t.slug);
+      sessionStorage.setItem('bsg_tenant_name', t.name);
     },
     { t: TENANT },
   );
 }
 
-/** Clear auth state from localStorage. */
+/** Clear auth state from sessionStorage. */
 export async function clearAuth(page: Page) {
   await page.addInitScript(() => {
-    localStorage.removeItem('bsg_token');
-    localStorage.removeItem('bsg_tenant_id');
-    localStorage.removeItem('bsg_tenant_slug');
-    localStorage.removeItem('bsg_tenant_name');
+    sessionStorage.removeItem('bsg_token');
+    sessionStorage.removeItem('bsg_tenant_id');
+    sessionStorage.removeItem('bsg_tenant_slug');
+    sessionStorage.removeItem('bsg_tenant_name');
   });
 }
 

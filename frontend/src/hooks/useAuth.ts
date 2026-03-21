@@ -10,8 +10,7 @@ interface AuthState {
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthState>(() => {
-    // Use sessionStorage for tenant metadata (non-secret, tab-scoped)
-    // JWT token is kept in memory only (via setAuthToken) — not persisted to storage
+    // Token + tenant metadata stored in sessionStorage (tab-scoped, cleared on tab close)
     const savedToken = sessionStorage.getItem('bsg_token');
     if (savedToken) setAuthToken(savedToken);
     return {

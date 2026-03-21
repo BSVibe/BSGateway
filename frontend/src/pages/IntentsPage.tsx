@@ -4,7 +4,7 @@ import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { intentsApi } from '../api/intents';
 
-const TENANT_ID = localStorage.getItem('bsg_tenant_id') || '';
+const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
 
 interface Intent {
   id: string;

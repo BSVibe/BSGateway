@@ -46,7 +46,7 @@ class CacheManager:
             # Purge corrupted entry so next read doesn't hit the same error
             await self.delete(key)
             return None
-        except Exception:
+        except (redis.RedisError, ConnectionError, TimeoutError, OSError):
             logger.warning("cache_get_failed", key=key, exc_info=True)
             return None
 
@@ -64,7 +64,7 @@ class CacheManager:
             else:
                 await self._redis.set(key, serialized)
             return True
-        except Exception:
+        except (redis.RedisError, ConnectionError, TimeoutError, OSError):
             logger.warning("cache_set_failed", key=key, exc_info=True)
             return False
 
@@ -75,7 +75,7 @@ class CacheManager:
             if keys:
                 await self._redis.delete(*keys)
             return True
-        except Exception:
+        except (redis.RedisError, ConnectionError, TimeoutError, OSError):
             logger.warning("cache_delete_failed", exc_info=True)
             return False
 
@@ -83,7 +83,7 @@ class CacheManager:
         """Check if key exists in cache."""
         try:
             return bool(await self._redis.exists(key))
-        except Exception:
+        except (redis.RedisError, ConnectionError, TimeoutError, OSError):
             return False
 
     async def get_or_fetch(
@@ -111,7 +111,7 @@ class CacheManager:
         """Increment integer value (for counters)."""
         try:
             return await self._redis.incrby(key, amount)
-        except Exception:
+        except (redis.RedisError, ConnectionError, TimeoutError, OSError):
             logger.warning("cache_increment_failed", key=key, exc_info=True)
             return 0
 

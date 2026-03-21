@@ -25,8 +25,8 @@ test.describe('Authentication Flow', () => {
     await expect(page.locator('h2')).toContainText('Dashboard', { timeout: 5000 });
     await expect(page.locator('text=Dev Team')).toBeVisible();
 
-    // Token stored in localStorage
-    const token = await page.evaluate(() => localStorage.getItem('bsg_token'));
+    // Token stored in sessionStorage
+    const token = await page.evaluate(() => sessionStorage.getItem('bsg_token'));
     expect(token).toBeTruthy();
     expect(token).toMatch(/^eyJ/);
   });
@@ -103,7 +103,7 @@ test.describe('Authentication Flow', () => {
     await expect(page.locator('input[placeholder="bsg_..."]')).toBeVisible();
 
     // Token should be cleared
-    const token = await page.evaluate(() => localStorage.getItem('bsg_token'));
+    const token = await page.evaluate(() => sessionStorage.getItem('bsg_token'));
     expect(token).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import { rulesApi } from '../api/rules';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 
-const TENANT_ID = localStorage.getItem('bsg_tenant_id') || '';
+const TENANT_ID = sessionStorage.getItem('bsg_tenant_id') || '';
 
 interface TestMessage {
   role: 'user' | 'assistant' | 'system';

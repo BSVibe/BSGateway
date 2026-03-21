@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections import defaultdict
 from datetime import UTC, datetime
 
 import structlog
@@ -15,11 +17,33 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Simple in-memory rate limiter for auth endpoint (per IP, 10 req/min)
+_AUTH_RATE_LIMIT = 10
+_auth_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_auth_rate_limit(client_ip: str) -> None:
+    """Raise 429 if the IP exceeds auth rate limit."""
+    now = time.monotonic()
+    window = [t for t in _auth_attempts[client_ip] if now - t < 60]
+    _auth_attempts[client_ip] = window
+    if len(window) >= _AUTH_RATE_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts. Try again later.",
+        )
+    window.append(now)
+
 
 class TokenRequest(BaseModel):
     """Exchange an API key for a JWT."""
 
-    api_key: str = Field(..., min_length=1, description="Tenant API key (bsg_...)")
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        pattern=r"^bsg_[a-zA-Z0-9_-]+$",
+        description="Tenant API key (bsg_...)",
+    )
 
 
 class TokenResponse(BaseModel):
@@ -39,6 +63,9 @@ async def create_token(body: TokenRequest, request: Request) -> TokenResponse:
     The API key identifies the tenant — no need to provide tenant ID or slug separately.
     Returns a JWT token along with tenant metadata for the dashboard.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    _check_auth_rate_limit(client_ip)
+
     pool = request.app.state.db_pool
     jwt_secret = request.app.state.jwt_secret
 

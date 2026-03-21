@@ -134,6 +134,11 @@ def create_app() -> FastAPI:
         cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
     else:
         cors_origins = [f"http://localhost:{settings.api_port}"]
+        logger.warning(
+            "cors_fallback_to_localhost",
+            origins=cors_origins,
+            hint="Set CORS_ALLOWED_ORIGINS for production",
+        )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
