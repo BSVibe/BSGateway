@@ -246,8 +246,11 @@ class ChatService:
     def _on_background_done(self, task: asyncio.Task) -> None:
         """Clean up background task and log any unhandled errors."""
         self._background_tasks.discard(task)
-        if not task.cancelled() and task.exception():
-            logger.warning("background_task_failed", exc_info=task.exception())
+        if not task.cancelled():
+            exc = task.exception()
+            if exc:
+                exc_tuple = (type(exc), exc, exc.__traceback__)
+                logger.warning("background_task_failed", exc_info=exc_tuple)
 
     async def _log_request(
         self,

@@ -61,6 +61,16 @@ def _make_key_row(
     return row
 
 
+@pytest.fixture(autouse=True)
+def _reset_auth_rate_limiter():
+    """Ensure auth rate limiter state is clean between tests."""
+    from bsgateway.api.routers import auth as auth_module
+
+    auth_module._auth_attempts.clear()
+    yield
+    auth_module._auth_attempts.clear()
+
+
 class TestAuthToken:
     """POST /api/v1/auth/token"""
 
@@ -135,10 +145,6 @@ class TestAuthToken:
 
     def test_rate_limit_blocks_after_threshold(self, client):
         """Auth endpoint rate limits at 10 req/min per IP."""
-        from bsgateway.api.routers import auth as auth_module
-
-        auth_module._auth_attempts.clear()
-
         with patch("bsgateway.api.routers.auth.TenantRepository") as mock_repo_cls:
             repo = mock_repo_cls.return_value
             repo.get_api_key_by_hash = AsyncMock(return_value=None)
@@ -150,7 +156,6 @@ class TestAuthToken:
 
         assert res.status_code == 429
         assert "Too many" in res.json()["detail"]
-        auth_module._auth_attempts.clear()
 
     def test_token_is_valid_jwt(self, client):
         row = _make_key_row()

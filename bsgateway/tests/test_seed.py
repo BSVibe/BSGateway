@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from bsgateway.core.seed import DEV_TENANT_SLUG, seed_dev_data
+from bsgateway.tests.conftest import MockAcquire, MockTransaction
 
 # Also patch generate_api_key for deterministic tests
 _FAKE_KEY = "bsg_test-seed-key-abc12345"
@@ -16,36 +17,13 @@ _FAKE_PREFIX = "bsg_test-se"
 ENCRYPTION_KEY = bytes.fromhex(os.urandom(32).hex())
 
 
-class _MockAcquire:
-    """Mock for asyncpg pool.acquire() that supports async with."""
-
-    def __init__(self, conn):
-        self._conn = conn
-
-    async def __aenter__(self):
-        return self._conn
-
-    async def __aexit__(self, *args):
-        pass
-
-
-class _MockTx:
-    """Mock for conn.transaction() that supports async with."""
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        pass
-
-
 class TestSeedDevData:
     """Tests for seed_dev_data()."""
 
     def _make_pool(self, conn: AsyncMock) -> AsyncMock:
         pool = AsyncMock()
-        pool.acquire = MagicMock(return_value=_MockAcquire(conn))
-        conn.transaction = MagicMock(return_value=_MockTx())
+        pool.acquire = MagicMock(return_value=MockAcquire(conn))
+        conn.transaction = MagicMock(return_value=MockTransaction())
         return pool
 
     @pytest.mark.asyncio

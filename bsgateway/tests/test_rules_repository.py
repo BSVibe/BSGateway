@@ -12,34 +12,7 @@ import pytest
 from bsgateway.core.cache import CACHE_TTL_RULES, cache_key_rules
 from bsgateway.core.exceptions import DuplicateError
 from bsgateway.rules.repository import RulesRepository
-
-# ---------------------------------------------------------------------------
-# Helpers — reliable async-context-manager mocks for asyncpg pool/transaction
-# ---------------------------------------------------------------------------
-
-
-class _MockAcquire:
-    """Mock for asyncpg pool.acquire() that supports ``async with``."""
-
-    def __init__(self, conn: AsyncMock) -> None:
-        self._conn = conn
-
-    async def __aenter__(self) -> AsyncMock:
-        return self._conn
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
-
-
-class _MockTx:
-    """Mock for conn.transaction() that supports ``async with``."""
-
-    async def __aenter__(self) -> _MockTx:
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
-
+from bsgateway.tests.conftest import MockAcquire, MockTransaction
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -49,14 +22,14 @@ class _MockTx:
 @pytest.fixture
 def mock_conn() -> AsyncMock:
     conn = AsyncMock()
-    conn.transaction = MagicMock(return_value=_MockTx())
+    conn.transaction = MagicMock(return_value=MockTransaction())
     return conn
 
 
 @pytest.fixture
 def mock_pool(mock_conn: AsyncMock) -> MagicMock:
     pool = MagicMock()
-    pool.acquire = MagicMock(return_value=_MockAcquire(mock_conn))
+    pool.acquire = MagicMock(return_value=MockAcquire(mock_conn))
     return pool
 
 

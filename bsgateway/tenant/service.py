@@ -151,7 +151,8 @@ class TenantService:
         if data.api_key and self._encryption_key:
             encrypted_key = encrypt_value(data.api_key, self._encryption_key)
         elif data.api_key:
-            raise ValueError("ENCRYPTION_KEY is required to store provider API keys")
+            logger.warning("encryption_key_missing", tenant_id=str(tenant_id))
+            raise ValueError("Unable to store API keys securely — encryption is not configured")
 
         provider = data.litellm_model.split("/")[0] if "/" in data.litellm_model else "unknown"
 
@@ -188,7 +189,8 @@ class TenantService:
         encrypted_key = existing["api_key_encrypted"]
         if data.api_key is not None:
             if not self._encryption_key:
-                raise ValueError("ENCRYPTION_KEY is required to store provider API keys")
+                logger.warning("encryption_key_missing", model_id=str(model_id))
+                raise ValueError("Unable to store API keys securely — encryption is not configured")
             encrypted_key = encrypt_value(data.api_key, self._encryption_key)
 
         existing_extra = safe_json_loads(existing["extra_params"])

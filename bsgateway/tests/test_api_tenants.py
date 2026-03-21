@@ -600,7 +600,9 @@ class TestModelErrorCases:
         with patch(
             "bsgateway.tenant.service.TenantService.create_model",
             new_callable=AsyncMock,
-            side_effect=ValueError("ENCRYPTION_KEY is required"),
+            side_effect=ValueError(
+                "Unable to store API keys securely — encryption is not configured"
+            ),
         ):
             resp = client.post(
                 f"/api/v1/tenants/{tid}/models",
@@ -612,7 +614,7 @@ class TestModelErrorCases:
                 headers=admin_headers,
             )
         assert resp.status_code == 400
-        assert "ENCRYPTION_KEY" in resp.json()["detail"]
+        assert "encryption" in resp.json()["detail"].lower()
 
     def test_update_model_not_found(self, client: TestClient, admin_headers: dict):
         """PATCH model returns 404 when update_model returns None."""
@@ -638,7 +640,9 @@ class TestModelErrorCases:
         with patch(
             "bsgateway.tenant.service.TenantService.update_model",
             new_callable=AsyncMock,
-            side_effect=ValueError("ENCRYPTION_KEY is required to store provider API keys"),
+            side_effect=ValueError(
+                "Unable to store API keys securely — encryption is not configured"
+            ),
         ):
             resp = client.patch(
                 f"/api/v1/tenants/{tid}/models/{mid}",
@@ -646,4 +650,4 @@ class TestModelErrorCases:
                 headers=admin_headers,
             )
         assert resp.status_code == 400
-        assert "ENCRYPTION_KEY" in resp.json()["detail"]
+        assert "encryption" in resp.json()["detail"].lower()

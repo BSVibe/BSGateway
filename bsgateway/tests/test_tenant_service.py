@@ -263,7 +263,7 @@ class TestTenantModels:
             litellm_model="openai/gpt-4o",
             api_key="sk-plaintext",
         )
-        with pytest.raises(ValueError, match="ENCRYPTION_KEY is required"):
+        with pytest.raises(ValueError, match="Unable to store API keys securely"):
             await svc_no_key.create_model(uuid4(), data)
 
     async def test_update_model_no_encryption_key_rejects(
@@ -278,7 +278,7 @@ class TestTenantModels:
         mock_repo.get_model.return_value = existing
 
         data = TenantModelUpdate(api_key="sk-new-plaintext")
-        with pytest.raises(ValueError, match="ENCRYPTION_KEY is required"):
+        with pytest.raises(ValueError, match="Unable to store API keys securely"):
             await svc_no_key.update_model(mid, tid, data)
 
     async def test_delete_model(self, service: TenantService, mock_repo: AsyncMock):

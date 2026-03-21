@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -112,15 +114,19 @@ async def get_auth_context(request: Request) -> AuthContext:
             detail="Access denied",
         )
 
-    # Touch last_used_at (true fire-and-forget — don't block the request)
-    import asyncio
-
-    try:
-        asyncio.get_running_loop().call_soon(
-            lambda: asyncio.create_task(repo.touch_api_key(key_hash))
-        )
-    except Exception:
-        logger.warning("touch_api_key_failed", exc_info=True)
+    # Touch last_used_at (throttled, fire-and-forget — at most once per 60s per key)
+    if not hasattr(request.app.state, "_touch_last"):
+        request.app.state._touch_last = {}
+    _touch_last: dict[str, float] = request.app.state._touch_last
+    now = time.monotonic()
+    if now - _touch_last.get(key_hash, 0) >= 60:
+        _touch_last[key_hash] = now
+        if not hasattr(request.app.state, "background_tasks"):
+            request.app.state.background_tasks = set()
+        bg_tasks: set = request.app.state.background_tasks
+        task = asyncio.create_task(repo.touch_api_key(key_hash))
+        bg_tasks.add(task)
+        task.add_done_callback(bg_tasks.discard)
 
     logger.info(
         "auth_success",

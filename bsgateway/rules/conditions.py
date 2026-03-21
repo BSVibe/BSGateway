@@ -5,6 +5,9 @@ from typing import Any
 
 from bsgateway.rules.models import EvaluationContext, RuleCondition
 
+# Pre-compiled ReDoS detection pattern (nested quantifiers)
+_REDOS_PATTERN = re.compile(r"\(.+[*+]\)[*+?]|\[.+[*+]\][*+?]")
+
 # Allowed fields for rule conditions — prevents access to internal/dunder attributes
 _ALLOWED_FIELDS: frozenset[str] = frozenset(
     {
@@ -54,7 +57,7 @@ def _evaluate_raw(condition: RuleCondition, ctx: EvaluationContext) -> bool:
         if len(pattern) > 500:
             return False
         # Reject patterns with nested quantifiers (ReDoS risk)
-        if re.search(r"\(.+[*+]\)[*+?]", pattern):
+        if _REDOS_PATTERN.search(pattern):
             return False
         try:
             return bool(re.search(pattern, str(field_value), re.IGNORECASE))

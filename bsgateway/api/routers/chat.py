@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Request
@@ -20,12 +20,15 @@ from bsgateway.chat.service import ChatError, ChatService
 from bsgateway.core.utils import safe_json_loads
 from bsgateway.tenant.repository import TenantRepository
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
 
 
-def _get_redis(request: Request) -> Any:
+def _get_redis(request: Request) -> Redis | None:
     """Extract optional Redis client from app state."""
     return getattr(request.app.state, "redis", None)
 
