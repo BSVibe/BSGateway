@@ -322,11 +322,12 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
+    { name = "bsvibe-auth", extra = ["fastapi"] },
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "litellm", extra = ["proxy"] },
     { name = "pydantic-settings" },
-    { name = "pyjwt" },
     { name = "pyyaml" },
     { name = "redis" },
     { name = "structlog" },
@@ -335,7 +336,6 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -345,12 +345,12 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "bsvibe-auth", extras = ["fastapi"], git = "https://github.com/blas1n/BSVibe-Auth.git?subdirectory=python" },
     { name = "cryptography", specifier = ">=42.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "litellm", extras = ["proxy"], specifier = ">=1.60.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
@@ -361,6 +361,21 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "bsvibe-auth"
+version = "0.1.0"
+source = { git = "https://github.com/blas1n/BSVibe-Auth.git?subdirectory=python#b4667c2703eafaf0f9a61c217cdda9f5eb679146" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
+]
+
+[package.optional-dependencies]
+fastapi = [
+    { name = "fastapi" },
+]
 
 [[package]]
 name = "certifi"

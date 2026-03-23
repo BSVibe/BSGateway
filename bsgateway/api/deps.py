@@ -1,27 +1,21 @@
 from __future__ import annotations
 
-import asyncio
-import hmac
-import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import asyncpg
-import jwt as pyjwt
 import structlog
 from fastapi import Depends, HTTPException, Request, status
 
 from bsgateway.core.cache import CacheManager
-from bsgateway.core.security import decode_jwt, hash_api_key
 
 if TYPE_CHECKING:
+    from bsvibe_auth import BSVibeUser
+
     from bsgateway.audit.service import AuditService
 
 logger = structlog.get_logger(__name__)
-
-SUPERADMIN_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 
 def get_pool(request: Request) -> asyncpg.Pool:
@@ -40,20 +34,25 @@ def get_cache(request: Request) -> CacheManager | None:
 
 
 @dataclass
-class AuthContext:
-    """Authenticated request context."""
+class GatewayAuthContext:
+    """Authenticated request context backed by BSVibe-Auth."""
 
+    user: BSVibeUser
     tenant_id: UUID
-    scopes: list[str]
-    key_hash: str
+    is_admin: bool
 
 
-async def get_auth_context(request: Request) -> AuthContext:
-    """Authenticate a request via API key (Bearer token).
+async def get_auth_context(request: Request) -> GatewayAuthContext:
+    """Authenticate a request via Supabase JWT (BSVibe-Auth).
 
-    Resolves the tenant from the API key and validates that
-    both the key and the tenant are active.
+    1. Verify JWT → BSVibeUser
+    2. Extract tenant_id from app_metadata
+    3. Check tenant is active in DB
+    4. Return GatewayAuthContext
     """
+    from bsvibe_auth import AuthError
+
+    auth_provider = request.app.state.auth_provider
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(
@@ -62,100 +61,84 @@ async def get_auth_context(request: Request) -> AuthContext:
         )
 
     token = auth_header[7:]
-    pool: asyncpg.Pool = request.app.state.db_pool
 
-    # Try JWT first (issued by /auth/token for dashboard sessions)
-    jwt_secret = getattr(request.app.state, "jwt_secret", "")
-    if jwt_secret:
-        try:
-            payload = decode_jwt(token, jwt_secret)
-            logger.debug("auth_jwt_success", tenant_id=payload.tenant_id)
-            return AuthContext(
-                tenant_id=UUID(payload.tenant_id),
-                scopes=payload.scopes,
-                key_hash="",
-            )
-        except pyjwt.InvalidTokenError:
-            logger.debug("jwt_decode_failed", exc_info=True)
-
-    # Compute hash once (used for both superadmin check and DB lookup)
-    key_hash = hash_api_key(token)
-
-    # Check superadmin key (compare hashes, never plaintext)
-    superadmin_hash = getattr(request.app.state, "superadmin_key_hash", "")
-    if superadmin_hash and hmac.compare_digest(key_hash, superadmin_hash):
-        return AuthContext(
-            tenant_id=SUPERADMIN_UUID,
-            scopes=["admin"],
-            key_hash="",
-        )
-
-    from bsgateway.tenant.repository import TenantRepository
-
-    # Note: Don't use cache in get_auth_context since we need fresh auth check
-    repo = TenantRepository(pool)
-    row = await repo.get_api_key_by_hash(key_hash)
-
-    if (
-        not row
-        or not row["is_active"]
-        or (row["expires_at"] and row["expires_at"] < datetime.now(UTC))
-    ):
-        logger.warning("auth_failed", reason="invalid_or_expired_key")
+    try:
+        user = await auth_provider.verify_token(token)
+    except AuthError as e:
+        logger.debug("auth_failed", error=e.message)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired API key",
+            detail=e.message,
+        ) from e
+
+    # Extract tenant_id from app_metadata
+    tenant_id_str = user.app_metadata.get("tenant_id")
+    if not tenant_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No tenant_id in user metadata",
         )
 
-    if not row["tenant_is_active"]:
-        logger.warning("auth_failed", reason="tenant_deactivated")
+    try:
+        tenant_id = UUID(tenant_id_str)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid tenant_id format",
+        ) from err
+
+    # Verify tenant is active
+    from bsgateway.tenant.repository import TenantRepository
+
+    pool: asyncpg.Pool = request.app.state.db_pool
+    repo = TenantRepository(pool)
+    tenant_row = await repo.get_tenant(tenant_id)
+
+    if not tenant_row or not tenant_row["is_active"]:
+        logger.warning("auth_failed", reason="tenant_inactive", tenant_id=str(tenant_id))
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
+            detail="Tenant is deactivated",
         )
 
-    # Touch last_used_at (throttled, fire-and-forget — at most once per 60s per key)
-    if not hasattr(request.app.state, "_touch_last"):
-        request.app.state._touch_last = {}
-    _touch_last: dict[str, float] = request.app.state._touch_last
-    now = time.monotonic()
-    if now - _touch_last.get(key_hash, 0) >= 60:
-        _touch_last[key_hash] = now
-        if not hasattr(request.app.state, "background_tasks"):
-            request.app.state.background_tasks = set()
-        bg_tasks: set = request.app.state.background_tasks
+    role = user.app_metadata.get("role", "member")
+    is_admin = role == "admin"
 
-        def _on_touch_done(t: asyncio.Task) -> None:
-            bg_tasks.discard(t)
-            if not t.cancelled():
-                exc = t.exception()
-                if exc:
-                    exc_tuple = (type(exc), exc, exc.__traceback__)
-                    logger.warning("touch_api_key_failed", error=str(exc), exc_info=exc_tuple)
+    logger.info("auth_success", tenant_id=str(tenant_id), user_id=user.id, is_admin=is_admin)
 
-        task = asyncio.create_task(asyncio.wait_for(repo.touch_api_key(key_hash), timeout=10.0))
-        bg_tasks.add(task)
-        task.add_done_callback(_on_touch_done)
-
-    logger.info(
-        "auth_success",
-        tenant_id=str(row["tenant_id"]),
-        key_prefix=row["key_prefix"],
-    )
-
-    return AuthContext(
-        tenant_id=row["tenant_id"],
-        scopes=list(row["scopes"]),
-        key_hash=key_hash,
+    return GatewayAuthContext(
+        user=user,
+        tenant_id=tenant_id,
+        is_admin=is_admin,
     )
 
 
-def require_admin(auth: AuthContext = Depends(get_auth_context)) -> AuthContext:
-    """Dependency that requires admin scope."""
-    if "admin" not in auth.scopes:
+def require_admin(
+    auth: GatewayAuthContext = Depends(get_auth_context),
+) -> GatewayAuthContext:
+    """Dependency that requires admin role."""
+    if not auth.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin scope required",
+            detail="Admin role required",
+        )
+    return auth
+
+
+def require_tenant_access(
+    tenant_id: UUID,
+    auth: GatewayAuthContext = Depends(get_auth_context),
+) -> GatewayAuthContext:
+    """Verify the authenticated user belongs to the requested tenant.
+
+    Admins may access any tenant.
+    """
+    if auth.is_admin:
+        return auth
+    if auth.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this tenant",
         )
     return auth
 
@@ -167,23 +150,3 @@ def get_audit_service(request: Request) -> AuditService:
 
     pool = request.app.state.db_pool
     return AuditService(AuditRepository(pool))
-
-
-def require_tenant_access(
-    tenant_id: UUID,
-    auth: AuthContext = Depends(get_auth_context),
-) -> AuthContext:
-    """Verify the authenticated tenant matches the requested tenant_id.
-
-    Superadmin (UUID 00000000-...) may access any tenant.
-    All other callers must own the requested tenant_id.
-    """
-    # Superadmin access: check scopes (not just UUID) for defense-in-depth
-    if "admin" in auth.scopes and auth.tenant_id == SUPERADMIN_UUID:
-        return auth
-    if auth.tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this tenant",
-        )
-    return auth

@@ -7,7 +7,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bsgateway.api.deps import (
-    AuthContext,
+    GatewayAuthContext,
     get_audit_service,
     get_cache,
     get_pool,
@@ -125,7 +125,7 @@ async def create_rule(
     request: Request,
     # Intentionally uses require_tenant_access (not require_admin) so that
     # tenant members can manage their own rules without superadmin privilege.
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> RuleResponse:
     await _validate_target_model(request, tenant_id, body.target_model)
     repo = _get_repo(request)
@@ -164,7 +164,7 @@ async def reorder_rules(
     tenant_id: UUID,
     body: ReorderRequest,
     request: Request,
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> None:
     repo = _get_repo(request)
     await repo.reorder_rules(tenant_id, body.priorities)
@@ -180,7 +180,7 @@ async def test_rules(
     tenant_id: UUID,
     body: RuleTestRequest,
     request: Request,
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> RuleTestResponse:
     """Test which rule would match for a given request."""
     repo = _get_repo(request)
@@ -279,7 +279,7 @@ async def test_rules(
 async def list_rules(
     tenant_id: UUID,
     request: Request,
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> list[RuleResponse]:
     repo = _get_repo(request)
     rows = await repo.list_rules(tenant_id)
@@ -291,7 +291,7 @@ async def get_rule(
     tenant_id: UUID,
     rule_id: UUID,
     request: Request,
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> RuleResponse:
     repo = _get_repo(request)
     row = await repo.get_rule(rule_id, tenant_id)
@@ -306,7 +306,7 @@ async def update_rule(
     rule_id: UUID,
     body: RuleUpdate,
     request: Request,
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> RuleResponse:
     repo = _get_repo(request)
     existing = await repo.get_rule(rule_id, tenant_id)
@@ -341,7 +341,7 @@ async def delete_rule(
     tenant_id: UUID,
     rule_id: UUID,
     request: Request,
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> None:
     repo = _get_repo(request)
     await repo.delete_rule(rule_id, tenant_id)

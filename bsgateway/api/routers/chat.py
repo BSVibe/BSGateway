@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from bsgateway.api.deps import (
-    AuthContext,
+    GatewayAuthContext,
     get_auth_context,
     get_cache,
     get_encryption_key,
@@ -64,7 +64,7 @@ def _error_response(
 
 async def _check_rate_limit(
     request: Request,
-    auth: AuthContext,
+    auth: GatewayAuthContext,
     pool: asyncpg.Pool,
     redis: Redis | None,
 ) -> JSONResponse | None:
@@ -123,7 +123,7 @@ async def _check_rate_limit(
 )
 async def chat_completions(
     request: Request,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> Any:
     """OpenAI-compatible chat completions with tenant-based routing."""
     try:

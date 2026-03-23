@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+from bsvibe_auth import BSVibeUser
+
+from bsgateway.api.deps import GatewayAuthContext
 
 
 class MockAcquire:
@@ -44,27 +47,33 @@ def make_mock_pool() -> tuple[MagicMock, AsyncMock]:
     return pool, conn
 
 
-def make_api_key_row(
-    tenant_id=None,
-    scopes=None,
-    key_hash: str = "fakehash",
-    key_prefix: str = "bsg_test",
-    name: str = "test-key",
-    is_active: bool = True,
-    expires_at=None,
-    tenant_is_active: bool = True,
-) -> dict:
-    """Build a fake API key row dict for testing auth flows."""
-    return {
-        "id": uuid4(),
-        "tenant_id": tenant_id or uuid4(),
-        "key_hash": key_hash,
-        "key_prefix": key_prefix,
-        "name": name,
-        "scopes": scopes or ["chat"],
-        "is_active": is_active,
-        "expires_at": expires_at,
-        "last_used_at": None,
-        "created_at": datetime.now(UTC),
-        "tenant_is_active": tenant_is_active,
-    }
+def make_bsvibe_user(
+    tenant_id: UUID | None = None,
+    role: str = "member",
+    email: str = "test@test.com",
+    user_id: str | None = None,
+) -> BSVibeUser:
+    """Build a fake BSVibeUser for testing."""
+    return BSVibeUser(
+        id=user_id or str(uuid4()),
+        email=email,
+        role="authenticated",
+        app_metadata={"tenant_id": str(tenant_id or uuid4()), "role": role},
+        user_metadata={},
+    )
+
+
+def make_gateway_auth_context(
+    tenant_id: UUID | None = None,
+    is_admin: bool = False,
+    email: str = "test@test.com",
+) -> GatewayAuthContext:
+    """Build a fake GatewayAuthContext for testing via dependency_overrides."""
+    tid = tenant_id or uuid4()
+    role = "admin" if is_admin else "member"
+    user = make_bsvibe_user(tenant_id=tid, role=role, email=email)
+    return GatewayAuthContext(
+        user=user,
+        tenant_id=tid,
+        is_admin=is_admin,
+    )

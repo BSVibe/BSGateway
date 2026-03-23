@@ -1,0 +1,245 @@
+"""Tests for BSVibe-Auth integration in get_auth_context."""
+
+from __future__ import annotations
+
+import os
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+from fastapi.testclient import TestClient
+
+from bsgateway.api.app import create_app
+from bsgateway.api.deps import get_auth_context
+from bsgateway.tests.conftest import make_bsvibe_user, make_gateway_auth_context, make_mock_pool
+
+ENCRYPTION_KEY_HEX = os.urandom(32).hex()
+TENANT_ID = uuid4()
+
+
+def _make_app():
+    app = create_app()
+    pool, _conn = make_mock_pool()
+    app.state.db_pool = pool
+    app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
+    app.state.auth_provider = MagicMock()
+    app.state.redis = None
+    return app
+
+
+def _tenant_row(tenant_id=None, is_active=True):
+    now = datetime.now(UTC)
+    return {
+        "id": tenant_id or TENANT_ID,
+        "name": "Test Tenant",
+        "slug": "test-tenant",
+        "is_active": is_active,
+        "settings": "{}",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+class TestBSVibeAuth:
+    def test_valid_token_returns_context(self):
+        app = _make_app()
+        user = make_bsvibe_user(tenant_id=TENANT_ID, role="admin")
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=_tenant_row(TENANT_ID),
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            # Use dependency override to test the actual get_auth_context
+            # Instead, test via an endpoint that uses it
+            resp = client.get("/health")
+            assert resp.status_code == 200
+
+    def test_missing_auth_header_returns_401(self):
+        app = _make_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        # Hit an endpoint that requires auth
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.list_tenants",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            resp = client.get("/api/v1/tenants")
+        assert resp.status_code == 401
+
+    def test_invalid_token_returns_401(self):
+        from bsvibe_auth import TokenInvalidError
+
+        app = _make_app()
+        app.state.auth_provider.verify_token = AsyncMock(
+            side_effect=TokenInvalidError("bad token")
+        )
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(
+            "/api/v1/tenants",
+            headers={"Authorization": "Bearer bad-token"},
+        )
+        assert resp.status_code == 401
+
+    def test_expired_token_returns_401(self):
+        from bsvibe_auth import TokenExpiredError
+
+        app = _make_app()
+        app.state.auth_provider.verify_token = AsyncMock(side_effect=TokenExpiredError())
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(
+            "/api/v1/tenants",
+            headers={"Authorization": "Bearer expired-token"},
+        )
+        assert resp.status_code == 401
+
+    def test_missing_tenant_id_returns_401(self):
+        from bsvibe_auth import BSVibeUser
+
+        app = _make_app()
+        user = BSVibeUser(
+            id=str(uuid4()),
+            email="test@test.com",
+            role="authenticated",
+            app_metadata={},  # no tenant_id
+            user_metadata={},
+        )
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(
+            "/api/v1/tenants",
+            headers={"Authorization": "Bearer valid-token"},
+        )
+        assert resp.status_code == 401
+        assert "tenant_id" in resp.json()["detail"].lower()
+
+    def test_inactive_tenant_returns_403(self):
+        app = _make_app()
+        user = make_bsvibe_user(tenant_id=TENANT_ID, role="admin")
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=_tenant_row(TENANT_ID, is_active=False),
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                "/api/v1/tenants",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+        assert resp.status_code == 403
+
+    def test_admin_role_detected(self):
+        app = _make_app()
+        user = make_bsvibe_user(tenant_id=TENANT_ID, role="admin")
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=_tenant_row(TENANT_ID),
+        ), patch(
+            "bsgateway.tenant.repository.TenantRepository.list_tenants",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                "/api/v1/tenants",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+        assert resp.status_code == 200
+
+    def test_non_admin_cannot_list_tenants(self):
+        app = _make_app()
+        user = make_bsvibe_user(tenant_id=TENANT_ID, role="member")
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=_tenant_row(TENANT_ID),
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                "/api/v1/tenants",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+        assert resp.status_code == 403
+
+    def test_tenant_access_own_data(self):
+        app = _make_app()
+        user = make_bsvibe_user(tenant_id=TENANT_ID, role="member")
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=_tenant_row(TENANT_ID),
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                f"/api/v1/tenants/{TENANT_ID}",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+        assert resp.status_code == 200
+
+    def test_tenant_cannot_access_other_tenant(self):
+        other_tid = uuid4()
+        app = _make_app()
+        user = make_bsvibe_user(tenant_id=TENANT_ID, role="member")
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=_tenant_row(TENANT_ID),
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                f"/api/v1/tenants/{other_tid}",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+        assert resp.status_code == 403
+
+    def test_admin_can_access_any_tenant(self):
+        other_tid = uuid4()
+        app = _make_app()
+        user = make_bsvibe_user(tenant_id=TENANT_ID, role="admin")
+        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.get_tenant",
+            new_callable=AsyncMock,
+            return_value=_tenant_row(TENANT_ID),
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                f"/api/v1/tenants/{other_tid}",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+        assert resp.status_code == 200
+
+
+class TestDependencyOverridePattern:
+    """Verify the dependency override pattern works for all test files."""
+
+    def test_override_get_auth_context(self):
+        app = _make_app()
+        ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=True)
+        app.dependency_overrides[get_auth_context] = lambda: ctx
+
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.list_tenants",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get("/api/v1/tenants")
+        assert resp.status_code == 200

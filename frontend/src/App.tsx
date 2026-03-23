@@ -9,6 +9,7 @@ import { RoutingTestPage } from './pages/RoutingTestPage';
 import { UsagePage } from './pages/UsagePage';
 import { AuditPage } from './pages/AuditPage';
 import { LoginPage } from './pages/LoginPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { useAuth } from './hooks/useAuth';
 import './index.css';
 
@@ -55,29 +56,28 @@ function PageBoundary({ children }: { children: ReactNode }) {
 }
 
 function App() {
-  const { isAuthenticated, tenantSlug, tenantName, login, logout } = useAuth();
-
-  if (!isAuthenticated) {
-    return (
-      <BrowserRouter basename="/dashboard">
-        <LoginPage onLogin={login} />
-      </BrowserRouter>
-    );
-  }
+  const { isAuthenticated, tenantId, tenantName, logout } = useAuth();
 
   return (
     <BrowserRouter basename="/dashboard">
       <Routes>
-        <Route element={<Layout onLogout={logout} tenantSlug={tenantSlug} tenantName={tenantName} />}>
-          <Route index element={<PageBoundary><DashboardPage /></PageBoundary>} />
-          <Route path="rules" element={<PageBoundary><RulesPage /></PageBoundary>} />
-          <Route path="models" element={<PageBoundary><ModelsPage /></PageBoundary>} />
-          <Route path="intents" element={<PageBoundary><IntentsPage /></PageBoundary>} />
-          <Route path="test" element={<PageBoundary><RoutingTestPage /></PageBoundary>} />
-          <Route path="usage" element={<PageBoundary><UsagePage /></PageBoundary>} />
-          <Route path="audit" element={<PageBoundary><AuditPage /></PageBoundary>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
+        {/* Auth callback must be accessible regardless of auth state */}
+        <Route path="auth/callback" element={<AuthCallbackPage />} />
+
+        {!isAuthenticated ? (
+          <Route path="*" element={<LoginPage />} />
+        ) : (
+          <Route element={<Layout onLogout={logout} tenantSlug={tenantId} tenantName={tenantName} />}>
+            <Route index element={<PageBoundary><DashboardPage /></PageBoundary>} />
+            <Route path="rules" element={<PageBoundary><RulesPage /></PageBoundary>} />
+            <Route path="models" element={<PageBoundary><ModelsPage /></PageBoundary>} />
+            <Route path="intents" element={<PageBoundary><IntentsPage /></PageBoundary>} />
+            <Route path="test" element={<PageBoundary><RoutingTestPage /></PageBoundary>} />
+            <Route path="usage" element={<PageBoundary><UsagePage /></PageBoundary>} />
+            <Route path="audit" element={<PageBoundary><AuditPage /></PageBoundary>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        )}
       </Routes>
     </BrowserRouter>
   );

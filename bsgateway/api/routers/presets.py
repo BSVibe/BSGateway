@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bsgateway.api.deps import (
-    AuthContext,
+    GatewayAuthContext,
     get_cache,
     get_pool,
     require_admin,
@@ -25,7 +25,7 @@ _registry = PresetRegistry()
 
 @router.get("/presets", response_model=list[PresetSummary], summary="List presets")
 async def list_presets(
-    _auth: AuthContext = Depends(require_admin),
+    _auth: GatewayAuthContext = Depends(require_admin),
 ) -> list[PresetSummary]:
     """List all available preset templates."""
     return [
@@ -49,7 +49,7 @@ async def apply_preset(
     tenant_id: UUID,
     body: PresetApplyRequest,
     request: Request,
-    _auth: AuthContext = Depends(require_tenant_access),
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> PresetApplyResponse:
     """Apply a preset template to a tenant."""
     pool = get_pool(request)

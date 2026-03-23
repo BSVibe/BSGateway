@@ -69,52 +69,6 @@ class TenantResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# API Keys
-# ---------------------------------------------------------------------------
-
-
-class ApiKeyCreate(BaseModel):
-    name: str = Field(default="", max_length=255, description="Optional name for this key")
-    scopes: list[str] = Field(
-        default_factory=list,
-        description="Permission scopes (e.g., 'chat', 'admin')",
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "name": "Production Key",
-                "scopes": ["chat", "admin"],
-            },
-        },
-    }
-
-
-class ApiKeyCreatedResponse(BaseModel):
-    """Returned only once at creation time with the plaintext key."""
-
-    id: UUID
-    tenant_id: UUID
-    key: str  # plaintext, shown once
-    key_prefix: str
-    name: str
-    scopes: list[str]
-    created_at: datetime
-
-
-class ApiKeyResponse(BaseModel):
-    id: UUID
-    tenant_id: UUID
-    key_prefix: str
-    name: str
-    scopes: list[str]
-    is_active: bool
-    expires_at: datetime | None
-    last_used_at: datetime | None
-    created_at: datetime
-
-
-# ---------------------------------------------------------------------------
 # Tenant Models
 # ---------------------------------------------------------------------------
 

@@ -133,7 +133,7 @@ export function DashboardPage() {
             Use the chat completions endpoint at <code className="bg-white px-2 py-1 rounded text-xs font-mono">/api/v1/chat/completions</code>
           </p>
           <p className="text-xs text-green-700 mt-2">
-            Authenticate with your API key as a Bearer token in the Authorization header.
+            Authenticate with your Supabase JWT as a Bearer token in the Authorization header.
           </p>
         </div>
       </div>

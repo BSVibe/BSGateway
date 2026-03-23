@@ -14,22 +14,6 @@ export interface TenantCreate {
   settings?: Record<string, unknown>;
 }
 
-export interface ApiKey {
-  id: string;
-  tenant_id: string;
-  key_prefix: string;
-  name: string;
-  scopes: string[];
-  is_active: boolean;
-  expires_at: string | null;
-  last_used_at: string | null;
-  created_at: string;
-}
-
-export interface ApiKeyCreated extends ApiKey {
-  key: string;
-}
-
 export interface TenantModel {
   id: string;
   tenant_id: string;
@@ -156,10 +140,3 @@ export interface UsageResponse {
   daily_breakdown: DailyUsage[];
 }
 
-export interface AuthToken {
-  token: string;
-  tenant_id: string;
-  tenant_slug: string;
-  tenant_name: string;
-  scopes: string[];
-}

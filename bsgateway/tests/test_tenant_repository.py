@@ -133,44 +133,6 @@ class TestTenantCRUD:
 
 
 # ---------------------------------------------------------------------------
-# API Key CRUD
-# ---------------------------------------------------------------------------
-
-
-class TestApiKeyCRUD:
-    async def test_create_api_key(self, repo: TenantRepository, mock_conn: AsyncMock):
-        expected = {"id": uuid4(), "key_hash": "abc123"}
-        mock_conn.fetchrow.return_value = expected
-        result = await repo.create_api_key(uuid4(), "hash", "bsg_abc", "prod", ["admin"])
-        assert result == expected
-
-    async def test_get_api_key_by_hash(self, repo: TenantRepository, mock_conn: AsyncMock):
-        expected = {"id": uuid4(), "key_hash": "abc"}
-        mock_conn.fetchrow.return_value = expected
-        result = await repo.get_api_key_by_hash("abc")
-        assert result == expected
-
-    async def test_get_api_key_not_found(self, repo: TenantRepository, mock_conn: AsyncMock):
-        mock_conn.fetchrow.return_value = None
-        result = await repo.get_api_key_by_hash("nonexistent")
-        assert result is None
-
-    async def test_list_api_keys(self, repo: TenantRepository, mock_conn: AsyncMock):
-        rows = [{"id": uuid4()}]
-        mock_conn.fetch.return_value = rows
-        result = await repo.list_api_keys(uuid4())
-        assert result == rows
-
-    async def test_revoke_api_key(self, repo: TenantRepository, mock_conn: AsyncMock):
-        await repo.revoke_api_key(uuid4(), uuid4())
-        mock_conn.execute.assert_awaited_once()
-
-    async def test_touch_api_key(self, repo: TenantRepository, mock_conn: AsyncMock):
-        await repo.touch_api_key("hash123")
-        mock_conn.execute.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
 # Model CRUD
 # ---------------------------------------------------------------------------
 

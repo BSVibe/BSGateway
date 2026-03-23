@@ -11,14 +11,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
+from bsgateway.api.deps import get_auth_context
 from bsgateway.chat.service import ModelNotFoundError, NoRuleMatchedError
-from bsgateway.core.security import hash_api_key
-from bsgateway.tests.conftest import make_api_key_row, make_mock_pool
+from bsgateway.tests.conftest import make_gateway_auth_context, make_mock_pool
 
-SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 TENANT_ID = uuid4()
-TENANT_KEY = "bsg_test-tenant-key-12345678"
 
 
 @pytest.fixture
@@ -32,7 +30,6 @@ def app(mock_pool: AsyncMock):
     app = create_app()
     app.state.db_pool = mock_pool
     app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-    app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
     app.state.redis = None
     return app
 
@@ -43,72 +40,64 @@ def client(app) -> TestClient:
 
 
 @pytest.fixture
-def tenant_headers() -> dict:
-    return {"Authorization": f"Bearer {TENANT_KEY}"}
+def tenant_ctx():
+    return make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=False)
 
 
 @pytest.fixture
-def admin_headers() -> dict:
-    return {"Authorization": f"Bearer {SUPERADMIN_KEY}"}
-
-
-def _patch_auth():
-    """Patch auth to resolve to tenant."""
-    return patch(
-        "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
-        new_callable=AsyncMock,
-        return_value=make_api_key_row(),
-    )
+def admin_ctx():
+    return make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=True)
 
 
 class TestChatAuth:
-    def test_no_auth_returns_401(self, client: TestClient):
+    def test_no_auth_returns_401(self, app, client: TestClient):
+        app.state.auth_provider = AsyncMock()
         resp = client.post(
             "/api/v1/chat/completions",
             json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
         )
         assert resp.status_code == 401
 
-    def test_invalid_key_returns_401(self, client: TestClient):
-        with patch(
-            "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            resp = client.post(
-                "/api/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-                headers={"Authorization": "Bearer bsg_invalid"},
-            )
+    def test_invalid_key_returns_401(self, app, client: TestClient):
+        from bsvibe_auth import TokenInvalidError
+
+        app.state.auth_provider = MagicMock()
+        app.state.auth_provider.verify_token = AsyncMock(
+            side_effect=TokenInvalidError("bad")
+        )
+        resp = client.post(
+            "/api/v1/chat/completions",
+            json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+            headers={"Authorization": "Bearer bad-token"},
+        )
         assert resp.status_code == 401
 
 
 class TestChatValidation:
-    def test_missing_messages_returns_400(self, client: TestClient, tenant_headers):
-        with _patch_auth():
-            resp = client.post(
-                "/api/v1/chat/completions",
-                json={"model": "gpt-4o"},
-                headers=tenant_headers,
-            )
+    def test_missing_messages_returns_400(self, app, client: TestClient, tenant_ctx):
+        app.dependency_overrides[get_auth_context] = lambda: tenant_ctx
+        resp = client.post(
+            "/api/v1/chat/completions",
+            json={"model": "gpt-4o"},
+        )
         assert resp.status_code == 400
         data = resp.json()
         assert data["error"]["code"] == "invalid_messages"
 
-    def test_empty_messages_returns_400(self, client: TestClient, tenant_headers):
-        with _patch_auth():
-            resp = client.post(
-                "/api/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": []},
-                headers=tenant_headers,
-            )
+    def test_empty_messages_returns_400(self, app, client: TestClient, tenant_ctx):
+        app.dependency_overrides[get_auth_context] = lambda: tenant_ctx
+        resp = client.post(
+            "/api/v1/chat/completions",
+            json={"model": "gpt-4o", "messages": []},
+        )
         assert resp.status_code == 400
         data = resp.json()
         assert data["error"]["code"] == "invalid_messages"
 
 
 class TestChatCompletion:
-    def test_happy_path(self, client: TestClient, tenant_headers):
+    def test_happy_path(self, app, client: TestClient, tenant_ctx):
+        app.dependency_overrides[get_auth_context] = lambda: tenant_ctx
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {
             "id": "chatcmpl-123",
@@ -124,13 +113,10 @@ class TestChatCompletion:
             "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
         }
 
-        with (
-            _patch_auth(),
-            patch(
-                "bsgateway.chat.service.ChatService.complete",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ),
+        with patch(
+            "bsgateway.chat.service.ChatService.complete",
+            new_callable=AsyncMock,
+            return_value=mock_response,
         ):
             resp = client.post(
                 "/api/v1/chat/completions",
@@ -138,7 +124,6 @@ class TestChatCompletion:
                     "model": "gpt-4o",
                     "messages": [{"role": "user", "content": "hello"}],
                 },
-                headers=tenant_headers,
             )
 
         assert resp.status_code == 200
@@ -146,14 +131,12 @@ class TestChatCompletion:
         assert data["id"] == "chatcmpl-123"
         assert data["choices"][0]["message"]["content"] == "Hello!"
 
-    def test_model_not_found_returns_error(self, client: TestClient, tenant_headers):
-        with (
-            _patch_auth(),
-            patch(
-                "bsgateway.chat.service.ChatService.complete",
-                new_callable=AsyncMock,
-                side_effect=ModelNotFoundError("Model 'xyz' is not registered"),
-            ),
+    def test_model_not_found_returns_error(self, app, client: TestClient, tenant_ctx):
+        app.dependency_overrides[get_auth_context] = lambda: tenant_ctx
+        with patch(
+            "bsgateway.chat.service.ChatService.complete",
+            new_callable=AsyncMock,
+            side_effect=ModelNotFoundError("Model 'xyz' is not registered"),
         ):
             resp = client.post(
                 "/api/v1/chat/completions",
@@ -161,21 +144,18 @@ class TestChatCompletion:
                     "model": "xyz",
                     "messages": [{"role": "user", "content": "hello"}],
                 },
-                headers=tenant_headers,
             )
 
         data = resp.json()
         assert data["error"]["code"] == "model_not_found"
         assert "xyz" in data["error"]["message"]
 
-    def test_no_rule_matched_returns_error(self, client: TestClient, tenant_headers):
-        with (
-            _patch_auth(),
-            patch(
-                "bsgateway.chat.service.ChatService.complete",
-                new_callable=AsyncMock,
-                side_effect=NoRuleMatchedError("No routing rule matched"),
-            ),
+    def test_no_rule_matched_returns_error(self, app, client: TestClient, tenant_ctx):
+        app.dependency_overrides[get_auth_context] = lambda: tenant_ctx
+        with patch(
+            "bsgateway.chat.service.ChatService.complete",
+            new_callable=AsyncMock,
+            side_effect=NoRuleMatchedError("No routing rule matched"),
         ):
             resp = client.post(
                 "/api/v1/chat/completions",
@@ -183,20 +163,17 @@ class TestChatCompletion:
                     "model": "auto",
                     "messages": [{"role": "user", "content": "hello"}],
                 },
-                headers=tenant_headers,
             )
 
         data = resp.json()
         assert data["error"]["code"] == "no_rule_matched"
 
-    def test_upstream_error_returns_502(self, client: TestClient, tenant_headers):
-        with (
-            _patch_auth(),
-            patch(
-                "bsgateway.chat.service.ChatService.complete",
-                new_callable=AsyncMock,
-                side_effect=Exception("Connection refused"),
-            ),
+    def test_upstream_error_returns_502(self, app, client: TestClient, tenant_ctx):
+        app.dependency_overrides[get_auth_context] = lambda: tenant_ctx
+        with patch(
+            "bsgateway.chat.service.ChatService.complete",
+            new_callable=AsyncMock,
+            side_effect=Exception("Connection refused"),
         ):
             resp = client.post(
                 "/api/v1/chat/completions",
@@ -204,14 +181,14 @@ class TestChatCompletion:
                     "model": "gpt-4o",
                     "messages": [{"role": "user", "content": "hello"}],
                 },
-                headers=tenant_headers,
             )
 
         data = resp.json()
         assert data["error"]["type"] == "upstream_error"
 
-    def test_streaming_returns_sse(self, client: TestClient, tenant_headers):
+    def test_streaming_returns_sse(self, app, client: TestClient, tenant_ctx):
         """Streaming response should return SSE format."""
+        app.dependency_overrides[get_auth_context] = lambda: tenant_ctx
         chunk1 = MagicMock()
         chunk1.model_dump.return_value = {
             "id": "chatcmpl-123",
@@ -227,13 +204,10 @@ class TestChatCompletion:
             yield chunk1
             yield chunk2
 
-        with (
-            _patch_auth(),
-            patch(
-                "bsgateway.chat.service.ChatService.complete",
-                new_callable=AsyncMock,
-                return_value=mock_stream(),
-            ),
+        with patch(
+            "bsgateway.chat.service.ChatService.complete",
+            new_callable=AsyncMock,
+            return_value=mock_stream(),
         ):
             resp = client.post(
                 "/api/v1/chat/completions",
@@ -242,7 +216,6 @@ class TestChatCompletion:
                     "messages": [{"role": "user", "content": "hello"}],
                     "stream": True,
                 },
-                headers=tenant_headers,
             )
 
         assert resp.status_code == 200
@@ -257,8 +230,9 @@ class TestChatCompletion:
         first_data = json.loads(data_lines[0][6:])
         assert first_data["choices"][0]["delta"]["content"] == "Hel"
 
-    def test_admin_can_use_chat(self, client: TestClient, admin_headers):
-        """Superadmin should be able to use chat completions too."""
+    def test_admin_can_use_chat(self, app, client: TestClient, admin_ctx):
+        """Admin should be able to use chat completions too."""
+        app.dependency_overrides[get_auth_context] = lambda: admin_ctx
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {"id": "chatcmpl-123", "choices": []}
 
@@ -273,7 +247,6 @@ class TestChatCompletion:
                     "model": "gpt-4o",
                     "messages": [{"role": "user", "content": "hello"}],
                 },
-                headers=admin_headers,
             )
 
         assert resp.status_code == 200

@@ -1,48 +1,63 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SESSION_KEYS, clearSession, setAuthToken, setOnUnauthorized } from '../api/client';
+import { BSVibeAuth } from '../lib/bsvibe-auth';
+import { api, setAuthToken, setOnUnauthorized } from '../api/client';
+
+const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.bsvibe.dev';
+const TENANT_NAME_KEY = 'bsvibe_tenant_name';
+
+const auth = new BSVibeAuth({
+  authUrl: AUTH_URL,
+  callbackPath: '/dashboard/auth/callback',
+});
 
 interface AuthState {
   isAuthenticated: boolean;
   tenantId: string | null;
-  tenantSlug: string | null;
   tenantName: string | null;
+  role: string | null;
+  email: string | null;
 }
 
 export function useAuth() {
-  const [auth, setAuth] = useState<AuthState>(() => {
-    // Token + tenant metadata stored in sessionStorage (tab-scoped, cleared on tab close)
-    const savedToken = sessionStorage.getItem(SESSION_KEYS.token);
-    if (savedToken) setAuthToken(savedToken);
+  const [state, setState] = useState<AuthState>(() => {
+    const user = auth.getUser();
+    if (user) setAuthToken(user.accessToken);
     return {
-      isAuthenticated: !!savedToken,
-      tenantId: sessionStorage.getItem(SESSION_KEYS.tenantId),
-      tenantSlug: sessionStorage.getItem(SESSION_KEYS.tenantSlug),
-      tenantName: sessionStorage.getItem(SESSION_KEYS.tenantName),
+      isAuthenticated: !!user,
+      tenantId: user?.tenantId ?? null,
+      tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
+      role: user?.role ?? null,
+      email: user?.email ?? null,
     };
   });
 
+  // Fetch tenant name on first auth
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.tenantId || state.tenantName) return;
+
+    api.get<{ name: string }>(`/tenants/${state.tenantId}`)
+      .then((tenant) => {
+        sessionStorage.setItem(TENANT_NAME_KEY, tenant.name);
+        setState((prev) => ({ ...prev, tenantName: tenant.name }));
+      })
+      .catch(() => {});
+  }, [state.isAuthenticated, state.tenantId, state.tenantName]);
+
   const logout = useCallback(() => {
     setAuthToken(null);
-    clearSession();
-    setAuth({ isAuthenticated: false, tenantId: null, tenantSlug: null, tenantName: null });
+    sessionStorage.removeItem(TENANT_NAME_KEY);
+    auth.logout();
   }, []);
 
-  // Register 401 handler so the API client delegates to auth state
   useEffect(() => {
     setOnUnauthorized(logout);
   }, [logout]);
 
-  const login = useCallback(
-    (token: string, tenantId: string, tenantSlug: string, tenantName: string) => {
-      setAuthToken(token);
-      sessionStorage.setItem(SESSION_KEYS.token, token);
-      sessionStorage.setItem(SESSION_KEYS.tenantId, tenantId);
-      sessionStorage.setItem(SESSION_KEYS.tenantSlug, tenantSlug);
-      sessionStorage.setItem(SESSION_KEYS.tenantName, tenantName);
-      setAuth({ isAuthenticated: true, tenantId, tenantSlug, tenantName });
-    },
-    [],
-  );
+  const login = useCallback(() => {
+    auth.redirectToLogin();
+  }, []);
 
-  return { ...auth, login, logout };
+  return { ...state, login, logout };
 }
+
+export { auth };

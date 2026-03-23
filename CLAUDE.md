@@ -28,6 +28,7 @@ docker compose up
 - `passthrough_models` are auto-derived from `model_list[].model_name` - no manual list needed
 - **Classifier strategies**: `static` (heuristic), `llm` (Ollama), `ml` (sklearn stub)
 - **Data collection**: PostgreSQL via asyncpg, SQL in `.sql` files (not ORM)
+- **Auth**: Supabase JWT via `bsvibe-auth` package — tenant mapping from `app_metadata.tenant_id`
 
 ## Conventions
 
@@ -49,4 +50,6 @@ docker compose up
 | `bsgateway/routing/collector.py` | PostgreSQL data collection (asyncpg pool) |
 | `bsgateway/routing/classifiers/` | Strategy pattern: base protocol, static, llm, ml |
 | `bsgateway/core/config.py` | Settings(BaseSettings) - env vars |
+| `bsgateway/core/security.py` | AES-256-GCM encryption for provider API keys |
+| `bsgateway/api/deps.py` | GatewayAuthContext, auth dependencies (BSVibe-Auth) |
 | `bsgateway/routing/sql/` | schema.sql + queries.sql (named query pattern) |

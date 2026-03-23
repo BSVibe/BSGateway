@@ -17,7 +17,6 @@ from bsgateway.audit.repository import AuditRepository
 from bsgateway.core.cache import CacheManager
 from bsgateway.core.config import settings
 from bsgateway.core.database import close_pool, get_pool
-from bsgateway.core.security import hash_api_key
 from bsgateway.presets.repository import FeedbackRepository
 from bsgateway.rules.repository import RulesRepository
 from bsgateway.tenant.repository import TenantRepository
@@ -56,20 +55,23 @@ async def lifespan(app: FastAPI):
     # Validate encryption key early — fail fast on misconfiguration
     encryption_key = settings.encryption_key_bytes
 
+    # Initialize BSVibe-Auth provider
+    if not settings.supabase_url and not settings.supabase_jwt_secret:
+        raise RuntimeError(
+            "SUPABASE_URL (recommended) or SUPABASE_JWT_SECRET is required. "
+            "Set SUPABASE_URL to your project URL (e.g. https://xxx.supabase.co)."
+        )
+
+    from bsvibe_auth import SupabaseAuthProvider
+
+    app.state.auth_provider = SupabaseAuthProvider(
+        supabase_url=settings.supabase_url or None,
+        jwt_secret=settings.supabase_jwt_secret,
+    )
+
     pool = await get_pool(settings.collector_database_url)
     app.state.db_pool = pool
     app.state.encryption_key = encryption_key
-    app.state.superadmin_key_hash = (
-        hash_api_key(settings.superadmin_key) if settings.superadmin_key else ""
-    )
-    app.state.jwt_secret = settings.jwt_secret
-    if not settings.jwt_secret:
-        logger.warning("jwt_secret_not_set", hint="JWT auth for dashboard will be disabled")
-    elif len(settings.jwt_secret) < 32:
-        raise RuntimeError(
-            f"JWT_SECRET must be at least 32 characters (got {len(settings.jwt_secret)}). "
-            'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(48))"'
-        )
 
     # Global background task set for graceful shutdown tracking.
     # Tasks auto-remove themselves on completion via done callback.
@@ -93,12 +95,6 @@ async def lifespan(app: FastAPI):
 
     audit_repo = AuditRepository(pool)
     await audit_repo.init_schema()
-
-    # Seed development data (if enabled)
-    if settings.seed_dev_data:
-        from bsgateway.core.seed import seed_dev_data
-
-        await seed_dev_data(pool, settings.encryption_key_bytes)
 
     logger.info("api_server_started", port=settings.api_port)
     yield
@@ -129,7 +125,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="BSGateway API",
-        version="0.4.0",
+        version="0.5.0",
         description=(
             "Multi-tenant LLM routing gateway with complexity-based model selection. "
             "Provides OpenAI-compatible chat completions, rule-based routing, "
@@ -157,7 +153,6 @@ def create_app() -> FastAPI:
     )
 
     from bsgateway.api.routers.audit import router as audit_router
-    from bsgateway.api.routers.auth import router as auth_router
     from bsgateway.api.routers.chat import router as chat_router
     from bsgateway.api.routers.feedback import router as feedback_router
     from bsgateway.api.routers.intents import router as intents_router
@@ -166,7 +161,6 @@ def create_app() -> FastAPI:
     from bsgateway.api.routers.tenants import router as tenants_router
     from bsgateway.api.routers.usage import router as usage_router
 
-    app.include_router(auth_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(tenants_router, prefix="/api/v1")
     app.include_router(rules_router, prefix="/api/v1")

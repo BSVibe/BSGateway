@@ -12,13 +12,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
-from bsgateway.core.security import hash_api_key
-from bsgateway.tests.conftest import make_api_key_row, make_mock_pool
+from bsgateway.api.deps import get_auth_context
+from bsgateway.tests.conftest import make_gateway_auth_context, make_mock_pool
 
-SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 TENANT_ID = uuid4()
-TENANT_KEY = "bsg_test-tenant-usage-key"
 
 
 @pytest.fixture
@@ -32,36 +30,15 @@ def app(mock_pool: AsyncMock):
     app = create_app()
     app.state.db_pool = mock_pool
     app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-    app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
     app.state.redis = None
+    admin_ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=True)
+    app.dependency_overrides[get_auth_context] = lambda: admin_ctx
     return app
 
 
 @pytest.fixture
 def client(app) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
-
-
-@pytest.fixture
-def admin_headers() -> dict:
-    return {"Authorization": f"Bearer {SUPERADMIN_KEY}"}
-
-
-@pytest.fixture
-def tenant_headers() -> dict:
-    return {"Authorization": f"Bearer {TENANT_KEY}"}
-
-
-def _patch_auth(tenant_id=None, scopes=None):
-    return patch(
-        "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
-        new_callable=AsyncMock,
-        return_value=make_api_key_row(
-            tenant_id=tenant_id or TENANT_ID,
-            scopes=scopes or ["admin"],
-            key_hash=hash_api_key(TENANT_KEY),
-        ),
-    )
 
 
 def _setup_usage_pool(mock_pool, total_row, model_rows, rule_rows):
@@ -78,7 +55,7 @@ def _setup_usage_pool(mock_pool, total_row, model_rows, rule_rows):
 
 
 class TestUsageAPI:
-    def test_usage_with_data(self, client, mock_pool, admin_headers):
+    def test_usage_with_data(self, client, mock_pool):
         total_row = {"total_requests": 150, "total_tokens": 50000}
         model_rows = [
             {
@@ -103,10 +80,7 @@ class TestUsageAPI:
 
         with patch("bsgateway.api.routers.usage._sql") as mock_sql:
             mock_sql.query.side_effect = lambda q: q
-            resp = client.get(
-                f"/api/v1/tenants/{TENANT_ID}/usage",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -117,17 +91,14 @@ class TestUsageAPI:
         assert "code-review" in data["by_rule"]
         assert len(data["daily_breakdown"]) == 1
 
-    def test_empty_period_returns_zeros(self, client, mock_pool, admin_headers):
+    def test_empty_period_returns_zeros(self, client, mock_pool):
         total_row = {"total_requests": 0, "total_tokens": 0}
 
         _setup_usage_pool(mock_pool, total_row, [], [])
 
         with patch("bsgateway.api.routers.usage._sql") as mock_sql:
             mock_sql.query.side_effect = lambda q: q
-            resp = client.get(
-                f"/api/v1/tenants/{TENANT_ID}/usage?period=week",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage?period=week")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -137,7 +108,7 @@ class TestUsageAPI:
         assert data["by_rule"] == {}
         assert data["daily_breakdown"] == []
 
-    def test_date_range_filtering(self, client, mock_pool, admin_headers):
+    def test_date_range_filtering(self, client, mock_pool):
         total_row = {"total_requests": 10, "total_tokens": 1000}
 
         _setup_usage_pool(mock_pool, total_row, [], [])
@@ -146,49 +117,49 @@ class TestUsageAPI:
             mock_sql.query.side_effect = lambda q: q
             resp = client.get(
                 f"/api/v1/tenants/{TENANT_ID}/usage?from=2024-01-01&to=2024-01-31",
-                headers=admin_headers,
             )
 
         assert resp.status_code == 200
         assert resp.json()["total_requests"] == 10
 
-    def test_tenant_access_by_own_key(self, client, mock_pool, tenant_headers):
+    def test_tenant_access_by_own_context(self, mock_pool):
         """Tenant can access their own usage."""
+        app = create_app()
+        app.state.db_pool = mock_pool
+        app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
+        app.state.redis = None
+        member_ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=False)
+        app.dependency_overrides[get_auth_context] = lambda: member_ctx
+        client = TestClient(app, raise_server_exceptions=False)
+
         total_row = {"total_requests": 5, "total_tokens": 500}
         _setup_usage_pool(mock_pool, total_row, [], [])
 
-        with (
-            _patch_auth(TENANT_ID, ["admin"]),
-            patch("bsgateway.api.routers.usage._sql") as mock_sql,
-        ):
+        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
             mock_sql.query.side_effect = lambda q: q
-            resp = client.get(
-                f"/api/v1/tenants/{TENANT_ID}/usage",
-                headers=tenant_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage")
 
         assert resp.status_code == 200
 
-    def test_tenant_cannot_access_other_tenant(self, client, mock_pool, tenant_headers):
+    def test_tenant_cannot_access_other_tenant(self, mock_pool):
         """Tenant cannot access another tenant's usage."""
         other_tenant = uuid4()
+        app = create_app()
+        app.state.db_pool = mock_pool
+        app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
+        app.state.redis = None
+        member_ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=False)
+        app.dependency_overrides[get_auth_context] = lambda: member_ctx
+        client = TestClient(app, raise_server_exceptions=False)
 
-        with _patch_auth(TENANT_ID, ["chat"]):
-            resp = client.get(
-                f"/api/v1/tenants/{other_tenant}/usage",
-                headers=tenant_headers,
-            )
-
+        resp = client.get(f"/api/v1/tenants/{other_tenant}/usage")
         assert resp.status_code == 403
 
-    def test_invalid_period_returns_422(self, client, admin_headers):
-        resp = client.get(
-            f"/api/v1/tenants/{TENANT_ID}/usage?period=invalid",
-            headers=admin_headers,
-        )
+    def test_invalid_period_returns_422(self, client):
+        resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage?period=invalid")
         assert resp.status_code == 422
 
-    def test_daily_breakdown_sorted(self, client, mock_pool, admin_headers):
+    def test_daily_breakdown_sorted(self, client, mock_pool):
         total_row = {"total_requests": 20, "total_tokens": 3000}
         model_rows = [
             {"day": date(2024, 1, 17), "resolved_model": "gpt-4o", "requests": 5, "tokens": 1000},
@@ -200,10 +171,7 @@ class TestUsageAPI:
 
         with patch("bsgateway.api.routers.usage._sql") as mock_sql:
             mock_sql.query.side_effect = lambda q: q
-            resp = client.get(
-                f"/api/v1/tenants/{TENANT_ID}/usage?period=week",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage?period=week")
 
         data = resp.json()
         dates = [d["date"] for d in data["daily_breakdown"]]

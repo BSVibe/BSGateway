@@ -1,18 +1,5 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-// Session storage keys — single source of truth
-export const SESSION_KEYS = {
-  token: 'bsg_token',
-  tenantId: 'bsg_tenant_id',
-  tenantSlug: 'bsg_tenant_slug',
-  tenantName: 'bsg_tenant_name',
-} as const;
-
-/** Clear all session data (shared by logout + 401 handler). */
-export function clearSession() {
-  Object.values(SESSION_KEYS).forEach((k) => sessionStorage.removeItem(k));
-}
-
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 let isLoggingOut = false;
@@ -75,14 +62,9 @@ async function request<T>(
     const body = await response.json().catch(() => ({}));
     const message = body?.error?.message || body?.detail || response.statusText;
 
-    // Auto-logout on 401 — token expired or revoked.
-    // The isLoggingOut flag prevents concurrent 401 responses from triggering
-    // multiple logout callbacks. It stays true permanently for this session
-    // since the user must re-authenticate (page reload resets module state).
     if (response.status === 401 && authToken && !isLoggingOut) {
       isLoggingOut = true;
       authToken = null;
-      clearSession();
       onUnauthorized?.();
     }
 

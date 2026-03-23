@@ -10,13 +10,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
+from bsgateway.api.deps import get_auth_context
 from bsgateway.chat.ratelimit import RateLimiter, RateLimitResult
-from bsgateway.core.security import hash_api_key
+from bsgateway.tests.conftest import make_gateway_auth_context, make_mock_pool
 
-SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 TENANT_ID = uuid4()
-TENANT_KEY = "bsg_test-tenant-ratelimit-key"
 
 
 class TestRateLimiter:
@@ -130,8 +129,6 @@ class TestRateLimitAPI:
 
     @pytest.fixture
     def mock_pool(self):
-        from bsgateway.tests.conftest import make_mock_pool
-
         pool, _conn = make_mock_pool()
         return pool
 
@@ -140,38 +137,14 @@ class TestRateLimitAPI:
         app = create_app()
         app.state.db_pool = mock_pool
         app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-        app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
         app.state.redis = AsyncMock()  # Redis available
+        auth_ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=False)
+        app.dependency_overrides[get_auth_context] = lambda: auth_ctx
         return app
 
     @pytest.fixture
     def client(self, app) -> TestClient:
         return TestClient(app, raise_server_exceptions=False)
-
-    @pytest.fixture
-    def tenant_headers(self) -> dict:
-        return {"Authorization": f"Bearer {TENANT_KEY}"}
-
-    def _patch_auth(self):
-        from datetime import UTC, datetime
-
-        return patch(
-            "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
-            new_callable=AsyncMock,
-            return_value={
-                "id": uuid4(),
-                "tenant_id": TENANT_ID,
-                "key_hash": hash_api_key(TENANT_KEY),
-                "key_prefix": "bsg_test",
-                "name": "test-key",
-                "scopes": ["chat"],
-                "is_active": True,
-                "expires_at": None,
-                "last_used_at": None,
-                "created_at": datetime.now(UTC),
-                "tenant_is_active": True,
-            },
-        )
 
     def _patch_tenant(self, settings=None):
         from datetime import UTC, datetime
@@ -190,9 +163,8 @@ class TestRateLimitAPI:
             },
         )
 
-    def test_rate_limited_returns_429(self, client: TestClient, tenant_headers):
+    def test_rate_limited_returns_429(self, client: TestClient):
         with (
-            self._patch_auth(),
             self._patch_tenant('{"rate_limit": {"requests_per_minute": 5}}'),
             patch(
                 "bsgateway.chat.ratelimit.RateLimiter.check",
@@ -208,7 +180,6 @@ class TestRateLimitAPI:
             resp = client.post(
                 "/api/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-                headers=tenant_headers,
             )
 
         assert resp.status_code == 429
@@ -217,12 +188,11 @@ class TestRateLimitAPI:
         assert resp.headers.get("X-RateLimit-Limit") == "5"
         assert resp.headers.get("X-RateLimit-Remaining") == "0"
 
-    def test_no_rate_limit_setting_passes_through(self, client: TestClient, tenant_headers):
+    def test_no_rate_limit_setting_passes_through(self, client: TestClient):
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {"id": "chatcmpl-1", "choices": []}
 
         with (
-            self._patch_auth(),
             self._patch_tenant("{}"),
             patch(
                 "bsgateway.chat.service.ChatService.complete",
@@ -233,36 +203,32 @@ class TestRateLimitAPI:
             resp = client.post(
                 "/api/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-                headers=tenant_headers,
             )
 
         assert resp.status_code == 200
 
-    def test_no_redis_skips_rate_limit(self, mock_pool, tenant_headers):
+    def test_no_redis_skips_rate_limit(self, mock_pool):
         """When Redis is not available, rate limiting is skipped."""
         app = create_app()
         app.state.db_pool = mock_pool
         app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-        app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
         app.state.redis = None  # No Redis
+        auth_ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=False)
+        app.dependency_overrides[get_auth_context] = lambda: auth_ctx
 
         client = TestClient(app, raise_server_exceptions=False)
 
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {"id": "chatcmpl-1", "choices": []}
 
-        with (
-            self._patch_auth(),
-            patch(
-                "bsgateway.chat.service.ChatService.complete",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ),
+        with patch(
+            "bsgateway.chat.service.ChatService.complete",
+            new_callable=AsyncMock,
+            return_value=mock_response,
         ):
             resp = client.post(
                 "/api/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-                headers=tenant_headers,
             )
 
         assert resp.status_code == 200

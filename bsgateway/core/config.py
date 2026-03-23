@@ -22,21 +22,16 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_host: str = "0.0.0.0"
 
-    # Auth
-    jwt_secret: str = ""
+    # Auth (Supabase JWT)
+    supabase_url: str = ""
+    supabase_jwt_secret: str = ""  # HS256 fallback (legacy)
     encryption_key: str = ""  # 32-byte hex string for AES-256-GCM
-
-    # Superadmin bootstrap key (for creating first tenant)
-    superadmin_key: str = ""
 
     # CORS (comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com")
     cors_allowed_origins: str = ""
 
     # Frontend dist directory (for serving dashboard static files)
     frontend_dist_dir: str = ""
-
-    # Development seed data (creates test tenant + API key on startup)
-    seed_dev_data: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

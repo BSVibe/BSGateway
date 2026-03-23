@@ -1,4 +1,4 @@
-import type { Tenant, TenantCreate, ApiKey, ApiKeyCreated, TenantModel, TenantModelCreate } from '../types/api';
+import type { Tenant, TenantCreate, TenantModel, TenantModelCreate } from '../types/api';
 import { api } from './client';
 
 export const tenantsApi = {
@@ -9,14 +9,6 @@ export const tenantsApi = {
   update: (id: string, data: Partial<TenantCreate>) =>
     api.patch<Tenant>(`/tenants/${id}`, data),
   deactivate: (id: string) => api.delete<void>(`/tenants/${id}`),
-
-  // API Keys
-  listKeys: (tenantId: string) =>
-    api.get<ApiKey[]>(`/tenants/${tenantId}/keys`),
-  createKey: (tenantId: string, data: { name: string; scopes: string[] }) =>
-    api.post<ApiKeyCreated>(`/tenants/${tenantId}/keys`, data),
-  revokeKey: (tenantId: string, keyId: string) =>
-    api.delete<void>(`/tenants/${tenantId}/keys/${keyId}`),
 
   // Models
   listModels: (tenantId: string) =>

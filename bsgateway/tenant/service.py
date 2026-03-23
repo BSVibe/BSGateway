@@ -8,13 +8,9 @@ import structlog
 from bsgateway.core.security import (
     decrypt_value,
     encrypt_value,
-    generate_api_key,
-    hash_api_key,
 )
 from bsgateway.core.utils import safe_json_loads
 from bsgateway.tenant.models import (
-    ApiKeyCreatedResponse,
-    ApiKeyResponse,
     TenantModelCreate,
     TenantModelResponse,
     TenantModelUpdate,
@@ -96,49 +92,6 @@ class TenantService:
     async def deactivate_tenant(self, tenant_id: UUID) -> None:
         await self._repo.deactivate_tenant(tenant_id)
         logger.info("tenant_deactivated", tenant_id=str(tenant_id))
-
-    # -- API Keys --
-
-    async def create_api_key(
-        self,
-        tenant_id: UUID,
-        name: str = "",
-        scopes: list[str] | None = None,
-    ) -> ApiKeyCreatedResponse:
-        plaintext_key, prefix = generate_api_key()
-        key_hash = hash_api_key(plaintext_key)
-        row = await self._repo.create_api_key(tenant_id, key_hash, prefix, name, scopes)
-        logger.info("api_key_created", tenant_id=str(tenant_id), key_prefix=prefix)
-        return ApiKeyCreatedResponse(
-            id=row["id"],
-            tenant_id=row["tenant_id"],
-            key=plaintext_key,
-            key_prefix=row["key_prefix"],
-            name=row["name"],
-            scopes=list(row["scopes"]),
-            created_at=row["created_at"],
-        )
-
-    async def list_api_keys(self, tenant_id: UUID) -> list[ApiKeyResponse]:
-        rows = await self._repo.list_api_keys(tenant_id)
-        return [
-            ApiKeyResponse(
-                id=r["id"],
-                tenant_id=r["tenant_id"],
-                key_prefix=r["key_prefix"],
-                name=r["name"],
-                scopes=list(r["scopes"]),
-                is_active=r["is_active"],
-                expires_at=r["expires_at"],
-                last_used_at=r["last_used_at"],
-                created_at=r["created_at"],
-            )
-            for r in rows
-        ]
-
-    async def revoke_api_key(self, key_id: UUID, tenant_id: UUID) -> None:
-        await self._repo.revoke_api_key(key_id, tenant_id)
-        logger.info("api_key_revoked", tenant_id=str(tenant_id), key_id=str(key_id))
 
     # -- Tenant Models --
 

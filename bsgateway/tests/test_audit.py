@@ -12,12 +12,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
+from bsgateway.api.deps import get_auth_context
 from bsgateway.audit.repository import AuditRepository
 from bsgateway.audit.service import AuditService
-from bsgateway.core.security import hash_api_key
-from bsgateway.tests.conftest import make_mock_pool
+from bsgateway.tests.conftest import make_gateway_auth_context, make_mock_pool
 
-SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 TENANT_ID = uuid4()
 
@@ -33,19 +32,15 @@ def app(mock_pool: AsyncMock):
     app = create_app()
     app.state.db_pool = mock_pool
     app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-    app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
     app.state.redis = None
+    admin_ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=True)
+    app.dependency_overrides[get_auth_context] = lambda: admin_ctx
     return app
 
 
 @pytest.fixture
 def client(app) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
-
-
-@pytest.fixture
-def admin_headers() -> dict:
-    return {"Authorization": f"Bearer {SUPERADMIN_KEY}"}
 
 
 class TestAuditService:
@@ -57,7 +52,7 @@ class TestAuditService:
 
         await svc.record(
             TENANT_ID,
-            "superadmin",
+            "admin-user",
             "rule.created",
             "rule",
             str(uuid4()),
@@ -79,7 +74,7 @@ class TestAuditService:
         # Should not raise
         await svc.record(
             TENANT_ID,
-            "superadmin",
+            "admin-user",
             "rule.created",
             "rule",
             str(uuid4()),
@@ -91,7 +86,7 @@ class TestAuditService:
 
         await svc.record(
             TENANT_ID,
-            "superadmin",
+            "admin-user",
             "model.deleted",
             "model",
             str(uuid4()),
@@ -110,7 +105,7 @@ class TestAuditRepository:
             return_value={
                 "id": uuid4(),
                 "tenant_id": TENANT_ID,
-                "actor": "superadmin",
+                "actor": "admin-user",
                 "action": "rule.created",
                 "resource_type": "rule",
                 "resource_id": "abc",
@@ -132,7 +127,7 @@ class TestAuditRepository:
             repo = AuditRepository(pool)
             result = await repo.record(
                 TENANT_ID,
-                "superadmin",
+                "admin-user",
                 "rule.created",
                 "rule",
                 "abc",
@@ -146,7 +141,7 @@ class TestAuditRepository:
             {
                 "id": uuid4(),
                 "tenant_id": TENANT_ID,
-                "actor": "superadmin",
+                "actor": "admin-user",
                 "action": "rule.created",
                 "resource_type": "rule",
                 "resource_id": str(uuid4()),
@@ -177,13 +172,13 @@ class TestAuditRepository:
 class TestAuditAPI:
     """Test the audit log API endpoint."""
 
-    def test_list_audit_logs(self, client, mock_pool, admin_headers):
+    def test_list_audit_logs(self, client, mock_pool):
         now = datetime.now(UTC)
         audit_rows = [
             {
                 "id": uuid4(),
                 "tenant_id": TENANT_ID,
-                "actor": "superadmin",
+                "actor": "admin-user",
                 "action": "rule.created",
                 "resource_type": "rule",
                 "resource_id": str(uuid4()),
@@ -193,7 +188,7 @@ class TestAuditAPI:
             {
                 "id": uuid4(),
                 "tenant_id": TENANT_ID,
-                "actor": "bsg_test",
+                "actor": "member-user",
                 "action": "model.deleted",
                 "resource_type": "model",
                 "resource_id": str(uuid4()),
@@ -214,10 +209,7 @@ class TestAuditAPI:
                 return_value=2,
             ),
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{TENANT_ID}/audit",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/audit")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -225,9 +217,9 @@ class TestAuditAPI:
         assert len(data["items"]) == 2
         assert data["items"][0]["action"] == "rule.created"
         assert data["items"][0]["details"] == {"name": "test-rule"}
-        assert data["items"][1]["actor"] == "bsg_test"
+        assert data["items"][1]["actor"] == "member-user"
 
-    def test_audit_pagination(self, client, mock_pool, admin_headers):
+    def test_audit_pagination(self, client, mock_pool):
         with (
             patch(
                 "bsgateway.audit.repository.AuditRepository.list_by_tenant",
@@ -240,48 +232,30 @@ class TestAuditAPI:
                 return_value=0,
             ),
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{TENANT_ID}/audit?limit=10&offset=20",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/audit?limit=10&offset=20")
 
         assert resp.status_code == 200
         mock_list.assert_called_once_with(TENANT_ID, 10, 20)
 
-    def test_audit_tenant_isolation(self, client, mock_pool):
+    def test_audit_tenant_isolation(self, mock_pool):
         """Non-admin tenant cannot access another tenant's audit."""
         other_tenant = uuid4()
-        tenant_key = "bsg_tenant-key-123"
+        app = create_app()
+        app.state.db_pool = mock_pool
+        app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
+        app.state.redis = None
+        member_ctx = make_gateway_auth_context(tenant_id=TENANT_ID, is_admin=False)
+        app.dependency_overrides[get_auth_context] = lambda: member_ctx
+        client = TestClient(app, raise_server_exceptions=False)
 
-        with patch(
-            "bsgateway.tenant.repository.TenantRepository.get_api_key_by_hash",
-            new_callable=AsyncMock,
-            return_value={
-                "id": uuid4(),
-                "tenant_id": TENANT_ID,
-                "key_hash": hash_api_key(tenant_key),
-                "key_prefix": "bsg_tena",
-                "name": "test",
-                "scopes": ["chat"],  # No admin scope
-                "is_active": True,
-                "expires_at": None,
-                "last_used_at": None,
-                "created_at": datetime.now(UTC),
-                "tenant_is_active": True,
-            },
-        ):
-            resp = client.get(
-                f"/api/v1/tenants/{other_tenant}/audit",
-                headers={"Authorization": f"Bearer {tenant_key}"},
-            )
-
+        resp = client.get(f"/api/v1/tenants/{other_tenant}/audit")
         assert resp.status_code == 403
 
 
 class TestAuditWiring:
     """Test that admin operations create audit log entries."""
 
-    def test_create_tenant_creates_audit(self, client, mock_pool, admin_headers):
+    def test_create_tenant_creates_audit(self, client, mock_pool):
         from bsgateway.tenant.models import TenantResponse
 
         now = datetime.now(UTC)
@@ -309,7 +283,6 @@ class TestAuditWiring:
             resp = client.post(
                 "/api/v1/tenants",
                 json={"name": "Test Corp", "slug": "test-corp"},
-                headers=admin_headers,
             )
 
         assert resp.status_code == 201
@@ -318,7 +291,7 @@ class TestAuditWiring:
         assert call_args[0][2] == "tenant.created"
         assert call_args[0][3] == "tenant"
 
-    def test_delete_model_creates_audit(self, client, mock_pool, admin_headers):
+    def test_delete_model_creates_audit(self, client, mock_pool):
         model_id = uuid4()
 
         with (
@@ -331,10 +304,7 @@ class TestAuditWiring:
                 new_callable=AsyncMock,
             ) as mock_audit,
         ):
-            resp = client.delete(
-                f"/api/v1/tenants/{TENANT_ID}/models/{model_id}",
-                headers=admin_headers,
-            )
+            resp = client.delete(f"/api/v1/tenants/{TENANT_ID}/models/{model_id}")
 
         assert resp.status_code == 204
         mock_audit.assert_called_once()

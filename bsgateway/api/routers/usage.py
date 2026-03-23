@@ -9,7 +9,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
-from bsgateway.api.deps import AuthContext, get_pool, require_tenant_access
+from bsgateway.api.deps import GatewayAuthContext, get_pool, require_tenant_access
 from bsgateway.routing.collector import SqlLoader
 
 logger = structlog.get_logger(__name__)
@@ -71,7 +71,7 @@ def _parse_period(
 async def get_usage(
     tenant_id: UUID,
     request: Request,
-    auth: AuthContext = Depends(require_tenant_access),
+    auth: GatewayAuthContext = Depends(require_tenant_access),
     period: str = Query("day", pattern="^(day|week|month)$"),
     from_date: date | None = Query(None, alias="from"),
     to_date: date | None = Query(None, alias="to"),

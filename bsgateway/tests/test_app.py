@@ -22,12 +22,11 @@ class TestCreateApp:
     def test_app_metadata(self):
         app = create_app()
         assert app.title == "BSGateway API"
-        assert app.version == "0.4.0"
+        assert app.version == "0.5.0"
 
     def test_routers_registered(self):
         app = create_app()
         paths = [route.path for route in app.routes]
-        assert "/api/v1/auth/token" in paths
         assert "/api/v1/tenants" in paths
         assert "/api/v1/tenants/{tenant_id}/rules" in paths
 
@@ -36,13 +35,11 @@ class TestCreateApp:
         middleware_classes = [m.cls.__name__ for m in app.user_middleware]
         assert "CORSMiddleware" in middleware_classes
 
-    def test_dashboard_mount_depends_on_dist(self):
-        # Just verify create_app doesn't crash — dashboard presence
-        # depends on whether frontend/dist exists at runtime
+    def test_auth_router_removed(self):
+        """Auth router should no longer be registered."""
         app = create_app()
-        route_names = [getattr(r, "name", None) for r in app.routes]
-        # Core routes should always be present
-        assert "create_token" in route_names
+        paths = [route.path for route in app.routes]
+        assert "/api/v1/auth/token" not in paths
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +98,21 @@ class TestLifespan:
             async with lifespan(app):
                 pass
 
+    async def test_raises_without_supabase_config(self):
+        app = MagicMock(spec=FastAPI)
+        app.state = MagicMock()
+
+        with (
+            patch("bsgateway.api.app.settings") as mock_settings,
+            pytest.raises(RuntimeError, match="SUPABASE_URL.*or SUPABASE_JWT_SECRET is required"),
+        ):
+            mock_settings.collector_database_url = "postgresql://test"
+            mock_settings.encryption_key_bytes = b"x" * 32
+            mock_settings.supabase_url = ""
+            mock_settings.supabase_jwt_secret = ""
+            async with lifespan(app):
+                pass
+
     async def test_lifespan_sets_state_and_cleans_up(self):
         app = MagicMock(spec=FastAPI)
         app.state = MagicMock()
@@ -118,13 +130,13 @@ class TestLifespan:
             patch("bsgateway.api.app.FeedbackRepository") as mock_feedback_repo_cls,
             patch("bsgateway.api.app.AuditRepository") as mock_audit_repo_cls,
             patch("bsgateway.api.app.CacheManager"),
+            patch("bsvibe_auth.SupabaseAuthProvider") as mock_auth_provider_cls,
         ):
             mock_settings.collector_database_url = "postgresql://test"
             mock_settings.encryption_key_bytes = b"x" * 32
-            mock_settings.superadmin_key = "test-admin"
-            mock_settings.jwt_secret = "test-secret-that-is-long-enough!!"
+            mock_settings.supabase_url = "https://test.supabase.co"
+            mock_settings.supabase_jwt_secret = ""
             mock_settings.redis_host = "localhost"
-            mock_settings.seed_dev_data = False
 
             # Each repo class returns a mock with async init_schema
             repo_classes = [
@@ -139,7 +151,7 @@ class TestLifespan:
             async with lifespan(app):
                 # Verify state was set
                 assert app.state.db_pool == mock_pool
-                assert app.state.jwt_secret == "test-secret-that-is-long-enough!!"
+                assert app.state.auth_provider == mock_auth_provider_cls.return_value
 
             # Verify cleanup
             mock_redis.aclose.assert_awaited_once()
@@ -160,13 +172,12 @@ class TestLifespan:
             patch("bsgateway.api.app.RulesRepository") as mock_rules_repo_cls,
             patch("bsgateway.api.app.FeedbackRepository") as mock_feedback_repo_cls,
             patch("bsgateway.api.app.AuditRepository") as mock_audit_repo_cls,
+            patch("bsvibe_auth.SupabaseAuthProvider"),
         ):
             mock_settings.collector_database_url = "postgresql://test"
             mock_settings.encryption_key_bytes = b"x" * 32
-            mock_settings.superadmin_key = ""
-            mock_settings.jwt_secret = ""
+            mock_settings.supabase_jwt_secret = "test-supabase-secret"
             mock_settings.redis_host = ""
-            mock_settings.seed_dev_data = False
 
             repo_classes = [
                 mock_tenant_repo_cls,

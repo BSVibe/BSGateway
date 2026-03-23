@@ -24,30 +24,6 @@ RETURNING id, name, slug, is_active, settings, created_at, updated_at;
 UPDATE tenants SET is_active = FALSE, updated_at = NOW()
 WHERE id = $1;
 
--- name: insert_api_key
-INSERT INTO tenant_api_keys (tenant_id, key_hash, key_prefix, name, scopes)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, tenant_id, key_prefix, name, scopes, is_active, expires_at, last_used_at, created_at;
-
--- name: get_api_key_by_hash
-SELECT ak.id, ak.tenant_id, ak.key_hash, ak.key_prefix, ak.name,
-       ak.scopes, ak.is_active, ak.expires_at, ak.last_used_at, ak.created_at,
-       t.is_active as tenant_is_active,
-       t.name as tenant_name, t.slug as tenant_slug
-FROM tenant_api_keys ak
-JOIN tenants t ON t.id = ak.tenant_id
-WHERE ak.key_hash = $1;
-
--- name: list_api_keys
-SELECT id, tenant_id, key_prefix, name, scopes, is_active, expires_at, last_used_at, created_at
-FROM tenant_api_keys WHERE tenant_id = $1 ORDER BY created_at DESC;
-
--- name: revoke_api_key
-UPDATE tenant_api_keys SET is_active = FALSE WHERE id = $1 AND tenant_id = $2;
-
--- name: touch_api_key
-UPDATE tenant_api_keys SET last_used_at = NOW() WHERE key_hash = $1;
-
 -- name: insert_tenant_model
 INSERT INTO tenant_models (tenant_id, model_name, provider, litellm_model, api_key_encrypted, api_base, extra_params)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

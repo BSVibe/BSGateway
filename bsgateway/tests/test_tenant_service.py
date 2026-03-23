@@ -110,52 +110,6 @@ class TestTenantCRUD:
         mock_repo.deactivate_tenant.assert_called_once_with(tid)
 
 
-class TestApiKeys:
-    async def test_create_api_key(self, service: TenantService, mock_repo: AsyncMock):
-        tid = uuid4()
-        mock_repo.create_api_key.return_value = {
-            "id": uuid4(),
-            "tenant_id": tid,
-            "key_prefix": "bsg_abcd1234",
-            "name": "production",
-            "scopes": ["read"],
-            "is_active": True,
-            "expires_at": None,
-            "created_at": datetime.now(UTC),
-        }
-
-        result = await service.create_api_key(tid, name="production", scopes=["read"])
-        assert result.key.startswith("bsg_")
-        assert result.name == "production"
-        assert result.tenant_id == tid
-        mock_repo.create_api_key.assert_called_once()
-
-    async def test_list_api_keys(self, service: TenantService, mock_repo: AsyncMock):
-        tid = uuid4()
-        mock_repo.list_api_keys.return_value = [
-            {
-                "id": uuid4(),
-                "tenant_id": tid,
-                "key_prefix": "bsg_abcd1234",
-                "name": "test",
-                "scopes": [],
-                "is_active": True,
-                "expires_at": None,
-                "last_used_at": None,
-                "created_at": datetime.now(UTC),
-            }
-        ]
-        result = await service.list_api_keys(tid)
-        assert len(result) == 1
-        assert result[0].key_prefix == "bsg_abcd1234"
-
-    async def test_revoke_api_key(self, service: TenantService, mock_repo: AsyncMock):
-        tid = uuid4()
-        kid = uuid4()
-        await service.revoke_api_key(kid, tid)
-        mock_repo.revoke_api_key.assert_called_once_with(kid, tid)
-
-
 class TestTenantModels:
     async def test_create_model_with_api_key(
         self,

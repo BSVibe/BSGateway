@@ -10,10 +10,11 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
-from bsgateway.core.security import hash_api_key
+from bsgateway.api.deps import get_auth_context
+from bsgateway.tests.conftest import make_gateway_auth_context
 
-SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
+ADMIN_TENANT_ID = uuid4()
 
 
 def _make_app():
@@ -22,7 +23,9 @@ def _make_app():
     pool._closed = False
     app.state.db_pool = pool
     app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-    app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
+    app.state.redis = None
+    admin_ctx = make_gateway_auth_context(tenant_id=ADMIN_TENANT_ID, is_admin=True)
+    app.dependency_overrides[get_auth_context] = lambda: admin_ctx
     return app
 
 
@@ -30,13 +33,10 @@ def _client():
     return TestClient(_make_app(), raise_server_exceptions=False)
 
 
-HEADERS = {"Authorization": f"Bearer {SUPERADMIN_KEY}"}
-
-
 class TestPresetsAPI:
     def test_list_presets(self):
         client = _client()
-        resp = client.get("/api/v1/presets", headers=HEADERS)
+        resp = client.get("/api/v1/presets")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) >= 4
@@ -46,7 +46,7 @@ class TestPresetsAPI:
 
     def test_list_presets_has_counts(self):
         client = _client()
-        resp = client.get("/api/v1/presets", headers=HEADERS)
+        resp = client.get("/api/v1/presets")
         for preset in resp.json():
             assert "intent_count" in preset
             assert "rule_count" in preset
@@ -80,7 +80,6 @@ class TestPresetsAPI:
                         "premium": "claude-opus",
                     },
                 },
-                headers=HEADERS,
             )
             assert resp.status_code == 201
             data = resp.json()
@@ -100,12 +99,19 @@ class TestPresetsAPI:
                     "premium": "c",
                 },
             },
-            headers=HEADERS,
         )
         assert resp.status_code == 400
 
     def test_apply_preset_no_auth(self):
-        client = _client()
+        app = create_app()
+        pool = AsyncMock()
+        pool._closed = False
+        app.state.db_pool = pool
+        app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
+        app.state.auth_provider = AsyncMock()
+        app.state.redis = None
+        # No dependency override → auth required
+        client = TestClient(app, raise_server_exceptions=False)
         resp = client.post(
             f"/api/v1/tenants/{uuid4()}/presets/apply",
             json={
@@ -144,7 +150,6 @@ class TestFeedbackAPI:
                     "rating": 4,
                     "comment": "Good",
                 },
-                headers=HEADERS,
             )
             assert resp.status_code == 201
             data = resp.json()
@@ -156,7 +161,6 @@ class TestFeedbackAPI:
         resp = client.post(
             f"/api/v1/tenants/{uuid4()}/feedback",
             json={"routing_id": "x", "rating": 6},
-            headers=HEADERS,
         )
         assert resp.status_code == 422
 
@@ -178,9 +182,6 @@ class TestFeedbackAPI:
                 }
             ],
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{tid}/feedback",
-                headers=HEADERS,
-            )
+            resp = client.get(f"/api/v1/tenants/{tid}/feedback")
             assert resp.status_code == 200
             assert len(resp.json()) == 1

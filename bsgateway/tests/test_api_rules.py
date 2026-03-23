@@ -12,11 +12,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
-from bsgateway.core.security import hash_api_key
-from bsgateway.tests.conftest import make_mock_pool
+from bsgateway.api.deps import get_auth_context
+from bsgateway.tests.conftest import make_gateway_auth_context, make_mock_pool
 
-SUPERADMIN_KEY = "test-superadmin-key"
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
+ADMIN_TENANT_ID = uuid4()
 
 
 @pytest.fixture
@@ -30,18 +30,15 @@ def app(mock_pool: AsyncMock):
     app = create_app()
     app.state.db_pool = mock_pool
     app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-    app.state.superadmin_key_hash = hash_api_key(SUPERADMIN_KEY)
+    app.state.redis = None
+    admin_ctx = make_gateway_auth_context(tenant_id=ADMIN_TENANT_ID, is_admin=True)
+    app.dependency_overrides[get_auth_context] = lambda: admin_ctx
     return app
 
 
 @pytest.fixture
 def client(app) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
-
-
-@pytest.fixture
-def admin_headers() -> dict:
-    return {"Authorization": f"Bearer {SUPERADMIN_KEY}"}
 
 
 def _rule_row(
@@ -93,7 +90,7 @@ def _intent_row(tenant_id=None, intent_id=None, name="test-intent"):
 
 
 class TestRulesCRUD:
-    def test_create_rule(self, client: TestClient, admin_headers: dict):
+    def test_create_rule(self, client: TestClient):
         tid = uuid4()
         row = _rule_row(tenant_id=tid)
         with (
@@ -137,14 +134,13 @@ class TestRulesCRUD:
                         }
                     ],
                 },
-                headers=admin_headers,
             )
             assert resp.status_code == 201
             data = resp.json()
             assert data["name"] == "test-rule"
             assert data["target_model"] == "gpt-4o"
 
-    def test_create_rule_invalid_target_model(self, client: TestClient, admin_headers: dict):
+    def test_create_rule_invalid_target_model(self, client: TestClient):
         tid = uuid4()
         with patch(
             "bsgateway.tenant.repository.TenantRepository.get_model_by_name",
@@ -158,16 +154,11 @@ class TestRulesCRUD:
                     "priority": 1,
                     "target_model": "nonexistent-model",
                 },
-                headers=admin_headers,
             )
             assert resp.status_code == 400
             assert "not registered" in resp.json()["detail"]
 
-    def test_create_default_rule_validates_model(
-        self,
-        client: TestClient,
-        admin_headers: dict,
-    ):
+    def test_create_default_rule_validates_model(self, client: TestClient):
         """Default rules also require a valid target_model."""
         tid = uuid4()
         with patch(
@@ -183,12 +174,11 @@ class TestRulesCRUD:
                     "target_model": "nonexistent-model",
                     "is_default": True,
                 },
-                headers=admin_headers,
             )
             assert resp.status_code == 400
             assert "not registered" in resp.json()["detail"]
 
-    def test_list_rules(self, client: TestClient, admin_headers: dict):
+    def test_list_rules(self, client: TestClient):
         tid = uuid4()
         with (
             patch(
@@ -202,14 +192,11 @@ class TestRulesCRUD:
                 return_value=[],
             ),
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{tid}/rules",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{tid}/rules")
             assert resp.status_code == 200
             assert len(resp.json()) == 1
 
-    def test_delete_rule(self, client: TestClient, admin_headers: dict):
+    def test_delete_rule(self, client: TestClient):
         with (
             patch(
                 "bsgateway.rules.repository.RulesRepository.delete_rule",
@@ -220,27 +207,21 @@ class TestRulesCRUD:
                 new_callable=AsyncMock,
             ),
         ):
-            resp = client.delete(
-                f"/api/v1/tenants/{uuid4()}/rules/{uuid4()}",
-                headers=admin_headers,
-            )
+            resp = client.delete(f"/api/v1/tenants/{uuid4()}/rules/{uuid4()}")
             assert resp.status_code == 204
 
-    def test_get_rule_not_found(self, client: TestClient, admin_headers: dict):
+    def test_get_rule_not_found(self, client: TestClient):
         with patch(
             "bsgateway.rules.repository.RulesRepository.get_rule",
             new_callable=AsyncMock,
             return_value=None,
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{uuid4()}/rules/{uuid4()}",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{uuid4()}/rules/{uuid4()}")
             assert resp.status_code == 404
 
 
 class TestRuleTest:
-    def test_rule_test_endpoint(self, client: TestClient, admin_headers: dict):
+    def test_rule_test_endpoint(self, client: TestClient):
         tid = uuid4()
         rid = uuid4()
         with (
@@ -276,18 +257,16 @@ class TestRuleTest:
                     "messages": [{"role": "user", "content": "Hello world"}],
                     "model": "auto",
                 },
-                headers=admin_headers,
             )
             assert resp.status_code == 200
             data = resp.json()
-            # With no conditions, rule at priority 1 matches
             assert data["matched_rule"] is not None
             assert data["target_model"] is not None
             assert "context" in data
 
 
 class TestIntentsCRUD:
-    def test_create_intent(self, client: TestClient, admin_headers: dict):
+    def test_create_intent(self, client: TestClient):
         tid = uuid4()
         row = _intent_row(tenant_id=tid)
         with (
@@ -308,37 +287,30 @@ class TestIntentsCRUD:
                     "description": "test",
                     "examples": ["example 1", "example 2"],
                 },
-                headers=admin_headers,
             )
             assert resp.status_code == 201
             assert resp.json()["name"] == "test-intent"
 
-    def test_list_intents(self, client: TestClient, admin_headers: dict):
+    def test_list_intents(self, client: TestClient):
         tid = uuid4()
         with patch(
             "bsgateway.rules.repository.RulesRepository.list_intents",
             new_callable=AsyncMock,
             return_value=[_intent_row(tenant_id=tid)],
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{tid}/intents",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{tid}/intents")
             assert resp.status_code == 200
             assert len(resp.json()) == 1
 
-    def test_delete_intent(self, client: TestClient, admin_headers: dict):
+    def test_delete_intent(self, client: TestClient):
         with patch(
             "bsgateway.rules.repository.RulesRepository.delete_intent",
             new_callable=AsyncMock,
         ):
-            resp = client.delete(
-                f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}",
-                headers=admin_headers,
-            )
+            resp = client.delete(f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}")
             assert resp.status_code == 204
 
-    def test_delete_example(self, client: TestClient, admin_headers: dict):
+    def test_delete_example(self, client: TestClient):
         tid = uuid4()
         intent_id = uuid4()
         example_id = uuid4()
@@ -355,11 +327,10 @@ class TestIntentsCRUD:
         ):
             resp = client.delete(
                 f"/api/v1/tenants/{tid}/intents/{intent_id}/examples/{example_id}",
-                headers=admin_headers,
             )
             assert resp.status_code == 204
 
-    def test_delete_example_intent_not_found(self, client: TestClient, admin_headers: dict):
+    def test_delete_example_intent_not_found(self, client: TestClient):
         with patch(
             "bsgateway.rules.repository.RulesRepository.get_intent",
             new_callable=AsyncMock,
@@ -367,23 +338,19 @@ class TestIntentsCRUD:
         ):
             resp = client.delete(
                 f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}/examples/{uuid4()}",
-                headers=admin_headers,
             )
             assert resp.status_code == 404
 
-    def test_get_intent_not_found(self, client: TestClient, admin_headers: dict):
+    def test_get_intent_not_found(self, client: TestClient):
         with patch(
             "bsgateway.rules.repository.RulesRepository.get_intent",
             new_callable=AsyncMock,
             return_value=None,
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}")
             assert resp.status_code == 404
 
-    def test_get_intent(self, client: TestClient, admin_headers: dict):
+    def test_get_intent(self, client: TestClient):
         tid = uuid4()
         iid = uuid4()
         row = _intent_row(tenant_id=tid, intent_id=iid)
@@ -392,14 +359,11 @@ class TestIntentsCRUD:
             new_callable=AsyncMock,
             return_value=row,
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{tid}/intents/{iid}",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{tid}/intents/{iid}")
             assert resp.status_code == 200
             assert resp.json()["name"] == "test-intent"
 
-    def test_update_intent(self, client: TestClient, admin_headers: dict):
+    def test_update_intent(self, client: TestClient):
         tid = uuid4()
         iid = uuid4()
         existing = _intent_row(tenant_id=tid, intent_id=iid)
@@ -419,12 +383,11 @@ class TestIntentsCRUD:
             resp = client.patch(
                 f"/api/v1/tenants/{tid}/intents/{iid}",
                 json={"name": "updated-intent"},
-                headers=admin_headers,
             )
             assert resp.status_code == 200
             assert resp.json()["name"] == "updated-intent"
 
-    def test_update_intent_not_found_on_get(self, client: TestClient, admin_headers: dict):
+    def test_update_intent_not_found_on_get(self, client: TestClient):
         with patch(
             "bsgateway.rules.repository.RulesRepository.get_intent",
             new_callable=AsyncMock,
@@ -433,11 +396,10 @@ class TestIntentsCRUD:
             resp = client.patch(
                 f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}",
                 json={"name": "x"},
-                headers=admin_headers,
             )
             assert resp.status_code == 404
 
-    def test_update_intent_not_found_on_update(self, client: TestClient, admin_headers: dict):
+    def test_update_intent_not_found_on_update(self, client: TestClient):
         tid = uuid4()
         iid = uuid4()
         existing = _intent_row(tenant_id=tid, intent_id=iid)
@@ -456,11 +418,10 @@ class TestIntentsCRUD:
             resp = client.patch(
                 f"/api/v1/tenants/{tid}/intents/{iid}",
                 json={"name": "x"},
-                headers=admin_headers,
             )
             assert resp.status_code == 404
 
-    def test_add_example(self, client: TestClient, admin_headers: dict):
+    def test_add_example(self, client: TestClient):
         tid = uuid4()
         iid = uuid4()
         intent_row = _intent_row(tenant_id=tid, intent_id=iid)
@@ -485,12 +446,11 @@ class TestIntentsCRUD:
             resp = client.post(
                 f"/api/v1/tenants/{tid}/intents/{iid}/examples",
                 json={"text": "example text"},
-                headers=admin_headers,
             )
             assert resp.status_code == 201
             assert resp.json()["text"] == "example text"
 
-    def test_add_example_intent_not_found(self, client: TestClient, admin_headers: dict):
+    def test_add_example_intent_not_found(self, client: TestClient):
         with patch(
             "bsgateway.rules.repository.RulesRepository.get_intent",
             new_callable=AsyncMock,
@@ -499,11 +459,10 @@ class TestIntentsCRUD:
             resp = client.post(
                 f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}/examples",
                 json={"text": "example text"},
-                headers=admin_headers,
             )
             assert resp.status_code == 404
 
-    def test_list_examples(self, client: TestClient, admin_headers: dict):
+    def test_list_examples(self, client: TestClient):
         tid = uuid4()
         iid = uuid4()
         intent_row = _intent_row(tenant_id=tid, intent_id=iid)
@@ -533,16 +492,13 @@ class TestIntentsCRUD:
                 return_value=example_rows,
             ),
         ):
-            resp = client.get(
-                f"/api/v1/tenants/{tid}/intents/{iid}/examples",
-                headers=admin_headers,
-            )
+            resp = client.get(f"/api/v1/tenants/{tid}/intents/{iid}/examples")
             assert resp.status_code == 200
             data = resp.json()
             assert len(data) == 2
             assert data[0]["text"] == "example 1"
 
-    def test_list_examples_intent_not_found(self, client: TestClient, admin_headers: dict):
+    def test_list_examples_intent_not_found(self, client: TestClient):
         with patch(
             "bsgateway.rules.repository.RulesRepository.get_intent",
             new_callable=AsyncMock,
@@ -550,6 +506,5 @@ class TestIntentsCRUD:
         ):
             resp = client.get(
                 f"/api/v1/tenants/{uuid4()}/intents/{uuid4()}/examples",
-                headers=admin_headers,
             )
             assert resp.status_code == 404
