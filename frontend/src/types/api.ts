@@ -110,6 +110,34 @@ export interface Example {
   created_at: string;
 }
 
+export interface ApiKeyCreated {
+  id: string;
+  tenant_id: string;
+  name: string;
+  key_prefix: string;
+  raw_key: string;
+  scopes: string[];
+  created_at: string;
+}
+
+export interface ApiKeyInfo {
+  id: string;
+  tenant_id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  is_active: boolean;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface ApiKeyCreate {
+  name: string;
+  scopes?: string[];
+  expires_in_days?: number;
+}
+
 export interface AuditLog {
   id: string;
   tenant_id: string;

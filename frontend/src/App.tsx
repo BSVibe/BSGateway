@@ -8,6 +8,7 @@ import { IntentsPage } from './pages/IntentsPage';
 import { RoutingTestPage } from './pages/RoutingTestPage';
 import { UsagePage } from './pages/UsagePage';
 import { AuditPage } from './pages/AuditPage';
+import { ApiKeysPage } from './pages/ApiKeysPage';
 import { LoginPage } from './pages/LoginPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { useAuth } from './hooks/useAuth';
@@ -73,6 +74,7 @@ function App() {
             <Route path="models" element={<PageBoundary><ModelsPage /></PageBoundary>} />
             <Route path="intents" element={<PageBoundary><IntentsPage /></PageBoundary>} />
             <Route path="test" element={<PageBoundary><RoutingTestPage /></PageBoundary>} />
+            <Route path="api-keys" element={<PageBoundary><ApiKeysPage /></PageBoundary>} />
             <Route path="usage" element={<PageBoundary><UsagePage /></PageBoundary>} />
             <Route path="audit" element={<PageBoundary><AuditPage /></PageBoundary>} />
             <Route path="*" element={<Navigate to="/" replace />} />

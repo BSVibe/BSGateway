@@ -6,6 +6,7 @@ const navItems = [
   { path: '/models', label: 'Models', icon: 'M' },
   { path: '/intents', label: 'Intents', icon: 'I' },
   { path: '/test', label: 'Route Test', icon: 'T' },
+  { path: '/api-keys', label: 'API Keys', icon: 'K' },
   { path: '/usage', label: 'Usage', icon: 'U' },
   { path: '/audit', label: 'Audit Log', icon: 'A' },
 ];
