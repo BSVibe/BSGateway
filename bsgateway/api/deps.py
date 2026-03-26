@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 import asyncpg
@@ -12,8 +12,6 @@ from bsgateway.apikey.service import API_KEY_PREFIX
 from bsgateway.core.cache import CacheManager
 
 if TYPE_CHECKING:
-    from bsvibe_auth import BSVibeUser
-
     from bsgateway.audit.service import AuditService
     from bsgateway.tenant.repository import TenantRepository
 
@@ -36,10 +34,20 @@ def get_cache(request: Request) -> CacheManager | None:
 
 
 @dataclass
-class GatewayAuthContext:
-    """Authenticated request context backed by BSVibe-Auth."""
+class AuthIdentity:
+    """Authenticated principal — either a Supabase user or an API key."""
 
-    user: BSVibeUser
+    kind: Literal["user", "apikey"]
+    id: str
+    email: str | None = None
+    scopes: list[str] = field(default_factory=lambda: ["chat"])
+
+
+@dataclass
+class GatewayAuthContext:
+    """Authenticated request context."""
+
+    identity: AuthIdentity
     tenant_id: UUID
     is_admin: bool
 
@@ -105,21 +113,14 @@ async def _auth_via_apikey(request: Request, raw_key: str) -> GatewayAuthContext
     repo = TenantRepository(pool, cache=cache)
     await _verify_tenant_active(repo, result.tenant_id)
 
-    # API key auth grants member-level access to its own tenant
-    from bsvibe_auth import BSVibeUser
-
-    synthetic_user = BSVibeUser(
-        id=f"apikey:{result.key_id}",
-        email="",
-        role="authenticated",
-        app_metadata={"tenant_id": str(result.tenant_id), "role": "member"},
-        user_metadata={},
-    )
-
     logger.info("auth_success_apikey", tenant_id=str(result.tenant_id), key_id=str(result.key_id))
 
     return GatewayAuthContext(
-        user=synthetic_user,
+        identity=AuthIdentity(
+            kind="apikey",
+            id=str(result.key_id),
+            scopes=result.scopes,
+        ),
         tenant_id=result.tenant_id,
         is_admin=False,
     )
@@ -187,7 +188,11 @@ async def _auth_via_jwt(request: Request, token: str) -> GatewayAuthContext:
     logger.info("auth_success", tenant_id=str(tenant_id), user_id=user.id, is_admin=is_admin)
 
     return GatewayAuthContext(
-        user=user,
+        identity=AuthIdentity(
+            kind="user",
+            id=user.id,
+            email=user.email,
+        ),
         tenant_id=tenant_id,
         is_admin=is_admin,
     )

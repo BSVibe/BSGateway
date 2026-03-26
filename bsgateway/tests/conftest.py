@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from bsvibe_auth import BSVibeUser
 
-from bsgateway.api.deps import GatewayAuthContext
+from bsgateway.api.deps import AuthIdentity, GatewayAuthContext
 
 
 class MockAcquire:
@@ -67,13 +67,16 @@ def make_gateway_auth_context(
     tenant_id: UUID | None = None,
     is_admin: bool = False,
     email: str = "test@test.com",
+    user_id: str | None = None,
 ) -> GatewayAuthContext:
     """Build a fake GatewayAuthContext for testing via dependency_overrides."""
     tid = tenant_id or uuid4()
-    role = "admin" if is_admin else "member"
-    user = make_bsvibe_user(tenant_id=tid, role=role, email=email)
     return GatewayAuthContext(
-        user=user,
+        identity=AuthIdentity(
+            kind="user",
+            id=user_id or str(uuid4()),
+            email=email,
+        ),
         tenant_id=tid,
         is_admin=is_admin,
     )
