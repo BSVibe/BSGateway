@@ -44,3 +44,42 @@ Completed: 2026-03-28
 ### Test Results
 - 508 tests pass, 97% coverage (was already 97%)
 - ruff clean
+
+## TASK-004: End-to-end tests for metadata routing
+**Date**: 2026-03-28
+**Status**: DONE
+
+### Changes
+- `bsgateway/tests/test_e2e_nexus_routing.py`: New file with 25 E2E integration tests
+
+### Test coverage
+5 test classes verifying the full flow: request → header extraction → routing decision → collector:
+- `TestE2EBackwardCompatibility` (5 tests): no headers → passthrough unchanged, auto-routing works, collector gets nexus_metadata=None, non-completion call type skipped, existing metadata preserved
+- `TestE2EHeaderInfluencesRouting` (5 tests): task_type-only uses classifier, non-critical priority uses classifier, hint-only triggers blend, priority+hint triggers blend, case-insensitive headers
+- `TestE2ECriticalPriorityOverride` (5 tests): routes to highest tier, skips classifier, does NOT call collector, passthrough unaffected, critical+hint still overrides
+- `TestE2ECollectorLogsMetadata` (5 tests): full nexus metadata, classifier decision_source, None when no headers, correct models, not called for passthrough
+- `TestE2EScenarios` (5 tests): all 5 header combinations end-to-end
+
+### Results
+- 533 tests pass (25 new), 97.16% coverage
+- ruff clean
+
+## REVIEW-001: Code review — fix all issues including minor ones
+**Date**: 2026-03-28
+**Status**: DONE
+
+### Issues Found and Fixed
+- `bsgateway/tests/test_e2e_nexus_routing.py`: Removed redundant inline `from bsgateway.routing.classifiers.base import ClassificationResult` imports inside test methods (F811 redefinitions) — `ClassificationResult` was already imported at top level. Also fixed import sort order (I001) and removed the unused top-level import (F401). Fixed via `ruff --fix`.
+- `bsgateway/tests/test_nexus_e2e.py`: All E501/RUF003 issues already fixed (ruff reported clean on recheck).
+
+### Final Verification
+- `ruff check bsgateway/`: all checks passed
+- `pytest` (554 tests): all passed, 97.25% coverage (>= 80%)
+- Backward compatibility: all existing tests unbroken
+## Completed at 2026-03-28T09:18:00Z after 4 iterations
+
+### Follow-up (2026-03-28)
+- Added `bsgateway/tests/test_nexus_e2e.py`: 21 additional E2E integration tests with cleaner
+  structure and no lint errors. Covers: no headers (backward compat), only priority, only hint,
+  both headers, critical override, edge cases.
+- Total: 554 tests pass, 97.25% coverage, ruff clean

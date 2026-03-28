@@ -30,7 +30,7 @@
       "title": "End-to-end tests for metadata routing",
       "description": "Write integration tests in bsgateway/tests/ that verify the full flow: request with X-BSNexus-* headers → hook extracts → routing decision influenced → collector logs. Test all scenarios: no headers (backward compat), only priority, only hint, both, critical override.",
       "acceptanceCriteria": "Integration tests cover all header combinations. All tests pass. Coverage >= 80%.",
-      "passes": false,
+      "passes": true,
       "priority": 4
     },
     {
@@ -38,7 +38,7 @@
       "title": "Code review — fix all issues including minor ones",
       "description": "Review all changes. Check: backward compatibility (no headers = same behavior as before), test coverage >= 80%, ruff check passes, no security issues, schema.sql is valid, queries.sql params match.",
       "acceptanceCriteria": "ruff check bsgateway/ passes. pytest with coverage >= 80% passes. All existing tests unbroken.",
-      "passes": false,
+      "passes": true,
       "priority": 99
     }
   ]
