@@ -1,0 +1,45 @@
+{
+  "branchName": "feat/task-metadata-routing",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Accept X-BSNexus-* headers in pre_call_hook",
+      "description": "In bsgateway/routing/hook.py, modify async_pre_call_hook to extract optional headers: X-BSNexus-Task-Type (str), X-BSNexus-Priority (str: low/medium/high/critical), X-BSNexus-Complexity-Hint (int 0-100). Store in a NexusMetadata dataclass. Pass to RoutingDecision. Add the NexusMetadata dataclass to bsgateway/routing/models.py. Write tests first.",
+      "acceptanceCriteria": "NexusMetadata dataclass exists in models.py. pre_call_hook extracts headers when present, ignores when absent. RoutingDecision has optional nexus_metadata field. Tests verify extraction and missing-header behavior.",
+      "passes": true,
+      "priority": 1
+    },
+    {
+      "id": "TASK-002",
+      "title": "Enhance routing with task priority and complexity hint",
+      "description": "In the auto-route path of hook.py _route(), when NexusMetadata is present: (1) If priority='critical', skip classification and route to highest tier. (2) If complexity_hint is provided, blend with classifier score using weighted average (70% classifier, 30% hint). (3) Log the decision source. Write tests first.",
+      "acceptanceCriteria": "Critical priority bypasses classification. Complexity hint blends with classifier score. Decision source is logged. All existing routing tests still pass. New tests cover priority override and blending.",
+      "passes": false,
+      "priority": 2
+    },
+    {
+      "id": "TASK-003",
+      "title": "Add BSNexus metadata columns to routing_logs",
+      "description": "Add columns to bsgateway/routing/sql/schema.sql: nexus_task_type TEXT, nexus_priority TEXT, nexus_complexity_hint INTEGER, decision_source TEXT (values: 'classifier', 'hint', 'blend', 'priority_override'). Update insert queries in queries.sql. Update collector.py record() to save these fields. Write a migration script if needed. Write tests first.",
+      "acceptanceCriteria": "Schema has new columns. Insert queries accept new params. Collector saves NexusMetadata fields. Tests verify collector records metadata correctly.",
+      "passes": false,
+      "priority": 3
+    },
+    {
+      "id": "TASK-004",
+      "title": "End-to-end tests for metadata routing",
+      "description": "Write integration tests in bsgateway/tests/ that verify the full flow: request with X-BSNexus-* headers → hook extracts → routing decision influenced → collector logs. Test all scenarios: no headers (backward compat), only priority, only hint, both, critical override.",
+      "acceptanceCriteria": "Integration tests cover all header combinations. All tests pass. Coverage >= 80%.",
+      "passes": false,
+      "priority": 4
+    },
+    {
+      "id": "REVIEW-001",
+      "title": "Code review — fix all issues including minor ones",
+      "description": "Review all changes. Check: backward compatibility (no headers = same behavior as before), test coverage >= 80%, ruff check passes, no security issues, schema.sql is valid, queries.sql params match.",
+      "acceptanceCriteria": "ruff check bsgateway/ passes. pytest with coverage >= 80% passes. All existing tests unbroken.",
+      "passes": false,
+      "priority": 99
+    }
+  ]
+}

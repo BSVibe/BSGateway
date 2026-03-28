@@ -16,6 +16,7 @@ from bsgateway.routing.models import (
     CollectorConfig,
     EmbeddingConfig,
     LLMClassifierConfig,
+    NexusMetadata,
     RoutingConfig,
     RoutingDecision,
     TierConfig,
@@ -148,6 +149,35 @@ def load_routing_config(config_path: str | None = None) -> RoutingConfig:
     )
 
 
+def _extract_nexus_metadata(data: dict) -> NexusMetadata | None:
+    """Extract X-BSNexus-* headers from request data into a NexusMetadata object.
+
+    Returns None when no X-BSNexus-* headers are present (backward compatible).
+    Header names are matched case-insensitively.
+    """
+    headers: dict = data.get("metadata", {}).get("headers", {})
+    if not headers:
+        return None
+
+    normalized = {k.lower(): v for k, v in headers.items()}
+
+    task_type: str | None = normalized.get("x-bsnexus-task-type")
+    priority: str | None = normalized.get("x-bsnexus-priority")
+
+    complexity_hint: int | None = None
+    hint_raw = normalized.get("x-bsnexus-complexity-hint")
+    if hint_raw is not None:
+        try:
+            complexity_hint = int(hint_raw)
+        except (ValueError, TypeError):
+            pass
+
+    if task_type is None and priority is None and complexity_hint is None:
+        return None
+
+    return NexusMetadata(task_type=task_type, priority=priority, complexity_hint=complexity_hint)
+
+
 class BSGatewayRouter:
     """LiteLLM custom callback handler for complexity-based routing.
 
@@ -198,7 +228,9 @@ class BSGatewayRouter:
             return data
 
         requested_model = data.get("model", "auto")
+        nexus_metadata = _extract_nexus_metadata(data)
         decision = await self._route(requested_model, data)
+        decision.nexus_metadata = nexus_metadata
 
         data["model"] = decision.resolved_model
         metadata = data.setdefault("metadata", {})
@@ -208,6 +240,15 @@ class BSGatewayRouter:
             "resolved_model": decision.resolved_model,
             "complexity_score": decision.complexity_score,
             "tier": decision.tier,
+            "nexus_metadata": (
+                {
+                    "task_type": nexus_metadata.task_type,
+                    "priority": nexus_metadata.priority,
+                    "complexity_hint": nexus_metadata.complexity_hint,
+                }
+                if nexus_metadata is not None
+                else None
+            ),
         }
 
         logger.info(

@@ -11,6 +11,7 @@ from bsgateway.routing.models import (
     ClassifierConfig,
     ClassifierWeights,
     CollectorConfig,
+    NexusMetadata,
     RoutingConfig,
     TierConfig,
 )
@@ -399,3 +400,145 @@ class TestLoadRoutingConfig:
         assert config.collector.embedding is not None
         assert config.collector.embedding.model == "custom-embed"
         assert config.collector.embedding.timeout == 10.0
+
+
+class TestNexusMetadataExtraction:
+    """Tests for X-BSNexus-* header extraction into NexusMetadata."""
+
+    @pytest.mark.asyncio
+    async def test_extracts_all_headers(self, router: BSGatewayRouter) -> None:
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {
+                "headers": {
+                    "x-bsnexus-task-type": "summarize",
+                    "x-bsnexus-priority": "high",
+                    "x-bsnexus-complexity-hint": "75",
+                }
+            },
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        nexus = result["metadata"]["routing_decision"]["nexus_metadata"]
+        assert nexus is not None
+        assert nexus["task_type"] == "summarize"
+        assert nexus["priority"] == "high"
+        assert nexus["complexity_hint"] == 75
+
+    @pytest.mark.asyncio
+    async def test_no_headers_nexus_metadata_is_none(self, router: BSGatewayRouter) -> None:
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["metadata"]["routing_decision"]["nexus_metadata"] is None
+
+    @pytest.mark.asyncio
+    async def test_empty_headers_nexus_metadata_is_none(self, router: BSGatewayRouter) -> None:
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["metadata"]["routing_decision"]["nexus_metadata"] is None
+
+    @pytest.mark.asyncio
+    async def test_partial_headers_priority_only(self, router: BSGatewayRouter) -> None:
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-priority": "critical"}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        nexus = result["metadata"]["routing_decision"]["nexus_metadata"]
+        assert nexus is not None
+        assert nexus["task_type"] is None
+        assert nexus["priority"] == "critical"
+        assert nexus["complexity_hint"] is None
+
+    @pytest.mark.asyncio
+    async def test_partial_headers_task_type_only(self, router: BSGatewayRouter) -> None:
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-task-type": "code-review"}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        nexus = result["metadata"]["routing_decision"]["nexus_metadata"]
+        assert nexus is not None
+        assert nexus["task_type"] == "code-review"
+        assert nexus["priority"] is None
+        assert nexus["complexity_hint"] is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_complexity_hint_yields_none(self, router: BSGatewayRouter) -> None:
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {
+                "headers": {
+                    "x-bsnexus-priority": "low",
+                    "x-bsnexus-complexity-hint": "not-a-number",
+                }
+            },
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        nexus = result["metadata"]["routing_decision"]["nexus_metadata"]
+        assert nexus is not None
+        assert nexus["complexity_hint"] is None
+
+    @pytest.mark.asyncio
+    async def test_header_names_case_insensitive(self, router: BSGatewayRouter) -> None:
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {
+                "headers": {
+                    "X-BSNexus-Task-Type": "translation",
+                    "X-BSNEXUS-PRIORITY": "medium",
+                    "X-BSNexus-Complexity-Hint": "50",
+                }
+            },
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        nexus = result["metadata"]["routing_decision"]["nexus_metadata"]
+        assert nexus is not None
+        assert nexus["task_type"] == "translation"
+        assert nexus["priority"] == "medium"
+        assert nexus["complexity_hint"] == 50
+
+    @pytest.mark.asyncio
+    async def test_backward_compat_passthrough_unaffected(self, router: BSGatewayRouter) -> None:
+        """Without X-BSNexus-* headers, passthrough behavior must be identical."""
+        data = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["model"] == "gpt-4o-mini"
+        assert result["metadata"]["routing_decision"]["method"] == "passthrough"
+        assert result["metadata"]["routing_decision"]["nexus_metadata"] is None
+
+    @pytest.mark.asyncio
+    async def test_nexus_metadata_in_routing_decision_keys(self, router: BSGatewayRouter) -> None:
+        """routing_decision dict must always include nexus_metadata key."""
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert "nexus_metadata" in result["metadata"]["routing_decision"]
+
+    def test_nexus_metadata_dataclass_fields(self) -> None:
+        """NexusMetadata dataclass should have correct fields and defaults."""
+        meta = NexusMetadata()
+        assert meta.task_type is None
+        assert meta.priority is None
+        assert meta.complexity_hint is None
+
+        meta2 = NexusMetadata(task_type="qa", priority="high", complexity_hint=80)
+        assert meta2.task_type == "qa"
+        assert meta2.priority == "high"
+        assert meta2.complexity_hint == 80

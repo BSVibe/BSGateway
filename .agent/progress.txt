@@ -1,0 +1,14 @@
+# Progress Log
+Started: 2026-03-28T09:00:24Z
+
+## TASK-001: Accept X-BSNexus-* headers in pre_call_hook
+Completed: 2026-03-28
+
+### Changes
+- `bsgateway/routing/models.py`: Added `NexusMetadata` dataclass (task_type, priority, complexity_hint). Added `nexus_metadata: NexusMetadata | None = None` to `RoutingDecision`.
+- `bsgateway/routing/hook.py`: Added `_extract_nexus_metadata(data)` — reads `data["metadata"]["headers"]` case-insensitively, parses X-BSNexus-* headers, returns None when absent (backward compatible). `async_pre_call_hook` attaches result to `RoutingDecision` and serializes to routing_decision metadata dict.
+- `bsgateway/tests/test_hook.py`: Added `TestNexusMetadataExtraction` (10 tests) covering all headers, no headers, empty headers, partial headers, invalid hint, case-insensitive names, backward compat, key presence, and dataclass defaults.
+
+### Verification
+- `ruff check`: all checks passed
+- `pytest` (495 tests): all passed, 96.92% coverage

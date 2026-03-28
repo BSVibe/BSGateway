@@ -13,6 +13,15 @@ class TierConfig:
 
 
 @dataclass
+class NexusMetadata:
+    """Optional task metadata extracted from X-BSNexus-* request headers."""
+
+    task_type: str | None = None
+    priority: str | None = None  # "low" | "medium" | "high" | "critical"
+    complexity_hint: int | None = None  # 0-100
+
+
+@dataclass
 class RoutingDecision:
     """Record of how a request was routed."""
 
@@ -21,6 +30,7 @@ class RoutingDecision:
     resolved_model: str
     complexity_score: int | None = None
     tier: str | None = None
+    nexus_metadata: NexusMetadata | None = None
 
 
 @dataclass
