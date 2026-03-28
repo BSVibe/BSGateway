@@ -16,8 +16,9 @@ from fastapi.staticfiles import StaticFiles
 from bsgateway.audit.repository import AuditRepository
 from bsgateway.core.cache import CacheManager
 from bsgateway.core.config import settings
-from bsgateway.core.database import close_pool, get_pool
+from bsgateway.core.database import close_pool, execute_schema, get_pool
 from bsgateway.presets.repository import FeedbackRepository
+from bsgateway.routing.collector import SqlLoader
 from bsgateway.rules.repository import RulesRepository
 from bsgateway.tenant.repository import TenantRepository
 
@@ -83,7 +84,10 @@ async def lifespan(app: FastAPI):
     # Initialize cache manager if Redis is available
     app.state.cache = CacheManager(app.state.redis) if app.state.redis else None
 
-    # Initialize schemas
+    # Initialize schemas — routing_logs must exist first (tenant_schema ALTERs it)
+    routing_sql = SqlLoader()
+    await execute_schema(pool, routing_sql.schema())
+
     tenant_repo = TenantRepository(pool, cache=app.state.cache)
     await tenant_repo.init_schema()
 
