@@ -14,7 +14,7 @@
       "title": "Enhance routing with task priority and complexity hint",
       "description": "In the auto-route path of hook.py _route(), when NexusMetadata is present: (1) If priority='critical', skip classification and route to highest tier. (2) If complexity_hint is provided, blend with classifier score using weighted average (70% classifier, 30% hint). (3) Log the decision source. Write tests first.",
       "acceptanceCriteria": "Critical priority bypasses classification. Complexity hint blends with classifier score. Decision source is logged. All existing routing tests still pass. New tests cover priority override and blending.",
-      "passes": false,
+      "passes": true,
       "priority": 2
     },
     {

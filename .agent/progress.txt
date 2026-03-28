@@ -12,3 +12,21 @@ Completed: 2026-03-28
 ### Verification
 - `ruff check`: all checks passed
 - `pytest` (495 tests): all passed, 96.92% coverage
+
+## TASK-002: Enhance routing with task priority and complexity hint
+**Completed: 2026-03-28**
+
+### Changes
+- `bsgateway/routing/models.py`: Added `decision_source: str | None` field to `RoutingDecision`
+- `bsgateway/routing/hook.py`:
+  - `_route()`: now accepts `nexus_metadata` parameter and passes it to `_auto_route`
+  - `_auto_route()`: added `nexus_metadata` parameter with two new behaviors:
+    - `priority == 'critical'` → skips classifier, routes to highest tier (by score_range[1]), `decision_source='priority_override'`
+    - `complexity_hint` present → blends scores (70% classifier + 30% hint), re-maps to tier, `decision_source='blend'`
+    - No metadata → normal classifier path, `decision_source='classifier'`
+  - Added `_get_highest_tier()` helper
+  - `decision_source` added to `routing_decision` metadata dict
+- `bsgateway/tests/test_hook.py`: Added `TestNexusMetadataRouting` class (9 tests)
+
+### Results
+- 504 tests pass, 97% coverage, ruff clean

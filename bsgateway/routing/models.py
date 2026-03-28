@@ -31,6 +31,7 @@ class RoutingDecision:
     complexity_score: int | None = None
     tier: str | None = None
     nexus_metadata: NexusMetadata | None = None
+    decision_source: str | None = None  # "classifier" | "blend" | "priority_override"
 
 
 @dataclass

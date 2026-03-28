@@ -229,8 +229,7 @@ class BSGatewayRouter:
 
         requested_model = data.get("model", "auto")
         nexus_metadata = _extract_nexus_metadata(data)
-        decision = await self._route(requested_model, data)
-        decision.nexus_metadata = nexus_metadata
+        decision = await self._route(requested_model, data, nexus_metadata)
 
         data["model"] = decision.resolved_model
         metadata = data.setdefault("metadata", {})
@@ -240,6 +239,7 @@ class BSGatewayRouter:
             "resolved_model": decision.resolved_model,
             "complexity_score": decision.complexity_score,
             "tier": decision.tier,
+            "decision_source": decision.decision_source,
             "nexus_metadata": (
                 {
                     "task_type": nexus_metadata.task_type,
@@ -262,7 +262,12 @@ class BSGatewayRouter:
 
         return data
 
-    async def _route(self, requested_model: str, data: dict) -> RoutingDecision:
+    async def _route(
+        self,
+        requested_model: str,
+        data: dict,
+        nexus_metadata: NexusMetadata | None = None,
+    ) -> RoutingDecision:
         """Determine the target model for a request."""
         # 1. Passthrough: known direct model names
         if requested_model in self.config.passthrough_models:
@@ -270,6 +275,7 @@ class BSGatewayRouter:
                 method="passthrough",
                 original_model=requested_model,
                 resolved_model=requested_model,
+                nexus_metadata=nexus_metadata,
             )
 
         # 2. Alias resolution (exact match)
@@ -280,6 +286,7 @@ class BSGatewayRouter:
                     method="alias",
                     original_model=requested_model,
                     resolved_model=resolved,
+                    nexus_metadata=nexus_metadata,
                 )
             # Fall through to auto-routing
 
@@ -288,14 +295,46 @@ class BSGatewayRouter:
             pass  # Fall through to auto-routing
 
         # 4. Auto-route based on complexity
-        return await self._auto_route(requested_model, data)
+        return await self._auto_route(requested_model, data, nexus_metadata)
 
     def _matches_auto_route_pattern(self, model: str) -> bool:
         """Check if a model name matches any auto_route_patterns."""
         return any(fnmatch(model, pattern) for pattern in self.config.auto_route_patterns)
 
-    async def _auto_route(self, requested_model: str, data: dict) -> RoutingDecision:
+    def _get_highest_tier(self) -> TierConfig | None:
+        """Return the tier with the highest score range upper bound."""
+        if not self.config.tiers:
+            return None
+        return max(self.config.tiers, key=lambda t: t.score_range[1])
+
+    async def _auto_route(
+        self,
+        requested_model: str,
+        data: dict,
+        nexus_metadata: NexusMetadata | None = None,
+    ) -> RoutingDecision:
         """Classify complexity and select the appropriate tier model."""
+        # Priority override: critical → skip classification, route to highest tier
+        if nexus_metadata is not None and nexus_metadata.priority == "critical":
+            highest = self._get_highest_tier()
+            target_model = highest.model if highest else self._get_fallback_model()
+            tier_name = highest.name if highest else self.config.fallback_tier
+            logger.info(
+                "routing_priority_override",
+                original_model=requested_model,
+                resolved_model=target_model,
+                tier=tier_name,
+            )
+            return RoutingDecision(
+                method="auto",
+                original_model=requested_model,
+                resolved_model=target_model,
+                complexity_score=None,
+                tier=tier_name,
+                nexus_metadata=nexus_metadata,
+                decision_source="priority_override",
+            )
+
         try:
             result = await self.classifier.classify(data)
         except Exception:
@@ -307,17 +346,42 @@ class BSGatewayRouter:
                 resolved_model=fallback,
                 complexity_score=None,
                 tier=self.config.fallback_tier,
+                nexus_metadata=nexus_metadata,
             )
 
-        tier = self._tier_map.get(result.tier)
-        target_model = tier.model if tier else self._get_fallback_model()
+        # Blend classifier score with complexity_hint when provided
+        if nexus_metadata is not None and nexus_metadata.complexity_hint is not None:
+            classifier_score = result.score if result.score is not None else 50
+            blended_score = round(0.7 * classifier_score + 0.3 * nexus_metadata.complexity_hint)
+            blended_tier = self._score_to_tier(blended_score)
+            tier = self._tier_map.get(blended_tier)
+            target_model = tier.model if tier else self._get_fallback_model()
+            decision_source = "blend"
+            final_score = blended_score
+            final_tier = blended_tier
+            logger.info(
+                "routing_complexity_blend",
+                original_model=requested_model,
+                classifier_score=classifier_score,
+                hint=nexus_metadata.complexity_hint,
+                blended_score=blended_score,
+                tier=blended_tier,
+            )
+        else:
+            tier = self._tier_map.get(result.tier)
+            target_model = tier.model if tier else self._get_fallback_model()
+            decision_source = "classifier"
+            final_score = result.score
+            final_tier = result.tier
 
         decision = RoutingDecision(
             method="auto",
             original_model=requested_model,
             resolved_model=target_model,
-            complexity_score=result.score,
-            tier=result.tier,
+            complexity_score=final_score,
+            tier=final_tier,
+            nexus_metadata=nexus_metadata,
+            decision_source=decision_source,
         )
 
         # Record asynchronously (non-blocking), track for graceful shutdown

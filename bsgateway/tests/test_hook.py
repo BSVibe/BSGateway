@@ -542,3 +542,139 @@ class TestNexusMetadataExtraction:
         assert meta2.task_type == "qa"
         assert meta2.priority == "high"
         assert meta2.complexity_hint == 80
+
+
+class TestNexusMetadataRouting:
+    """Tests for TASK-002: enhanced routing with priority and complexity hint."""
+
+    @pytest.mark.asyncio
+    async def test_critical_priority_routes_to_highest_tier(self, router: BSGatewayRouter) -> None:
+        """Critical priority must bypass classification and go to the highest tier."""
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-priority": "critical"}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["model"] == "claude-opus"
+        decision = result["metadata"]["routing_decision"]
+        assert decision["tier"] == "complex"
+        assert decision["decision_source"] == "priority_override"
+
+    @pytest.mark.asyncio
+    async def test_critical_priority_bypasses_classifier(self, router: BSGatewayRouter) -> None:
+        """Classifier must NOT be called when priority is critical."""
+        classify_mock = AsyncMock()
+        router.classifier.classify = classify_mock
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-priority": "critical"}},
+        }
+        await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        classify_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_complexity_hint_blends_with_classifier_score(
+        self, router: BSGatewayRouter
+    ) -> None:
+        """complexity_hint blends with classifier score: 70% classifier + 30% hint."""
+        # Force classifier to return score=0 (simple tier)
+        from bsgateway.routing.classifiers.base import ClassificationResult
+
+        router.classifier.classify = AsyncMock(
+            return_value=ClassificationResult(tier="simple", strategy="static", score=0)
+        )
+        # hint=100 → blended = 0.7*0 + 0.3*100 = 30 → still simple (0-30)
+        # Use hint=100 to ensure blend result is 30, which is on the simple/medium boundary
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-complexity-hint": "100"}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        decision = result["metadata"]["routing_decision"]
+        assert decision["decision_source"] == "blend"
+        # blended score = 0.7*0 + 0.3*100 = 30
+        assert decision["complexity_score"] == 30
+
+    @pytest.mark.asyncio
+    async def test_complexity_hint_high_blends_to_higher_tier(
+        self, router: BSGatewayRouter
+    ) -> None:
+        """High complexity_hint can push a simple request into a higher tier."""
+        from bsgateway.routing.classifiers.base import ClassificationResult
+
+        # classifier: score=10 (simple), hint=100 → blend = 7+30 = 37 → medium
+        router.classifier.classify = AsyncMock(
+            return_value=ClassificationResult(tier="simple", strategy="static", score=10)
+        )
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-complexity-hint": "100"}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        decision = result["metadata"]["routing_decision"]
+        assert decision["decision_source"] == "blend"
+        # blended = 0.7*10 + 0.3*100 = 7 + 30 = 37 → medium tier
+        assert decision["complexity_score"] == 37
+        assert decision["tier"] == "medium"
+        assert result["model"] == "gpt-4o-mini"
+
+    @pytest.mark.asyncio
+    async def test_no_nexus_metadata_decision_source_is_classifier(
+        self, router: BSGatewayRouter
+    ) -> None:
+        """Without nexus metadata, decision_source must be 'classifier'."""
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["metadata"]["routing_decision"]["decision_source"] == "classifier"
+
+    @pytest.mark.asyncio
+    async def test_non_critical_priority_without_hint_uses_classifier(
+        self, router: BSGatewayRouter
+    ) -> None:
+        """Non-critical priority without hint should use classifier normally."""
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-priority": "high"}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["metadata"]["routing_decision"]["decision_source"] == "classifier"
+
+    @pytest.mark.asyncio
+    async def test_decision_source_in_routing_decision_keys(self, router: BSGatewayRouter) -> None:
+        """routing_decision must always contain a decision_source key."""
+        data = {
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert "decision_source" in result["metadata"]["routing_decision"]
+
+    @pytest.mark.asyncio
+    async def test_passthrough_has_no_decision_source(self, router: BSGatewayRouter) -> None:
+        """Passthrough requests do not go through auto-routing; decision_source is None."""
+        data = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["metadata"]["routing_decision"]["decision_source"] is None
+
+    @pytest.mark.asyncio
+    async def test_critical_priority_passthrough_unaffected(self, router: BSGatewayRouter) -> None:
+        """Critical priority on a passthrough model must not change routing."""
+        data = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"headers": {"x-bsnexus-priority": "critical"}},
+        }
+        result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
+        assert result["model"] == "gpt-4o-mini"
+        assert result["metadata"]["routing_decision"]["method"] == "passthrough"
