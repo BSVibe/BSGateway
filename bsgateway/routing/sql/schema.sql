@@ -19,7 +19,12 @@ CREATE TABLE IF NOT EXISTS routing_logs (
     original_model TEXT NOT NULL,
     resolved_model TEXT NOT NULL,
     -- 임베딩 (BYTEA, float32 array)
-    embedding BYTEA
+    embedding BYTEA,
+    -- BSNexus 메타데이터
+    nexus_task_type TEXT,
+    nexus_priority TEXT,
+    nexus_complexity_hint INTEGER,
+    decision_source TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_routing_logs_tier ON routing_logs(tier);

@@ -8,7 +8,7 @@ import pytest
 
 from bsgateway.routing.classifiers.base import ClassificationResult
 from bsgateway.routing.collector import RoutingCollector, SqlLoader
-from bsgateway.routing.models import EmbeddingConfig, RoutingDecision
+from bsgateway.routing.models import EmbeddingConfig, NexusMetadata, RoutingDecision
 
 
 class _MockPool:
@@ -285,6 +285,97 @@ class TestFeatureExtraction:
         assert features["has_error_trace"] is True
         assert features["tool_count"] == 2
         assert features["token_count"] > 0
+
+
+class TestNexusMetadataRecording:
+    @pytest.mark.asyncio
+    async def test_nexus_metadata_saved_when_present(
+        self,
+        collector: RoutingCollector,
+        mock_pool: _MockPool,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+    ) -> None:
+        decision = RoutingDecision(
+            method="auto",
+            original_model="auto",
+            resolved_model="claude-opus",
+            nexus_metadata=NexusMetadata(
+                task_type="code-review",
+                priority="high",
+                complexity_hint=75,
+            ),
+            decision_source="blend",
+        )
+        await collector.record(sample_data, sample_result, decision)
+
+        call_args = mock_pool.conn.execute.call_args[0]
+        assert call_args[15] == "code-review"  # nexus_task_type
+        assert call_args[16] == "high"  # nexus_priority
+        assert call_args[17] == 75  # nexus_complexity_hint
+        assert call_args[18] == "blend"  # decision_source
+
+    @pytest.mark.asyncio
+    async def test_nexus_metadata_none_when_absent(
+        self,
+        collector: RoutingCollector,
+        mock_pool: _MockPool,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+        sample_decision: RoutingDecision,
+    ) -> None:
+        await collector.record(sample_data, sample_result, sample_decision)
+
+        call_args = mock_pool.conn.execute.call_args[0]
+        assert call_args[15] is None  # nexus_task_type
+        assert call_args[16] is None  # nexus_priority
+        assert call_args[17] is None  # nexus_complexity_hint
+        assert call_args[18] is None  # decision_source
+
+    @pytest.mark.asyncio
+    async def test_partial_nexus_metadata_saved(
+        self,
+        collector: RoutingCollector,
+        mock_pool: _MockPool,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+    ) -> None:
+        decision = RoutingDecision(
+            method="auto",
+            original_model="auto",
+            resolved_model="claude-opus",
+            nexus_metadata=NexusMetadata(priority="critical"),
+            decision_source="priority_override",
+        )
+        await collector.record(sample_data, sample_result, decision)
+
+        call_args = mock_pool.conn.execute.call_args[0]
+        assert call_args[15] is None  # nexus_task_type (not set)
+        assert call_args[16] == "critical"  # nexus_priority
+        assert call_args[17] is None  # nexus_complexity_hint (not set)
+        assert call_args[18] == "priority_override"  # decision_source
+
+    @pytest.mark.asyncio
+    async def test_decision_source_without_nexus_metadata(
+        self,
+        collector: RoutingCollector,
+        mock_pool: _MockPool,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+    ) -> None:
+        decision = RoutingDecision(
+            method="auto",
+            original_model="auto",
+            resolved_model="claude-opus",
+            decision_source="classifier",
+        )
+        await collector.record(sample_data, sample_result, decision)
+
+        call_args = mock_pool.conn.execute.call_args[0]
+        assert call_args[15] is None  # nexus_task_type
+        assert call_args[16] is None  # nexus_priority
+        assert call_args[17] is None  # nexus_complexity_hint
+        assert call_args[18] == "classifier"  # decision_source
 
 
 class TestClose:

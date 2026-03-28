@@ -107,6 +107,7 @@ class RoutingCollector:
         if self.embedding_config:
             embedding_blob = await self._generate_embedding(user_text)
 
+        nexus = decision.nexus_metadata
         async with self._pool.acquire() as conn:
             await conn.execute(
                 sql.query("insert_routing_log"),
@@ -124,6 +125,10 @@ class RoutingCollector:
                 decision.original_model,
                 decision.resolved_model,
                 embedding_blob,
+                nexus.task_type if nexus else None,
+                nexus.priority if nexus else None,
+                nexus.complexity_hint if nexus else None,
+                decision.decision_source,
             )
 
         logger.debug(

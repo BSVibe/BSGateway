@@ -4,8 +4,9 @@ INSERT INTO routing_logs
      token_count, conversation_turns, code_block_count,
      code_lines, has_error_trace, tool_count,
      tier, strategy, score,
-     original_model, resolved_model, embedding)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+     original_model, resolved_model, embedding,
+     nexus_task_type, nexus_priority, nexus_complexity_hint, decision_source)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);
 
 -- name: get_logs_by_tier
 SELECT * FROM routing_logs WHERE tier = $1 ORDER BY timestamp DESC LIMIT $2;
