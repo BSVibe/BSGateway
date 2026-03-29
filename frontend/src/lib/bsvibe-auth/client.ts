@@ -50,7 +50,7 @@ export class BSVibeAuth {
     if (!accessToken || !refreshToken) return null;
 
     const savedState = getAndClearState();
-    if (savedState && returnedState && returnedState !== savedState) {
+    if (savedState && returnedState !== savedState) {
       console.error('BSVibeAuth: state mismatch — possible CSRF attack');
       return null;
     }

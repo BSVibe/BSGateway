@@ -179,9 +179,18 @@ async def test_update_rule_not_found():
 
 async def test_delete_rule():
     pool, conn = _make_pool_conn()
-    conn.execute.return_value = None
+    conn.execute.return_value = "DELETE 1"
     svc = MCPService(pool)
-    await svc.delete_rule(uuid4(), uuid4())  # should not raise
+    result = await svc.delete_rule(uuid4(), uuid4())
+    assert result is True
+
+
+async def test_delete_rule_not_found():
+    pool, conn = _make_pool_conn()
+    conn.execute.return_value = "DELETE 0"
+    svc = MCPService(pool)
+    result = await svc.delete_rule(uuid4(), uuid4())
+    assert result is False
 
 
 # ---------------------------------------------------------------------------
