@@ -213,9 +213,7 @@ class TestValidateApiKey:
         raw_key = svc.generate_raw_key()
         key_hash = svc.hash_key(raw_key)
 
-        record = _make_apikey_record(
-            key_id=key_id, tenant_id=tid, key_hash=key_hash
-        )
+        record = _make_apikey_record(key_id=key_id, tenant_id=tid, key_hash=key_hash)
 
         with (
             patch(

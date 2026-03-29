@@ -62,9 +62,7 @@ class TestChatAuth:
         from bsvibe_auth import TokenInvalidError
 
         app.state.auth_provider = MagicMock()
-        app.state.auth_provider.verify_token = AsyncMock(
-            side_effect=TokenInvalidError("bad")
-        )
+        app.state.auth_provider.verify_token = AsyncMock(side_effect=TokenInvalidError("bad"))
         resp = client.post(
             "/api/v1/chat/completions",
             json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},

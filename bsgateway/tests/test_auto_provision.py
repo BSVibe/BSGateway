@@ -23,7 +23,10 @@ def mock_pool():
 
 
 def _make_tenant_row(
-    tenant_id=None, name="Auto Tenant", slug="auto-tenant", is_active=True,
+    tenant_id=None,
+    name="Auto Tenant",
+    slug="auto-tenant",
+    is_active=True,
 ):
     now = datetime.now(UTC)
     return {

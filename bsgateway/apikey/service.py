@@ -79,7 +79,10 @@ class ApiKeyService:
         )
 
     async def validate_key(
-        self, raw_key: str, *, background_tasks: set[asyncio.Task] | None = None,
+        self,
+        raw_key: str,
+        *,
+        background_tasks: set[asyncio.Task] | None = None,
     ) -> ValidatedKey | None:
         """Validate a raw API key. Returns None if invalid/expired/revoked."""
         key_hash = self.hash_key(raw_key)

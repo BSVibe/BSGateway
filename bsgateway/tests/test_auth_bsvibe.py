@@ -73,9 +73,7 @@ class TestBSVibeAuth:
         from bsvibe_auth import TokenInvalidError
 
         app = _make_app()
-        app.state.auth_provider.verify_token = AsyncMock(
-            side_effect=TokenInvalidError("bad token")
-        )
+        app.state.auth_provider.verify_token = AsyncMock(side_effect=TokenInvalidError("bad token"))
 
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.get(
@@ -140,14 +138,17 @@ class TestBSVibeAuth:
         user = make_bsvibe_user(tenant_id=TENANT_ID, role="admin")
         app.state.auth_provider.verify_token = AsyncMock(return_value=user)
 
-        with patch(
-            "bsgateway.tenant.repository.TenantRepository.get_tenant",
-            new_callable=AsyncMock,
-            return_value=_tenant_row(TENANT_ID),
-        ), patch(
-            "bsgateway.tenant.repository.TenantRepository.list_tenants",
-            new_callable=AsyncMock,
-            return_value=[],
+        with (
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_tenant",
+                new_callable=AsyncMock,
+                return_value=_tenant_row(TENANT_ID),
+            ),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.list_tenants",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
         ):
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get(

@@ -47,9 +47,7 @@ SEED_USERS = [
 async def ensure_tenant(pool: asyncpg.Pool, name: str, slug: str) -> str:
     """Create tenant if not exists, return tenant_id as string."""
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM tenants WHERE slug = $1", slug
-        )
+        row = await conn.fetchrow("SELECT id FROM tenants WHERE slug = $1", slug)
         if row:
             tid = str(row["id"])
             logger.info("tenant_exists", slug=slug, tenant_id=tid)
@@ -144,7 +142,9 @@ async def get_access_token(
 
 
 async def main() -> None:
-    service_role_key = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    service_role_key = (
+        sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    )  # noqa: E501
     if not service_role_key:
         print("ERROR: SUPABASE_SERVICE_ROLE_KEY env var or CLI arg required")
         sys.exit(1)
@@ -170,9 +170,7 @@ async def main() -> None:
             for seed in SEED_USERS:
                 slug = seed["tenant_slug"]
                 if slug not in tenant_map:
-                    tenant_map[slug] = await ensure_tenant(
-                        pool, seed["tenant_name"], slug
-                    )
+                    tenant_map[slug] = await ensure_tenant(pool, seed["tenant_name"], slug)
 
                 tenant_id = tenant_map[slug]
                 await create_supabase_user(
@@ -200,7 +198,7 @@ async def main() -> None:
             admin_token = await get_access_token(
                 client, service_role_key, "admin@bsvibe.dev", "admin1234!"
             )
-            print(f'  curl -s http://localhost:8000/api/v1/tenants \\')
+            print("  curl -s http://localhost:8000/api/v1/tenants \\")
             print(f'    -H "Authorization: Bearer {admin_token}" | python3 -m json.tool')
             print()
 

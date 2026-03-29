@@ -79,7 +79,8 @@ async def get_auth_context(request: Request) -> GatewayAuthContext:
 
 
 async def _verify_tenant_active(
-    repo: TenantRepository, tenant_id: UUID,
+    repo: TenantRepository,
+    tenant_id: UUID,
 ) -> None:
     """Verify that a tenant exists and is active. Raises HTTPException if not."""
     tenant_row = await repo.get_tenant(tenant_id)
