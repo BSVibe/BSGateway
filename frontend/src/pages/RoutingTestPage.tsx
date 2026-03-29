@@ -79,20 +79,20 @@ export function RoutingTestPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Route Testing</h2>
+        <h2 className="text-2xl font-bold text-gray-50">Route Testing</h2>
         <p className="text-gray-500 text-sm mt-1">Test routing logic before deployment</p>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={() => setError(null)} />}
 
       {/* Test Form */}
-      <div className="bg-white rounded-lg shadow p-6 space-y-4">
+      <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Model</label>
           <select
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
-            className="w-full border rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-900"
           >
             <option value="">Select model</option>
             {models.map((m) => (
@@ -104,7 +104,7 @@ export function RoutingTestPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Messages</label>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Messages</label>
           {messages.map((msg, i) => (
             <div key={i} className="mb-3 space-y-2">
               <div className="flex gap-2">
@@ -115,7 +115,7 @@ export function RoutingTestPage() {
                     newMsgs[i].role = e.target.value as 'user' | 'assistant' | 'system';
                     setMessages(newMsgs);
                   }}
-                  className="w-24 border rounded-lg px-2 py-1 text-sm"
+                  className="w-24 border border-gray-700 rounded-lg px-2 py-1 text-sm bg-gray-900"
                 >
                   <option value="user">user</option>
                   <option value="assistant">assistant</option>
@@ -124,7 +124,7 @@ export function RoutingTestPage() {
                 {messages.length > 1 && (
                   <button
                     onClick={() => setMessages(messages.filter((_, j) => j !== i))}
-                    className="text-red-500 text-sm hover:text-red-700"
+                    className="text-red-400 text-sm hover:text-red-300"
                   >
                     Remove
                   </button>
@@ -138,7 +138,7 @@ export function RoutingTestPage() {
                   setMessages(newMsgs);
                 }}
                 placeholder="Message content"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-900"
                 rows={2}
               />
             </div>
@@ -146,7 +146,7 @@ export function RoutingTestPage() {
           <button
             type="button"
             onClick={() => setMessages([...messages, { role: 'user', content: '' }])}
-            className="text-blue-600 text-sm hover:text-blue-700"
+            className="text-accent-500 text-sm hover:text-accent-400"
           >
             + Add Message
           </button>
@@ -155,7 +155,7 @@ export function RoutingTestPage() {
         <button
           onClick={handleTest}
           disabled={testing || !selectedModel}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+          className="bg-accent-500 text-gray-950 px-6 py-2 rounded-lg text-sm font-medium hover:bg-accent-400 disabled:opacity-50"
         >
           {testing ? 'Testing...' : 'Test Routing'}
         </button>
@@ -163,31 +163,31 @@ export function RoutingTestPage() {
 
       {/* Results */}
       {result && (
-        <div className="bg-white rounded-lg shadow p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">Test Result</h3>
+        <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 space-y-4">
+          <h3 className="text-lg font-semibold text-gray-50">Test Result</h3>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="border rounded-lg p-4">
+            <div className="border border-gray-700 rounded-lg p-4">
               <p className="text-xs text-gray-500 mb-1">Target Model</p>
-              <p className="font-mono text-sm font-semibold">{result.target_model || '(none)'}</p>
+              <p className="font-mono text-sm font-semibold text-gray-50">{result.target_model || '(none)'}</p>
             </div>
-            <div className="border rounded-lg p-4">
+            <div className="border border-gray-700 rounded-lg p-4">
               <p className="text-xs text-gray-500 mb-1">Matched Rule</p>
-              <p className="font-mono text-sm font-semibold">
+              <p className="font-mono text-sm font-semibold text-gray-50">
                 {result.matched_rule ? `${result.matched_rule.name} (priority: ${result.matched_rule.priority})` : '(none)'}
               </p>
             </div>
           </div>
 
           {result.context && Object.keys(result.context).length > 0 && (
-            <div className="border-t pt-4">
-              <p className="text-sm font-semibold text-gray-700 mb-2">Request Context</p>
+            <div className="border-t border-gray-700 pt-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">Request Context</p>
               <div className="grid grid-cols-2 gap-2">
                 {Object.entries(result.context).map(([key, value]) => (
                   value !== null && value !== undefined && (
                     <div key={key} className="flex items-center gap-2 text-sm">
                       <span className="text-gray-500 text-xs">{key}:</span>
-                      <span className="font-mono text-xs">{String(value)}</span>
+                      <span className="font-mono text-xs text-gray-300">{String(value)}</span>
                     </div>
                   )
                 ))}
@@ -196,8 +196,8 @@ export function RoutingTestPage() {
           )}
 
           {result.evaluation_trace && result.evaluation_trace.length > 0 && (
-            <div className="border-t pt-4">
-              <p className="text-sm font-semibold text-gray-700 mb-2">Evaluation Trace</p>
+            <div className="border-t border-gray-700 pt-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">Evaluation Trace</p>
               <div className="space-y-1">
                 {result.evaluation_trace.map((entry, i) => {
                   const safeEntry: Record<string, unknown> = {};
@@ -205,7 +205,7 @@ export function RoutingTestPage() {
                     safeEntry[k] = typeof v === 'string' ? v : JSON.stringify(v);
                   }
                   return (
-                    <div key={i} className="text-xs font-mono bg-gray-50 rounded px-2 py-1 whitespace-pre-wrap break-all">
+                    <div key={i} className="text-xs font-mono bg-gray-800 rounded px-2 py-1 whitespace-pre-wrap break-all text-gray-300">
                       {JSON.stringify(safeEntry)}
                     </div>
                   );

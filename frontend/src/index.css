@@ -2,7 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+@layer base {
+  :root {
+    --color-accent: 245 158 11;
+  }
+
+  body {
+    margin: 0;
+    background-color: #0a0b0f;
+    color: #f2f3f7;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar styling for dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #111218;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a2d42;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3d4160;
+  }
+
+  /* Form element base styles for dark theme */
+  input, textarea, select {
+    background-color: #111218;
+    border-color: #2a2d42;
+    color: #f2f3f7;
+  }
+  input::placeholder, textarea::placeholder {
+    color: #5a5f7d;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: rgb(245 158 11 / 0.6);
+    box-shadow: 0 0 0 2px rgb(245 158 11 / 0.15);
+  }
+  select option {
+    background-color: #111218;
+    color: #f2f3f7;
+  }
 }

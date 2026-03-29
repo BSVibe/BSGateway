@@ -72,7 +72,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+        <h2 className="text-2xl font-bold text-gray-50">Dashboard</h2>
         <p className="text-gray-500 text-sm mt-1">Routing overview and metrics</p>
       </div>
 
@@ -83,31 +83,34 @@ export function DashboardPage() {
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500"
+            className="bg-gray-900 rounded-lg p-6 border border-gray-700 border-l-4 border-l-accent-500"
           >
-            <p className="text-gray-500 text-sm font-medium">{stat.label}</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{stat.value}</p>
-            {stat.subtext && <p className="text-xs text-gray-400 mt-1">{stat.subtext}</p>}
+            <p className="text-gray-400 text-sm font-medium">{stat.label}</p>
+            <p className="text-3xl font-bold text-gray-50 mt-2">{stat.value}</p>
+            {stat.subtext && <p className="text-xs text-gray-500 mt-1">{stat.subtext}</p>}
           </div>
         ))}
       </div>
 
       {/* Usage Trend */}
       {usageData.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Request Trend (7 days)</h3>
+        <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-50 mb-4">Request Trend (7 days)</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={usageData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2d42" />
+              <XAxis dataKey="date" stroke="#5a5f7d" tick={{ fill: '#8187a8' }} />
+              <YAxis stroke="#5a5f7d" tick={{ fill: '#8187a8' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#181926', border: '1px solid #2a2d42', borderRadius: '8px', color: '#f2f3f7' }}
+                labelStyle={{ color: '#a8adc6' }}
+              />
+              <Legend wrapperStyle={{ color: '#a8adc6' }} />
               <Line
                 type="monotone"
                 dataKey="requests"
-                stroke="#2563eb"
-                dot={{ fill: '#2563eb' }}
+                stroke="#f59e0b"
+                dot={{ fill: '#f59e0b' }}
                 name="Requests"
               />
             </LineChart>
@@ -117,22 +120,22 @@ export function DashboardPage() {
 
       {/* Quick Info */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-blue-50 rounded-lg p-6 border border-blue-100">
-          <h3 className="font-semibold text-blue-900">Getting Started</h3>
-          <ul className="text-sm text-blue-800 mt-2 space-y-1">
-            <li>✓ Register your LLM models in the Models tab</li>
-            <li>✓ Create routing rules to control traffic</li>
-            <li>✓ Test your rules before enabling</li>
-            <li>✓ Monitor usage metrics here</li>
+        <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+          <h3 className="font-semibold text-gray-50">Getting Started</h3>
+          <ul className="text-sm text-gray-400 mt-2 space-y-1">
+            <li className="flex items-center gap-2"><span className="text-accent-500">&#10003;</span> Register your LLM models in the Models tab</li>
+            <li className="flex items-center gap-2"><span className="text-accent-500">&#10003;</span> Create routing rules to control traffic</li>
+            <li className="flex items-center gap-2"><span className="text-accent-500">&#10003;</span> Test your rules before enabling</li>
+            <li className="flex items-center gap-2"><span className="text-accent-500">&#10003;</span> Monitor usage metrics here</li>
           </ul>
         </div>
 
-        <div className="bg-green-50 rounded-lg p-6 border border-green-100">
-          <h3 className="font-semibold text-green-900">API Integration</h3>
-          <p className="text-sm text-green-800 mt-2">
-            Use the chat completions endpoint at <code className="bg-white px-2 py-1 rounded text-xs font-mono">/api/v1/chat/completions</code>
+        <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+          <h3 className="font-semibold text-gray-50">API Integration</h3>
+          <p className="text-sm text-gray-400 mt-2">
+            Use the chat completions endpoint at <code className="bg-gray-800 px-2 py-1 rounded text-xs font-mono text-accent-500">/api/v1/chat/completions</code>
           </p>
-          <p className="text-xs text-green-700 mt-2">
+          <p className="text-xs text-gray-500 mt-2">
             Authenticate with your Supabase JWT as a Bearer token in the Authorization header.
           </p>
         </div>

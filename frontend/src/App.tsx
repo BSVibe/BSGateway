@@ -28,10 +28,10 @@ class ErrorBoundary extends Component<
     if (this.state.hasError) {
       const isPage = this.props.fallback === 'page';
       return (
-        <div className={`flex items-center justify-center ${isPage ? 'min-h-[50vh]' : 'min-h-screen'} bg-gray-50`}>
+        <div className={`flex items-center justify-center ${isPage ? 'min-h-[50vh]' : 'min-h-screen'} bg-gray-950`}>
           <div className="text-center p-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h1>
-            <p className="text-gray-600 mb-4">{this.state.message}</p>
+            <h1 className="text-2xl font-bold text-gray-50 mb-2">Something went wrong</h1>
+            <p className="text-gray-400 mb-4">{this.state.message}</p>
             <button
               onClick={() => {
                 if (isPage) {
@@ -40,7 +40,7 @@ class ErrorBoundary extends Component<
                   window.location.reload();
                 }
               }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+              className="bg-accent-500 text-gray-950 px-4 py-2 rounded-lg hover:bg-accent-400 font-medium"
             >
               {isPage ? 'Try Again' : 'Reload Page'}
             </button>

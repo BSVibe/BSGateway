@@ -9,7 +9,7 @@ import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import type { UsageResponse } from '../types/api';
 
-const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+const COLORS = ['#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 
 export function UsagePage() {
   const { tenantId } = useAuth();
@@ -65,13 +65,13 @@ export function UsagePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Usage Analytics</h2>
+          <h2 className="text-2xl font-bold text-gray-50">Usage Analytics</h2>
           <p className="text-gray-500 text-sm mt-1">Routing traffic and token consumption</p>
         </div>
         <select
           value={period}
           onChange={(e) => setPeriod(e.target.value as 'day' | 'week' | 'month')}
-          className="border rounded-lg px-3 py-2 text-sm"
+          className="border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-900"
         >
           <option value="day">Today</option>
           <option value="week">Last 7 days</option>
@@ -84,17 +84,17 @@ export function UsagePage() {
       {/* Summary Stats */}
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 text-sm">Total Requests</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{data.total_requests}</p>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+            <p className="text-gray-400 text-sm">Total Requests</p>
+            <p className="text-3xl font-bold text-gray-50 mt-2">{data.total_requests}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 text-sm">Total Tokens</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{data.total_tokens.toLocaleString()}</p>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+            <p className="text-gray-400 text-sm">Total Tokens</p>
+            <p className="text-3xl font-bold text-gray-50 mt-2">{data.total_tokens.toLocaleString()}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 text-sm">Models Used</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+            <p className="text-gray-400 text-sm">Models Used</p>
+            <p className="text-3xl font-bold text-gray-50 mt-2">
               {Object.keys(data.by_model).length}
             </p>
           </div>
@@ -103,19 +103,22 @@ export function UsagePage() {
 
       {/* Daily Trend */}
       {dailyData.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Requests</h3>
+        <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-50 mb-4">Daily Requests</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={dailyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2d42" />
+              <XAxis dataKey="date" stroke="#5a5f7d" tick={{ fill: '#8187a8' }} />
+              <YAxis stroke="#5a5f7d" tick={{ fill: '#8187a8' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#181926', border: '1px solid #2a2d42', borderRadius: '8px', color: '#f2f3f7' }}
+                labelStyle={{ color: '#a8adc6' }}
+              />
               <Line
                 type="monotone"
                 dataKey="requests"
-                stroke="#2563eb"
-                dot={{ fill: '#2563eb' }}
+                stroke="#f59e0b"
+                dot={{ fill: '#f59e0b' }}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -125,8 +128,8 @@ export function UsagePage() {
       {/* By Model & By Rule */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {modelData.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Traffic by Model</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+            <h3 className="text-lg font-semibold text-gray-50 mb-4">Traffic by Model</h3>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -143,22 +146,26 @@ export function UsagePage() {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#181926', border: '1px solid #2a2d42', borderRadius: '8px', color: '#f2f3f7' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         )}
 
         {ruleData.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Traffic by Rule</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+            <h3 className="text-lg font-semibold text-gray-50 mb-4">Traffic by Rule</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={ruleData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="requests" fill="#2563eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2d42" />
+                <XAxis dataKey="name" stroke="#5a5f7d" tick={{ fill: '#8187a8' }} />
+                <YAxis stroke="#5a5f7d" tick={{ fill: '#8187a8' }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#181926', border: '1px solid #2a2d42', borderRadius: '8px', color: '#f2f3f7' }}
+                />
+                <Bar dataKey="requests" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
