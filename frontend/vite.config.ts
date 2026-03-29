@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/dashboard/',
+
   server: {
     allowedHosts: process.env.VITE_ALLOWED_HOSTS
       ? process.env.VITE_ALLOWED_HOSTS.split(',').map((h) => h.trim())

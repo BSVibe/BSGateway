@@ -144,7 +144,7 @@ async def get_access_token(
 async def main() -> None:
     service_role_key = (
         sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    )  # noqa: E501
+    )
     if not service_role_key:
         print("ERROR: SUPABASE_SERVICE_ROLE_KEY env var or CLI arg required")
         sys.exit(1)
