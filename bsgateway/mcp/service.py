@@ -299,7 +299,7 @@ class MCPService:
     @staticmethod
     def _to_rule_response(
         row: asyncpg.Record | dict,
-        conditions: list,
+        conditions: list[asyncpg.Record | dict],
     ) -> MCPRuleResponse:
         return MCPRuleResponse(
             id=row["id"],

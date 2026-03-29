@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from bsgateway.rules.schemas import ConditionValue, ValidConditionType, ValidOperator
 
 # ---------------------------------------------------------------------------
 # Rules
@@ -14,11 +15,18 @@ from pydantic import BaseModel, Field
 
 
 class MCPCondition(BaseModel):
-    condition_type: str = Field(..., min_length=1)
+    condition_type: ValidConditionType
     field: str = Field(..., min_length=1)
-    operator: str = "eq"
-    value: Any = None
+    operator: ValidOperator = "eq"
+    value: ConditionValue = None
     negate: bool = False
+
+    @model_validator(mode="after")
+    def validate_between_value(self) -> MCPCondition:
+        if self.operator == "between":
+            if not isinstance(self.value, list) or len(self.value) != 2:
+                raise ValueError("'between' operator requires a 2-element list")
+        return self
 
 
 class MCPCreateRule(BaseModel):

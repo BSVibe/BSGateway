@@ -75,7 +75,7 @@ def _model_row(tenant_id=None):
 
 
 @patch("bsgateway.mcp.service.MCPService.list_rules")
-async def test_list_rules(mock_list, client):
+def test_list_rules(mock_list, client):
     from bsgateway.mcp.schemas import MCPRuleResponse
 
     row = _rule_row()
@@ -90,7 +90,7 @@ async def test_list_rules(mock_list, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.create_rule")
-async def test_create_rule(mock_create, client):
+def test_create_rule(mock_create, client):
     from bsgateway.mcp.schemas import MCPRuleResponse
 
     row = _rule_row(name="new-rule")
@@ -104,7 +104,7 @@ async def test_create_rule(mock_create, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.update_rule")
-async def test_update_rule(mock_update, client):
+def test_update_rule(mock_update, client):
     from bsgateway.mcp.schemas import MCPRuleResponse
 
     rid = uuid4()
@@ -119,7 +119,7 @@ async def test_update_rule(mock_update, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.update_rule")
-async def test_update_rule_not_found(mock_update, client):
+def test_update_rule_not_found(mock_update, client):
     mock_update.return_value = None
     resp = client.patch(
         f"/api/v1/tenants/{TENANT_ID}/mcp/rules/{uuid4()}",
@@ -129,7 +129,7 @@ async def test_update_rule_not_found(mock_update, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.delete_rule")
-async def test_delete_rule(mock_delete, client):
+def test_delete_rule(mock_delete, client):
     mock_delete.return_value = None
     resp = client.delete(f"/api/v1/tenants/{TENANT_ID}/mcp/rules/{uuid4()}")
     assert resp.status_code == 204
@@ -141,7 +141,7 @@ async def test_delete_rule(mock_delete, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.list_models")
-async def test_list_models(mock_list, client):
+def test_list_models(mock_list, client):
     from bsgateway.mcp.schemas import MCPModelResponse
 
     mock_list.return_value = [MCPModelResponse(**_model_row())]
@@ -151,7 +151,7 @@ async def test_list_models(mock_list, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.register_model")
-async def test_register_model(mock_register, client):
+def test_register_model(mock_register, client):
     from bsgateway.mcp.schemas import MCPModelResponse
 
     mock_register.return_value = MCPModelResponse(**_model_row())
@@ -168,7 +168,7 @@ async def test_register_model(mock_register, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.simulate_routing")
-async def test_simulate_routing(mock_sim, client):
+def test_simulate_routing(mock_sim, client):
     from bsgateway.mcp.schemas import MCPSimulateResponse
 
     mock_sim.return_value = MCPSimulateResponse(
@@ -190,7 +190,7 @@ async def test_simulate_routing(mock_sim, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.get_cost_report")
-async def test_get_cost_report(mock_cost, client):
+def test_get_cost_report(mock_cost, client):
     from bsgateway.mcp.schemas import MCPCostReport
 
     mock_cost.return_value = MCPCostReport(
@@ -205,7 +205,7 @@ async def test_get_cost_report(mock_cost, client):
 
 
 @patch("bsgateway.mcp.service.MCPService.get_usage_stats")
-async def test_get_usage_stats(mock_usage, client):
+def test_get_usage_stats(mock_usage, client):
     from bsgateway.mcp.schemas import MCPUsageStats
 
     mock_usage.return_value = MCPUsageStats(
