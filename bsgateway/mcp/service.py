@@ -42,8 +42,10 @@ def _period_range(period: str) -> tuple[datetime, datetime]:
         start = today - timedelta(days=7)
     elif period == "month":
         start = today - timedelta(days=30)
-    else:
+    elif period == "day":
         start = today
+    else:
+        raise ValueError(f"Unknown period: {period!r}")
     return (
         datetime.combine(start, datetime.min.time(), tzinfo=UTC),
         datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=UTC),
@@ -115,10 +117,10 @@ class MCPService:
         row = await self._rules_repo.update_rule(
             rule_id=rule_id,
             tenant_id=tenant_id,
-            name=name or existing["name"],
+            name=name if name is not None else existing["name"],
             priority=priority if priority is not None else existing["priority"],
             is_default=is_default if is_default is not None else existing["is_default"],
-            target_model=target_model or existing["target_model"],
+            target_model=target_model if target_model is not None else existing["target_model"],
         )
         if row is None:
             return None
@@ -130,9 +132,9 @@ class MCPService:
         conds = await self._rules_repo.list_conditions(rule_id)
         return self._to_rule_response(row, conds)
 
-    async def delete_rule(self, rule_id: UUID, tenant_id: UUID) -> None:
+    async def delete_rule(self, rule_id: UUID, tenant_id: UUID) -> bool:
         logger.info("mcp_delete_rule", tenant_id=str(tenant_id), rule_id=str(rule_id))
-        await self._rules_repo.delete_rule(rule_id, tenant_id)
+        return await self._rules_repo.delete_rule(rule_id, tenant_id)
 
     # -- Models --------------------------------------------------------------
 

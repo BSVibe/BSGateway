@@ -121,14 +121,16 @@ class RulesRepository:
 
         return row
 
-    async def delete_rule(self, rule_id: UUID, tenant_id: UUID) -> None:
+    async def delete_rule(self, rule_id: UUID, tenant_id: UUID) -> bool:
         async with self._pool.acquire() as conn:
-            await conn.execute(sql.query("delete_rule"), rule_id, tenant_id)
+            status = await conn.execute(sql.query("delete_rule"), rule_id, tenant_id)
 
+        deleted = status == "DELETE 1"
         # Invalidate cache
-        if self._cache:
+        if deleted and self._cache:
             key = cache_key_rules(str(tenant_id))
             await self._cache.delete(key)
+        return deleted
 
     async def reorder_rules(
         self,

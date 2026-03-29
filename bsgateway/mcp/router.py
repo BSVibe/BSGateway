@@ -114,7 +114,9 @@ async def delete_rule(
     _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> None:
     svc = _get_service(request)
-    await svc.delete_rule(rule_id, tenant_id)
+    deleted = await svc.delete_rule(rule_id, tenant_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
 
 
 # -- Models ------------------------------------------------------------------

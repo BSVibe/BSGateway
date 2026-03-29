@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -53,7 +54,7 @@ class MCPRuleResponse(BaseModel):
     is_active: bool
     is_default: bool
     target_model: str
-    conditions: list[dict] = Field(default_factory=list)
+    conditions: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -66,7 +67,7 @@ class MCPRuleResponse(BaseModel):
 class MCPRegisterModel(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     provider: str = Field(..., min_length=1)
-    config: dict = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class MCPModelResponse(BaseModel):
@@ -90,10 +91,10 @@ class MCPSimulateRequest(BaseModel):
 
 
 class MCPSimulateResponse(BaseModel):
-    matched_rule: dict | None = None
+    matched_rule: dict[str, Any] | None = None
     target_model: str | None = None
-    evaluation_trace: list[dict] = Field(default_factory=list)
-    context: dict = Field(default_factory=dict)
+    evaluation_trace: list[dict[str, Any]] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

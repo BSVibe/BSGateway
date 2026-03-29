@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from bsgateway.mcp.schemas import MCPCondition
 from bsgateway.mcp.service import MCPService, _period_range
@@ -22,7 +23,12 @@ def _make_pool_conn():
     return pool, conn
 
 
-def _rule_row(tenant_id=None, rule_id=None, name="r1", priority=1):
+def _rule_row(
+    tenant_id: UUID | None = None,
+    rule_id: UUID | None = None,
+    name: str = "r1",
+    priority: int = 1,
+) -> dict[str, Any]:
     now = datetime.now(UTC)
     return {
         "id": rule_id or uuid4(),
@@ -37,7 +43,7 @@ def _rule_row(tenant_id=None, rule_id=None, name="r1", priority=1):
     }
 
 
-def _cond_row(rule_id):
+def _cond_row(rule_id: UUID) -> dict[str, Any]:
     return {
         "id": uuid4(),
         "rule_id": rule_id,
@@ -49,7 +55,7 @@ def _cond_row(rule_id):
     }
 
 
-def _model_row(tenant_id=None):
+def _model_row(tenant_id: UUID | None = None) -> dict[str, Any]:
     return {
         "id": uuid4(),
         "tenant_id": tenant_id or uuid4(),

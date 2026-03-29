@@ -130,9 +130,28 @@ def test_update_rule_not_found(mock_update, client):
 
 @patch("bsgateway.mcp.service.MCPService.delete_rule")
 def test_delete_rule(mock_delete, client):
-    mock_delete.return_value = None
+    mock_delete.return_value = True
     resp = client.delete(f"/api/v1/tenants/{TENANT_ID}/mcp/rules/{uuid4()}")
     assert resp.status_code == 204
+
+
+@patch("bsgateway.mcp.service.MCPService.delete_rule")
+def test_delete_rule_not_found(mock_delete, client):
+    mock_delete.return_value = False
+    resp = client.delete(f"/api/v1/tenants/{TENANT_ID}/mcp/rules/{uuid4()}")
+    assert resp.status_code == 404
+
+
+@patch("bsgateway.mcp.service.MCPService.create_rule")
+def test_create_rule_conflict(mock_create, client):
+    from bsgateway.core.exceptions import DuplicateError
+
+    mock_create.side_effect = DuplicateError("Rule name already exists")
+    resp = client.post(
+        f"/api/v1/tenants/{TENANT_ID}/mcp/rules",
+        json={"name": "dup-rule", "target_model": "gpt-4o", "conditions": []},
+    )
+    assert resp.status_code == 409
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +179,18 @@ def test_register_model(mock_register, client):
         json={"name": "gpt-4o", "provider": "openai", "config": {}},
     )
     assert resp.status_code == 201
+
+
+@patch("bsgateway.mcp.service.MCPService.register_model")
+def test_register_model_conflict(mock_register, client):
+    from bsgateway.core.exceptions import DuplicateError
+
+    mock_register.side_effect = DuplicateError("Model name already exists")
+    resp = client.post(
+        f"/api/v1/tenants/{TENANT_ID}/mcp/models",
+        json={"name": "gpt-4o", "provider": "openai", "config": {}},
+    )
+    assert resp.status_code == 409
 
 
 # ---------------------------------------------------------------------------

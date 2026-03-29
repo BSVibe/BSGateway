@@ -556,6 +556,7 @@ class TestCacheInvalidation:
     @pytest.mark.asyncio
     async def test_delete_rule_invalidates_cache(self, cached_repo, mock_cache, mock_conn):
         tenant_id = uuid4()
+        mock_conn.execute.return_value = "DELETE 1"
 
         await cached_repo.delete_rule(uuid4(), tenant_id)
 

@@ -96,7 +96,7 @@ export function DashboardPage() {
           subtext: 'last 7 days',
           accent: true,
           icon: (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M2 12L5 8L7.5 10L10.5 5L14 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           ),
@@ -110,7 +110,7 @@ export function DashboardPage() {
             : totalTokens.toString(),
           subtext: 'processed this week',
           icon: (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M8 5.5V8L9.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
@@ -121,7 +121,7 @@ export function DashboardPage() {
           value: ruleCount,
           subtext: 'routing policies',
           icon: (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               <circle cx="13" cy="8" r="2" fill="currentColor" opacity="0.8"/>
             </svg>
@@ -133,7 +133,7 @@ export function DashboardPage() {
           subtext: 'not yet tracked',
           dim: true,
           icon: (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M8 5v3.5l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -180,7 +180,7 @@ export function DashboardPage() {
           onClick={loadDashboard}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors"
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path d="M10 6A4 4 0 112 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             <path d="M10 2v4H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -237,7 +237,7 @@ export function DashboardPage() {
           ) : (
             <div className="h-[200px] flex flex-col items-center justify-center">
               <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center mb-3">
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-gray-500">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-gray-500" aria-hidden="true">
                   <path d="M2 14L6 9L9 11L12 6L16 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
@@ -271,8 +271,8 @@ export function DashboardPage() {
                   formatter={(value) => [typeof value === 'number' ? value.toLocaleString() : value, 'Tokens']}
                 />
                 <Bar dataKey="tokens" radius={[4, 4, 0, 0]}>
-                  {modelBars.map((_, i) => (
-                    <Cell key={i} fill={MODEL_COLORS[i % MODEL_COLORS.length]} />
+                  {modelBars.map((entry, i) => (
+                    <Cell key={entry.model} fill={MODEL_COLORS[i % MODEL_COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -280,7 +280,7 @@ export function DashboardPage() {
           ) : (
             <div className="h-[200px] flex flex-col items-center justify-center">
               <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center mb-3">
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-gray-500">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-gray-500" aria-hidden="true">
                   <rect x="2" y="8" width="4" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/>
                   <rect x="7" y="5" width="4" height="11" rx="1" stroke="currentColor" strokeWidth="1.5"/>
                   <rect x="12" y="2" width="4" height="14" rx="1" stroke="currentColor" strokeWidth="1.5"/>
