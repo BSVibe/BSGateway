@@ -55,3 +55,4 @@ node_modules/
 /playwright/.cache/
 .agent/
 .pnpm-store/
+.env.production
