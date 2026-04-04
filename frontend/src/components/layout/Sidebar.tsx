@@ -14,13 +14,23 @@ interface SidebarProps {
   onLogout?: () => void;
   tenantSlug?: string | null;
   tenantName?: string | null;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export function Sidebar({ onLogout, tenantSlug, tenantName }: SidebarProps) {
+export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: SidebarProps) {
   const location = useLocation();
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-[#121317] flex flex-col z-40">
+    <>
+      {/* Backdrop - mobile only */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onClose}
+        />
+      )}
+    <aside className={`fixed left-0 top-0 h-screen w-64 bg-[#121317] flex flex-col z-50 transform transition-transform duration-200 ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
       {/* Logo */}
       <div className="p-6 flex items-center gap-3">
         <div className="w-8 h-8 rounded bg-primary-container flex items-center justify-center">
@@ -51,6 +61,7 @@ export function Sidebar({ onLogout, tenantSlug, tenantName }: SidebarProps) {
             <Link
               key={item.path}
               to={item.path}
+              onClick={onClose}
               className={`flex items-center gap-3 px-4 py-3 rounded text-sm transition-all duration-200 ${
                 isActive
                   ? 'text-amber-500 bg-amber-500/10 border-r-2 border-amber-500 font-semibold'
@@ -77,5 +88,6 @@ export function Sidebar({ onLogout, tenantSlug, tenantName }: SidebarProps) {
         </div>
       )}
     </aside>
+    </>
   );
 }
