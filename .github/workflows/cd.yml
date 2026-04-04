@@ -11,7 +11,7 @@ env:
   COMPOSE_FILE: deploy/docker-compose.yml
 
 jobs:
-  deploy:
+  deploy-backend:
     runs-on: [self-hosted, bsvibe]
     steps:
       - name: Pull latest
@@ -37,3 +37,25 @@ jobs:
             sleep 3
           done
           echo "✗ Health check failed" && exit 1
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: cd frontend && pnpm install --frozen-lockfile
+
+      - run: cd frontend && pnpm build
+
+      - run: cd frontend && npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
