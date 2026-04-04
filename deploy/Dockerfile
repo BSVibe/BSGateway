@@ -19,7 +19,7 @@ RUN uv pip install --system --compile-bytecode --no-cache .
 
 # Build frontend
 COPY frontend/ ./frontend/
-RUN npm install -g pnpm && cd frontend && pnpm install --frozen-lockfile && pnpm build
+RUN npm install -g pnpm && cd frontend && CI=true pnpm install --frozen-lockfile && pnpm build
 
 # Runtime stage
 FROM python:3.11-slim
