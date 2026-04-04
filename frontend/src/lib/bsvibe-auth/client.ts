@@ -37,6 +37,78 @@ export class BSVibeAuth {
     window.location.href = loginUrl.toString();
   }
 
+  /** Redirect the user to the BSVibe signup page */
+  redirectToSignup(): void {
+    const state = generateState();
+    saveState(state);
+
+    const redirectUri = `${window.location.origin}${this.callbackPath}`;
+    const signupUrl = new URL('/signup', this.authUrl);
+    signupUrl.searchParams.set('redirect_uri', redirectUri);
+    signupUrl.searchParams.set('state', state);
+
+    window.location.href = signupUrl.toString();
+  }
+
+  /** Silent SSO check via hidden iframe. Returns user if session exists, null otherwise. */
+  async checkSession(): Promise<BSVibeUser | null> {
+    // Check local storage first
+    const existing = this.getUser();
+    if (existing) return existing;
+
+    return new Promise((resolve) => {
+      const timeout = 5000;
+      let settled = false;
+
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = `${this.authUrl}/api/silent-check`;
+
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener('message', onMessage);
+        clearTimeout(timer);
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe);
+        }
+      };
+
+      const onMessage = (event: MessageEvent) => {
+        if (!event.data || event.data.type !== 'bsvibe-auth') return;
+
+        cleanup();
+
+        if (event.data.error) {
+          resolve(null);
+          return;
+        }
+
+        const { access_token, refresh_token } = event.data;
+        if (!access_token || !refresh_token) {
+          resolve(null);
+          return;
+        }
+
+        try {
+          const user = parseToken(access_token, refresh_token);
+          saveSession(user);
+          resolve(user);
+        } catch {
+          resolve(null);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve(null);
+      }, timeout);
+
+      window.addEventListener('message', onMessage);
+      document.body.appendChild(iframe);
+    });
+  }
+
   /** Extract tokens from the callback URL fragment. Returns user on success, null on failure. */
   handleCallback(): BSVibeUser | null {
     const hash = window.location.hash.substring(1);
