@@ -57,7 +57,15 @@ function PageBoundary({ children }: { children: ReactNode }) {
 }
 
 function App() {
-  const { isAuthenticated, tenantId, tenantName, logout } = useAuth();
+  const { isAuthenticated, isLoading, tenantId, tenantName, logout } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>

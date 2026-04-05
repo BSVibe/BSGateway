@@ -12,6 +12,7 @@ const auth = new BSVibeAuth({
 
 interface AuthState {
   isAuthenticated: boolean;
+  isLoading: boolean;
   tenantId: string | null;
   tenantName: string | null;
   role: string | null;
@@ -24,12 +25,37 @@ export function useAuth() {
     if (user) setAuthToken(user.accessToken);
     return {
       isAuthenticated: !!user,
+      isLoading: !user, // loading if no local session (will try silent SSO)
       tenantId: user?.tenantId ?? null,
       tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
       role: user?.role ?? null,
       email: user?.email ?? null,
     };
   });
+
+  // Silent SSO check on init when no local session
+  useEffect(() => {
+    if (state.isAuthenticated) {
+      setState((prev) => ({ ...prev, isLoading: false }));
+      return;
+    }
+
+    auth.checkSession().then((user) => {
+      if (user) {
+        setAuthToken(user.accessToken);
+        setState({
+          isAuthenticated: true,
+          isLoading: false,
+          tenantId: user.tenantId,
+          tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
+          role: user.role,
+          email: user.email,
+        });
+      } else {
+        setState((prev) => ({ ...prev, isLoading: false }));
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch tenant name on first auth
   useEffect(() => {
@@ -57,7 +83,11 @@ export function useAuth() {
     auth.redirectToLogin();
   }, []);
 
-  return { ...state, login, logout };
+  const signup = useCallback(() => {
+    auth.redirectToSignup();
+  }, []);
+
+  return { ...state, login, signup, logout };
 }
 
 export { auth };

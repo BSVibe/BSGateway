@@ -83,6 +83,16 @@ export function LoginPage() {
           <span className="material-symbols-outlined text-lg">login</span>
           Sign in with BSVibe
         </button>
+
+        <p className="text-center text-sm text-on-surface-variant mt-4">
+          Don't have an account?{' '}
+          <button
+            onClick={() => auth.redirectToSignup()}
+            className="text-amber-500 hover:text-amber-400 font-medium transition-colors"
+          >
+            Sign up
+          </button>
+        </p>
       </div>
 
       {/* Footer */}

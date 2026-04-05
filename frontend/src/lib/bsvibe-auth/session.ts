@@ -4,11 +4,11 @@ const USER_KEY = 'bsvibe_user';
 const STATE_KEY = 'bsvibe_auth_state';
 
 export function saveSession(user: BSVibeUser): void {
-  sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export function getSession(): BSVibeUser | null {
-  const raw = sessionStorage.getItem(USER_KEY);
+  const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
 
   try {
@@ -19,7 +19,7 @@ export function getSession(): BSVibeUser | null {
 }
 
 export function clearSession(): void {
-  sessionStorage.removeItem(USER_KEY);
+  localStorage.removeItem(USER_KEY);
 }
 
 export function isTokenExpired(expiresAt: number): boolean {
