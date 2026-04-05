@@ -50,63 +50,48 @@ export class BSVibeAuth {
     window.location.href = signupUrl.toString();
   }
 
-  /** Silent SSO check via hidden iframe. Returns user if session exists, null otherwise. */
-  async checkSession(): Promise<BSVibeUser | null> {
-    // Check local storage first
+  /**
+   * SSO check via redirect. If no local session exists, redirects to auth server.
+   * Returns user if already authenticated or if tokens are in the URL hash.
+   * Returns null if SSO check already failed (sso_error in URL).
+   * Returns 'redirect' if redirecting to auth server (page will navigate away).
+   */
+  checkSession(): BSVibeUser | null | 'redirect' {
+    // 1. Check local storage
     const existing = this.getUser();
     if (existing) return existing;
 
-    return new Promise((resolve) => {
-      const timeout = 5000;
-      let settled = false;
-
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = `${this.authUrl}/api/silent-check`;
-
-      const cleanup = () => {
-        if (settled) return;
-        settled = true;
-        window.removeEventListener('message', onMessage);
-        clearTimeout(timer);
-        if (iframe.parentNode) {
-          iframe.parentNode.removeChild(iframe);
-        }
-      };
-
-      const onMessage = (event: MessageEvent) => {
-        if (!event.data || event.data.type !== 'bsvibe-auth') return;
-
-        cleanup();
-
-        if (event.data.error) {
-          resolve(null);
-          return;
-        }
-
-        const { access_token, refresh_token } = event.data;
-        if (!access_token || !refresh_token) {
-          resolve(null);
-          return;
-        }
-
+    // 2. Check if we just returned from SSO with tokens in hash
+    const hash = window.location.hash.substring(1);
+    if (hash) {
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      if (accessToken && refreshToken) {
         try {
-          const user = parseToken(access_token, refresh_token);
+          const user = parseToken(accessToken, refreshToken);
           saveSession(user);
-          resolve(user);
-        } catch {
-          resolve(null);
-        }
-      };
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+          return user;
+        } catch { /* fall through */ }
+      }
+    }
 
-      const timer = setTimeout(() => {
-        cleanup();
-        resolve(null);
-      }, timeout);
+    // 3. Check if SSO already failed
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('sso_error')) {
+      // Clean up the error param from URL
+      searchParams.delete('sso_error');
+      const cleanSearch = searchParams.toString();
+      const cleanUrl = window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '');
+      history.replaceState(null, '', cleanUrl);
+      return null;
+    }
 
-      window.addEventListener('message', onMessage);
-      document.body.appendChild(iframe);
-    });
+    // 4. Redirect to auth server for SSO check
+    const currentUrl = window.location.href.split('#')[0];
+    window.location.href = `${this.authUrl}/api/silent-check?redirect_uri=${encodeURIComponent(currentUrl)}`;
+    return 'redirect';
   }
 
   /** Extract tokens from the callback URL fragment. Returns user on success, null on failure. */

@@ -40,21 +40,21 @@ export function useAuth() {
       return;
     }
 
-    auth.checkSession().then((user) => {
-      if (user) {
-        setAuthToken(user.accessToken);
-        setState({
-          isAuthenticated: true,
-          isLoading: false,
-          tenantId: user.tenantId,
-          tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
-          role: user.role,
-          email: user.email,
-        });
-      } else {
-        setState((prev) => ({ ...prev, isLoading: false }));
-      }
-    });
+    const result = auth.checkSession();
+    if (result === 'redirect') return; // page is navigating away
+    if (result) {
+      setAuthToken(result.accessToken);
+      setState({
+        isAuthenticated: true,
+        isLoading: false,
+        tenantId: result.tenantId,
+        tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
+        role: result.role,
+        email: result.email,
+      });
+    } else {
+      setState((prev) => ({ ...prev, isLoading: false }));
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch tenant name on first auth
