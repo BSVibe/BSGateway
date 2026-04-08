@@ -18,7 +18,8 @@ The BSGateway Dashboard is a multi-tenant LLM routing control panel built with R
 - **Location**: Fixed left column, 224px (w-56)
 - **Background**: Dark gray (bg-gray-900)
 - **Header**: Shows tenant name (or "LLM Routing Dashboard" if not logged in)
-- **Nav Items**: 7 main sections (Dashboard, Rules, Models, Intents, Route Test, Usage, Audit Log)
+- **Nav Items**: 7 main sections (Dashboard, Routing, Models, Routing Test, Analytics, API Keys, Audit Log).
+  Intents are no longer a top-level page — they are managed inline as part of each routing rule.
 - **Active State**: Highlighted with bg-gray-800 + blue right border (border-r-2 border-blue-500)
 - **Footer**: Logout button
 
@@ -90,53 +91,52 @@ The BSGateway Dashboard is a multi-tenant LLM routing control panel built with R
 
 ---
 
-### 3. RulesPage
+### 3. RoutesPage (Routing Rules)
 
-**Purpose**: Define and manage routing rules (priority-based first-match logic)
+**Purpose**: Notion Mail-style routing — describe what kind of requests should
+go to which model in plain natural language. The page hides priority/condition
+internals; each card is a single Intent + Rule pair joined by a
+`classified_intent == intentName` condition (see `frontend/src/api/routes.ts`).
 
-**Create Rule Form**:
-- **Visibility**: Toggle with "New Rule" button (collapses when submitted or clicked Cancel)
-- **Layout**: Grid cols-2 gap-4
+**Layout**:
+- Page width capped at `max-w-4xl`
+- Header: "Routing Rules" + "Add Rule" button
+- Subtitle: "Describe what kind of requests should go to which model."
+- Stacked card list, default fallback rendered last
 
-**Form Fields**:
-- **Name** (text, required)
-  - Placeholder: "Premium users only"
-  - Used in rule evaluation and UI display
+**RouteCard (non-default)**:
+- Active dot toggle on the left (`bg-tertiary` glow when active, click to enable/disable)
+- Center: natural-language description text + target model selector +
+  priority badge (P0, P1, …) + expandable examples count
+- Hover-reveal delete button (two-stage confirmation via `useDeleteConfirm`)
+- Expanding the card reveals example phrases (intent training data) with
+  add/remove inline editing
 
-- **Priority** (number, required)
-  - Default: 0
-  - Hint: "Lower number = higher priority"
-  - Rules are evaluated in priority order (0, 1, 2...)
+**RouteCard (default fallback)**:
+- Compact horizontal layout with `flag` icon
+- Inline model selector
+- "Used when no other rule matches." subtitle
+- Same hover-reveal delete
 
-- **Target Model** (text, required)
-  - Placeholder: "gpt-4o"
-  - Must match a registered Model Name (alias), not litellm_model
-  - Hint: "Model name to route to if conditions match"
+**Create Modal** (only 2 required inputs):
+- **어떤 요청을 라우팅할까요?** — natural-language description textarea (required)
+- **어떤 모델로 보낼까요?** — dropdown of registered TenantModels (required)
+- **예시 문장 추가 (선택)** — collapsible section for optional intent examples
+  that improve embedding-based intent matching
 
-- **Default Rule** (checkbox, optional)
-  - If checked, this rule is used when no other rules match
-  - Only ONE rule can be default
-  - Hint: "Fallback rule when no conditions match"
+**Behind the scenes** (`routesApi.create`):
+1. Slugifies the description into an `intent.name`
+2. Creates an `Intent` with `description = input` and `examples = input`
+3. Creates a `Rule` with `target_model = input`, auto-assigned next priority,
+   and a single condition `{condition_type: "intent", field: "classified_intent",
+   operator: "eq", value: intent.name}`
+4. On rule failure, the intent is rolled back
 
-**Rules Table**:
-- **Layout**: Stacked card rows, divide-y border
-- **Columns**:
-  - Priority badge (P0, P1, etc.) - bg-gray-200
-  - Rule name (font-medium)
-  - Badges:
-    - "default" (yellow) if is_default=true
-    - "disabled" (red) if is_active=false
-  - Conditions count: "3 condition(s)"
-  - Target model: mono font
+**Data Sorting**: Cards are sorted by priority ascending; default rules pinned
+to the bottom.
 
-- **Actions**:
-  - **Delete Button**: Two-stage confirmation
-    1. First click: "Delete" → button turns red, text changes to "Confirm?"
-    2. Second click: Confirms deletion
-    3. Blur: Resets to "Delete" (onBlur resets state)
-  - Errors show in ErrorBanner above table
-
-**Data Sorting**: Rules are sorted by priority (ascending)
+**Legacy `/intents` route**: redirects to `/rules`. The standalone IntentsPage
+component still exists in source for safety but is not wired into the router.
 
 ---
 
@@ -191,50 +191,18 @@ The BSGateway Dashboard is a multi-tenant LLM routing control panel built with R
 
 ---
 
-### 5. IntentsPage
+### 5. IntentsPage (deprecated)
 
-**Purpose**: Define custom intents for semantic routing (embedding-based)
+**Status**: Removed from the dashboard navigation. Intents are now created
+implicitly when adding a routing rule on the RoutesPage — see "RoutesPage" above.
 
-**Create Intent Form**:
-- **Visibility**: Toggle with "New Intent" button
+**Backend behavior is unchanged**: the rules engine still classifies requests
+via embedding similarity (`bsgateway/rules/intent.py`). The dashboard simply
+exposes intents as natural-language fields on each route card instead of as a
+separate management surface.
 
-**Form Fields**:
-- **Name** (text, required)
-  - Placeholder: "summarization"
-  - Unique identifier within tenant
-
-- **Description** (textarea, optional)
-  - Placeholder: "Requests asking to summarize content"
-  - Used for documentation
-
-- **Examples** (dynamic list, at least 1 required)
-  - Button: "+ Add Example"
-  - Each example:
-    - Text input: "Please summarize this article"
-    - Delete button: "✕"
-  - Hint: "Examples help classify similar requests into this intent"
-
-- **Target Model** (text, optional)
-  - If set, route matching this intent to this model
-  - Otherwise, intent is for observability only
-
-**Intents Table**:
-- **Columns**:
-  - Intent name
-  - Example count
-  - Target model (if set)
-  - Created date
-
-- **Actions**:
-  - Delete button (two-stage)
-  - View examples (expand row or modal)
-
-**How It Works**:
-- User provides examples (e.g., "summarize", "condense", "tl;dr")
-- System embeds examples using configured embedding model
-- When routing a request, embedding of request is compared to intent embeddings
-- If similarity > threshold (configurable), intent matches
-- Matching intent can trigger a rule or just log observability
+The `/intents` route now redirects to `/rules`. The original `IntentsPage.tsx`
+component remains in the source tree but is not imported anywhere.
 
 ---
 

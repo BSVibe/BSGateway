@@ -9,7 +9,7 @@ const API_BASE = '/api/v1';
  */
 export async function injectAuth(page: Page) {
   await page.addInitScript(() => {
-    // BSVibeAuth stores user in sessionStorage under 'bsvibe_user'
+    // BSVibeAuth stores user in localStorage under 'bsvibe_user'
     // expiresAt is in seconds (unix timestamp), not milliseconds
     const fakeUser = {
       id: 'user-test-123',
@@ -20,7 +20,7 @@ export async function injectAuth(page: Page) {
       email: 'test@example.com',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
     };
-    sessionStorage.setItem('bsvibe_user', JSON.stringify(fakeUser));
+    localStorage.setItem('bsvibe_user', JSON.stringify(fakeUser));
     sessionStorage.setItem('bsvibe_tenant_name', 'Test Tenant');
   });
 }
@@ -70,12 +70,21 @@ export const MOCK_RULES = [
   {
     id: 'rule-1',
     tenant_id: TENANT_ID,
-    name: 'High Priority Router',
-    priority: 1,
+    name: 'code-review-and-debugging',
+    priority: 0,
     is_active: true,
     is_default: false,
-    target_model: 'openai/gpt-4o',
-    conditions: [{ id: 'c1', condition_type: 'complexity', field: 'score', operator: 'gte', value: 80, negate: false }],
+    target_model: 'gpt-4o',
+    conditions: [
+      {
+        id: 'c1',
+        condition_type: 'intent',
+        field: 'classified_intent',
+        operator: 'eq',
+        value: 'code-review-and-debugging',
+        negate: false,
+      },
+    ],
     created_at: '2026-03-01T00:00:00Z',
     updated_at: '2026-03-01T00:00:00Z',
   },
@@ -83,13 +92,41 @@ export const MOCK_RULES = [
     id: 'rule-2',
     tenant_id: TENANT_ID,
     name: 'Default Fallback',
-    priority: 5,
+    priority: 99,
     is_active: true,
     is_default: true,
-    target_model: 'openai/gpt-4o-mini',
+    target_model: 'gpt-4o-mini',
     conditions: [],
     created_at: '2026-03-01T00:00:00Z',
     updated_at: '2026-03-01T00:00:00Z',
+  },
+];
+
+export const MOCK_INTENTS = [
+  {
+    id: 'intent-1',
+    tenant_id: TENANT_ID,
+    name: 'code-review-and-debugging',
+    description: 'Code review and debugging requests',
+    threshold: 0.7,
+    is_active: true,
+    created_at: '2026-03-01T00:00:00Z',
+    updated_at: '2026-03-01T00:00:00Z',
+  },
+];
+
+export const MOCK_EXAMPLES = [
+  {
+    id: 'example-1',
+    intent_id: 'intent-1',
+    text: 'Please review this code',
+    created_at: '2026-03-01T00:00:00Z',
+  },
+  {
+    id: 'example-2',
+    intent_id: 'intent-1',
+    text: 'Help me debug this error',
+    created_at: '2026-03-01T00:00:00Z',
   },
 ];
 

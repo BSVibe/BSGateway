@@ -27,6 +27,10 @@ docker compose up
 - **Single config** (`gateway.yaml`) defines both LiteLLM models and routing rules
 - `passthrough_models` are auto-derived from `model_list[].model_name` - no manual list needed
 - **Classifier strategies**: `static` (heuristic), `llm` (Ollama), `ml` (sklearn stub)
+- **Intent-based routing**: tenants describe a request kind in natural language; the
+  rules engine matches via `classified_intent` (embedding similarity in `bsgateway/rules/intent.py`)
+  and routes to the user-chosen model. The dashboard exposes this as a single
+  Notion Mail-style "RouteCard" that pairs an Intent + Rule under the hood.
 - **Data collection**: PostgreSQL via asyncpg, SQL in `.sql` files (not ORM)
 - **Auth**: Supabase JWT via `bsvibe-auth` package — tenant mapping from `app_metadata.tenant_id`
 

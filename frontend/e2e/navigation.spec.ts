@@ -46,7 +46,7 @@ test.describe('Sidebar Navigation', () => {
     await page.goto('/');
     const nav = page.locator('aside nav');
     await expect(nav.getByRole('link', { name: /Dashboard/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Rules/i })).toBeVisible();
+    await expect(nav.getByRole('link', { name: /^.*Routing$/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /Models/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /Routing Test/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /Analytics/i })).toBeVisible();
@@ -61,11 +61,11 @@ test.describe('Sidebar Navigation', () => {
     await expect(dashLink).toHaveClass(/text-amber-500/);
   });
 
-  test('navigating to Rules activates Rules link', async ({ page }) => {
+  test('navigating to Routing activates Routing link', async ({ page }) => {
     await page.goto('/');
-    await page.locator('aside').getByText('Rules').click();
+    await page.locator('aside').getByText('Routing', { exact: true }).click();
     await expect(page).toHaveURL(/\/rules/);
-    const rulesLink = page.locator('aside a').filter({ hasText: 'Rules' });
+    const rulesLink = page.locator('aside a').filter({ hasText: /^\s*alt_route\s*Routing\s*$/ });
     await expect(rulesLink).toHaveClass(/text-amber-500/);
   });
 
