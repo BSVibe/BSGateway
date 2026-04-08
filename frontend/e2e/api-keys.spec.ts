@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { injectAuth, mockTenantInfo, mockGet, MOCK_API_KEYS, MOCK_USAGE, MOCK_RULES } from './helpers';
+import { injectAuth, mockTenantInfo, mockGet, MOCK_API_KEYS, MOCK_RULES } from './helpers';
 
 /**
  * Navigate to /api-keys via SPA routing (not direct URL).
