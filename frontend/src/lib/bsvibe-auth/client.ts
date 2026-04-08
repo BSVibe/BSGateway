@@ -57,6 +57,13 @@ export class BSVibeAuth {
    * Returns 'redirect' if redirecting to auth server (page will navigate away).
    */
   checkSession(): BSVibeUser | null | 'redirect' {
+    // 0. Test/dev bypass — if this flag is set, skip the silent-SSO redirect
+    //    and behave as fully unauthenticated. Used by Playwright e2e tests
+    //    and local dev when you want to inspect the LoginPage in isolation.
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('bsvibe_skip_sso')) {
+      return null;
+    }
+
     // 1. Check local storage
     const existing = this.getUser();
     if (existing) return existing;

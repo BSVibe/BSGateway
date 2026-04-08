@@ -30,6 +30,28 @@ export function apiPath(path: string): string {
   return `${API_BASE}/tenants/${TENANT_ID}${path}`;
 }
 
+/**
+ * Set the `bsvibe_skip_sso` localStorage flag so `BSVibeAuth.checkSession()`
+ * short-circuits and behaves as fully unauthenticated. This avoids the
+ * silent-SSO redirect that would otherwise navigate the test off-origin.
+ *
+ * The query-param escape hatch (`?sso_error=...`) does not work here because
+ * React's `StrictMode` invokes effects twice in dev — the first run strips
+ * the param via `replaceState`, then the second run sees a clean URL and
+ * fires the silent-check anyway, causing a redirect loop.
+ */
+export async function skipSso(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('bsvibe_skip_sso', '1');
+  });
+}
+
+/** Navigate as an unauthenticated user without leaving the LoginPage. */
+export async function gotoUnauth(page: Page, path: string) {
+  await skipSso(page);
+  await page.goto(path);
+}
+
 /** Mock a GET endpoint returning JSON */
 export async function mockGet(page: Page, pathSuffix: string, body: unknown) {
   await page.route(`**${apiPath(pathSuffix)}*`, (route) => {
