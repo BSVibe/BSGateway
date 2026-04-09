@@ -9,7 +9,6 @@ import { UsagePage } from './pages/UsagePage';
 import { AuditPage } from './pages/AuditPage';
 import { ApiKeysPage } from './pages/ApiKeysPage';
 import { LoginPage } from './pages/LoginPage';
-import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { useAuth } from './hooks/useAuth';
 import './index.css';
 
@@ -69,9 +68,6 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Auth callback must be accessible regardless of auth state */}
-        <Route path="auth/callback" element={<AuthCallbackPage />} />
-
         {!isAuthenticated ? (
           <Route path="*" element={<LoginPage />} />
         ) : (
