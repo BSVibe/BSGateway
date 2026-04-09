@@ -76,12 +76,6 @@ export function RoutingTestPage() {
             </div>
 
             <div className="space-y-6 flex-1 flex flex-col">
-              <div className="bg-surface-container-low border border-outline-variant/15 rounded-lg px-3 py-2 text-xs text-on-surface-variant flex items-center gap-2">
-                <span className="material-symbols-outlined text-amber-500 text-sm">alt_route</span>
-                Routing decision is the <b className="text-on-surface">output</b> of the simulation —
-                no need to pick a model.
-              </div>
-
               {/* Messages */}
               <div className="space-y-2 flex-1 flex flex-col">
                 <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Prompt Content</label>
@@ -165,104 +159,68 @@ export function RoutingTestPage() {
                 </h3>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
-                {/* Model Selection */}
-                <div className="space-y-6">
-                  <div className="bg-surface-container-lowest p-5 rounded-lg border border-outline-variant/15">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs text-slate-500">Routed Model</span>
-                      {result.matched_rule && (
-                        <span className="bg-amber-500/10 text-amber-500 text-[10px] px-2 py-0.5 rounded font-bold border border-amber-500/20">
-                          MATCHED
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-2xl font-bold text-on-surface tracking-tight">
-                      {result.target_model || 'none'}
-                    </div>
-                    {result.matched_rule && (
-                      <div className="mt-4 flex items-center gap-2 text-slate-400 text-xs">
-                        <span className="material-symbols-outlined text-sm">gavel</span>
-                        <span>Rule: {result.matched_rule.name} (P{result.matched_rule.priority})</span>
-                      </div>
+              <div className="space-y-8 relative z-10">
+                {/* Primary result */}
+                <div className="bg-surface-container-lowest p-6 rounded-lg border border-outline-variant/15">
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-xs text-slate-500">Routed to</span>
+                    {result.matched_rule ? (
+                      <span className="bg-amber-500/10 text-amber-500 text-[10px] px-2 py-0.5 rounded font-bold border border-amber-500/20">
+                        MATCHED
+                      </span>
+                    ) : (
+                      <span className="bg-error/10 text-error text-[10px] px-2 py-0.5 rounded font-bold border border-error/20">
+                        NO MATCH
+                      </span>
                     )}
                   </div>
-
-                  {/* Context */}
-                  {result.context && Object.keys(result.context).length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Request Context</h4>
-                      <div className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/15 space-y-2">
-                        {Object.entries(result.context).map(([key, value]) =>
-                          value !== null && value !== undefined ? (
-                            <div key={key} className="flex items-center gap-2 text-xs">
-                              <span className="text-on-surface-variant">{key}:</span>
-                              <span className="font-mono text-on-surface truncate">{String(value)}</span>
-                            </div>
-                          ) : null
-                        )}
-                      </div>
-                    </div>
+                  <div className="text-2xl font-bold text-on-surface tracking-tight font-mono">
+                    {result.target_model || '(no model selected)'}
+                  </div>
+                  {result.matched_rule && (
+                    <p className="mt-3 text-sm text-on-surface-variant">
+                      Matched rule: <span className="text-on-surface font-medium">{result.matched_rule.name}</span>
+                    </p>
+                  )}
+                  {typeof result.context?.classified_intent === 'string' && result.context.classified_intent && (
+                    <p className="mt-1 text-sm text-on-surface-variant">
+                      Detected intent: <span className="text-amber-500 font-medium">{result.context.classified_intent}</span>
+                    </p>
                   )}
                 </div>
 
-                {/* Routing Flow & Triggered Rules */}
-                <div className="space-y-6">
-                  {/* Routing Path */}
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Routing Path</h4>
-                    <div className="flex items-center justify-between px-2">
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
-                          <span className="material-symbols-outlined text-xs">input</span>
-                        </div>
-                        <span className="text-[9px] text-slate-500">Input</span>
+                {/* Routing path */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Routing Path</h4>
+                  <div className="flex items-center justify-between px-2">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
+                        <span className="material-symbols-outlined text-xs">input</span>
                       </div>
-                      <div className="h-px flex-1 bg-gradient-to-r from-slate-700 to-amber-500/50 mx-1" />
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
-                          <span className="material-symbols-outlined text-xs text-amber-500">psychology</span>
-                        </div>
-                        <span className="text-[9px] text-amber-500">Classifier</span>
+                      <span className="text-[9px] text-slate-500">Input</span>
+                    </div>
+                    <div className="h-px flex-1 bg-gradient-to-r from-slate-700 to-amber-500/50 mx-1" />
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
+                        <span className="material-symbols-outlined text-xs text-amber-500">psychology</span>
                       </div>
-                      <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-amber-500/50 mx-1" />
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
-                          <span className="material-symbols-outlined text-xs text-amber-500">gavel</span>
-                        </div>
-                        <span className="text-[9px] text-amber-500">Rules</span>
+                      <span className="text-[9px] text-amber-500">Classifier</span>
+                    </div>
+                    <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-amber-500/50 mx-1" />
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
+                        <span className="material-symbols-outlined text-xs text-amber-500">gavel</span>
                       </div>
-                      <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-slate-700 mx-1" />
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
-                          <span className="material-symbols-outlined text-xs">memory</span>
-                        </div>
-                        <span className="text-[9px] text-slate-500 truncate max-w-[60px]">{result.target_model || 'None'}</span>
+                      <span className="text-[9px] text-amber-500">Rules</span>
+                    </div>
+                    <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-slate-700 mx-1" />
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
+                        <span className="material-symbols-outlined text-xs">memory</span>
                       </div>
+                      <span className="text-[9px] text-slate-500 truncate max-w-[60px]">{result.target_model || 'None'}</span>
                     </div>
                   </div>
-
-                  {/* Evaluation trace */}
-                  {result.evaluation_trace && result.evaluation_trace.length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Evaluation Trace</h4>
-                      <div className="space-y-2">
-                        {result.evaluation_trace.map((entry, i) => {
-                          const matched = entry.matched === true || entry.result === true;
-                          return (
-                            <div key={i} className={`flex items-center gap-3 p-2 bg-surface-container-lowest rounded border border-outline-variant/15 ${!matched ? 'opacity-50' : ''}`}>
-                              <span className={`material-symbols-outlined text-sm ${matched ? 'text-amber-500' : 'text-slate-500'}`}>
-                                {matched ? 'check_circle' : 'circle'}
-                              </span>
-                              <span className="text-xs font-medium text-on-surface font-mono truncate">
-                                {JSON.stringify(entry)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

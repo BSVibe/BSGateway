@@ -55,6 +55,10 @@ RETURNING id, tenant_id, name, description, threshold, is_active, created_at, up
 SELECT id, tenant_id, name, description, threshold, is_active, created_at, updated_at
 FROM tenant_intents WHERE id = $1 AND tenant_id = $2;
 
+-- name: get_intent_by_name
+SELECT id, tenant_id, name, description, threshold, is_active, created_at, updated_at
+FROM tenant_intents WHERE tenant_id = $1 AND name = $2;
+
 -- name: list_intents
 SELECT id, tenant_id, name, description, threshold, is_active, created_at, updated_at
 FROM tenant_intents WHERE tenant_id = $1 ORDER BY name;

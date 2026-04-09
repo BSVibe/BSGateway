@@ -28,6 +28,8 @@ test.describe('Sidebar Navigation', () => {
       }
       return route.continue();
     });
+    // EmbeddingSettingsCard + DefaultFallbackCard on RoutesPage fetch these
+    await mockGet(page, '/embedding-settings', null);
   });
 
   test('sidebar shows BSGateway branding', async ({ page }) => {
@@ -63,10 +65,11 @@ test.describe('Sidebar Navigation', () => {
 
   test('navigating to Routing activates Routing link', async ({ page }) => {
     await page.goto('/');
-    await page.locator('aside').getByText('Routing', { exact: true }).click();
+    // Wait for sidebar to fully render before clicking
+    const link = page.locator('aside a', { hasText: 'Routing' }).filter({ hasNotText: 'Test' });
+    await link.click();
     await expect(page).toHaveURL(/\/rules/);
-    const rulesLink = page.locator('aside a').filter({ hasText: /^\s*alt_route\s*Routing\s*$/ });
-    await expect(rulesLink).toHaveClass(/text-amber-500/);
+    await expect(link).toHaveClass(/text-amber-500/);
   });
 
   test('navigating to Models activates Models link', async ({ page }) => {

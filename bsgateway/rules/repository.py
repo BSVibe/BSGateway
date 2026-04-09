@@ -246,6 +246,18 @@ class RulesRepository:
                 tenant_id,
             )
 
+    async def get_intent_by_name(
+        self,
+        tenant_id: UUID,
+        name: str,
+    ) -> asyncpg.Record | None:
+        async with self._pool.acquire() as conn:
+            return await conn.fetchrow(
+                sql.query("get_intent_by_name"),
+                tenant_id,
+                name,
+            )
+
     async def list_intents(self, tenant_id: UUID) -> list[asyncpg.Record]:
         async with self._pool.acquire() as conn:
             return await conn.fetch(sql.query("list_intents"), tenant_id)

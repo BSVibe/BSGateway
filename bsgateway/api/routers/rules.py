@@ -290,11 +290,21 @@ async def test_rules(
 
     ctx = EvaluationContext.from_request(data)
 
+    # Resolve the rule's internal slug to a human-readable description.
+    # Intent-based rules share their slug with the paired intent; the
+    # intent's description field is what the operator actually typed.
+    matched_display_name: str | None = None
+    if match:
+        matched_display_name = match.rule.name
+        intent_row = await repo.get_intent_by_name(tenant_id, match.rule.name)
+        if intent_row and intent_row["description"]:
+            matched_display_name = intent_row["description"]
+
     return RuleTestResponse(
         matched_rule=(
             {
                 "id": match.rule.id,
-                "name": match.rule.name,
+                "name": matched_display_name or match.rule.name,
                 "priority": match.rule.priority,
             }
             if match

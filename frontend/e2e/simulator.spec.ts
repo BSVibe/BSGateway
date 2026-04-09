@@ -19,17 +19,6 @@ test.describe('Routing Simulator Page', () => {
     await page.goto('/test');
     await expect(page.getByText('Test Input')).toBeVisible();
     await expect(page.getByText('No test run yet')).toBeVisible();
-    await expect(page.getByText('Configure a request and run the simulation')).toBeVisible();
-  });
-
-  test('shows informational banner explaining the model is the output', async ({ page }) => {
-    await page.goto('/test');
-    await expect(
-      page.getByText(/routing decision is the/i),
-    ).toBeVisible();
-    await expect(
-      page.getByText(/output/i).first(),
-    ).toBeVisible();
   });
 
   test('prompt textarea is visible with placeholder', async ({ page }) => {
@@ -45,9 +34,7 @@ test.describe('Routing Simulator Page', () => {
 
   test('Add Message button adds another message input', async ({ page }) => {
     await page.goto('/test');
-    const addBtn = page.getByText('Add Message');
-    await addBtn.click();
-    // Should now have 2 textareas
+    await page.getByText('Add Message').click();
     const textareas = page.locator('textarea');
     await expect(textareas).toHaveCount(2);
   });
@@ -55,17 +42,21 @@ test.describe('Routing Simulator Page', () => {
   test('shows simulation result after test run', async ({ page }) => {
     await mockPost(page, '/rules/test', MOCK_TEST_RESULT);
     await page.goto('/test');
-
-    // Type a prompt
-    await page.getByPlaceholder(/paste your llm prompt here/i).fill('Explain quantum computing in detail');
-
-    // Run simulation
+    await page.getByPlaceholder(/paste your llm prompt here/i).fill('Explain quantum computing');
     await page.getByRole('button', { name: /run simulation/i }).click();
 
-    // Result panel
     await expect(page.getByText('Simulation Result')).toBeVisible();
     await expect(page.getByText('openai/gpt-4o').first()).toBeVisible();
     await expect(page.getByText('MATCHED', { exact: true })).toBeVisible();
+  });
+
+  test('result shows matched rule name (description, not slug)', async ({ page }) => {
+    await mockPost(page, '/rules/test', MOCK_TEST_RESULT);
+    await page.goto('/test');
+    await page.getByPlaceholder(/paste your llm prompt here/i).fill('Test prompt');
+    await page.getByRole('button', { name: /run simulation/i }).click();
+
+    await expect(page.getByText(/Matched rule:.*High Priority Router/i)).toBeVisible();
   });
 
   test('result shows routing path visualization', async ({ page }) => {
@@ -74,38 +65,24 @@ test.describe('Routing Simulator Page', () => {
     await page.getByPlaceholder(/paste your llm prompt here/i).fill('Test prompt');
     await page.getByRole('button', { name: /run simulation/i }).click();
 
-    // Routing path nodes (scoped to main content area, not sidebar)
     const main = page.getByRole('main');
     await expect(main.getByText('Input', { exact: true })).toBeVisible();
     await expect(main.getByText('Classifier')).toBeVisible();
     await expect(main.getByText('Routing Path')).toBeVisible();
   });
 
-  test('result shows matched rule info', async ({ page }) => {
-    await mockPost(page, '/rules/test', MOCK_TEST_RESULT);
+  test('shows NO MATCH badge when no rule matches', async ({ page }) => {
+    const noMatchResult = {
+      matched_rule: null,
+      target_model: null,
+      evaluation_trace: [],
+      context: { estimated_tokens: 5, conversation_turns: 1 },
+    };
+    await mockPost(page, '/rules/test', noMatchResult);
     await page.goto('/test');
     await page.getByPlaceholder(/paste your llm prompt here/i).fill('Test prompt');
     await page.getByRole('button', { name: /run simulation/i }).click();
 
-    await expect(page.getByText(/Rule: High Priority Router/)).toBeVisible();
-  });
-
-  test('result shows evaluation trace', async ({ page }) => {
-    await mockPost(page, '/rules/test', MOCK_TEST_RESULT);
-    await page.goto('/test');
-    await page.getByPlaceholder(/paste your llm prompt here/i).fill('Test prompt');
-    await page.getByRole('button', { name: /run simulation/i }).click();
-
-    await expect(page.getByText('Evaluation Trace')).toBeVisible();
-  });
-
-  test('result shows request context', async ({ page }) => {
-    await mockPost(page, '/rules/test', MOCK_TEST_RESULT);
-    await page.goto('/test');
-    await page.getByPlaceholder(/paste your llm prompt here/i).fill('Test prompt');
-    await page.getByRole('button', { name: /run simulation/i }).click();
-
-    await expect(page.getByText('Request Context')).toBeVisible();
-    await expect(page.getByText('complexity_score:')).toBeVisible();
+    await expect(page.getByText('NO MATCH', { exact: true })).toBeVisible();
   });
 });
