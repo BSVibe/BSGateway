@@ -108,6 +108,8 @@ class TenantConfig:
     models: dict[str, TenantModel]
     rules: list[RoutingRule]  # sorted by priority ascending
     settings: dict = field(default_factory=dict)
+    embedding_settings: Any = None  # bsgateway.embedding.settings.EmbeddingSettings | None
+    intent_definitions: list = field(default_factory=list)  # list[IntentDefinition]
 
 
 @dataclass

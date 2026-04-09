@@ -45,12 +45,17 @@ CREATE TABLE IF NOT EXISTS tenant_intents (
 
 CREATE INDEX IF NOT EXISTS idx_intents_tenant ON tenant_intents(tenant_id);
 
+-- intent_examples.embedding_model records which model produced the BYTEA so
+-- we can detect stale embeddings after a tenant swaps their embedding model.
 CREATE TABLE IF NOT EXISTS intent_examples (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     intent_id UUID NOT NULL REFERENCES tenant_intents(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     embedding BYTEA,
+    embedding_model TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE intent_examples ADD COLUMN IF NOT EXISTS embedding_model TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_examples_intent ON intent_examples(intent_id);

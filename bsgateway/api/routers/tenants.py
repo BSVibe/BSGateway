@@ -14,7 +14,9 @@ from bsgateway.api.deps import (
     require_tenant_access,
 )
 from bsgateway.core.exceptions import DuplicateError
+from bsgateway.embedding.settings import EmbeddingSettings
 from bsgateway.tenant.models import (
+    EmbeddingSettingsBody,
     TenantCreate,
     TenantModelCreate,
     TenantModelResponse,
@@ -132,6 +134,95 @@ async def deactivate_tenant(
         "tenant.deactivated",
         "tenant",
         str(tenant_id),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Embedding settings (per-tenant)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{tenant_id}/embedding-settings",
+    response_model=EmbeddingSettingsBody | None,
+    summary="Get tenant embedding settings",
+)
+async def get_embedding_settings(
+    tenant_id: UUID,
+    request: Request,
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
+) -> EmbeddingSettingsBody | None:
+    """Return the tenant's embedding configuration, or null if not configured."""
+    svc = get_tenant_service(request)
+    tenant = await svc.get_tenant(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    embedding = EmbeddingSettings.from_tenant_settings(tenant.settings or {})
+    if embedding is None:
+        return None
+    return EmbeddingSettingsBody(**embedding.to_dict())
+
+
+@router.put(
+    "/{tenant_id}/embedding-settings",
+    response_model=EmbeddingSettingsBody,
+    summary="Update tenant embedding settings",
+)
+async def put_embedding_settings(
+    tenant_id: UUID,
+    body: EmbeddingSettingsBody,
+    request: Request,
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
+) -> EmbeddingSettingsBody:
+    """Set the tenant's embedding configuration.
+
+    Changing the model invalidates existing embeddings (they're tagged with
+    the model that produced them and skipped at classification time). Call
+    ``POST /tenants/{id}/intents/reembed`` afterward to backfill examples
+    with the new model.
+    """
+    svc = get_tenant_service(request)
+    tenant = await svc.get_tenant(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    new_settings = dict(tenant.settings or {})
+    new_settings["embedding"] = body.model_dump()
+
+    updated = await svc.update_tenant(
+        tenant_id,
+        name=tenant.name,
+        slug=tenant.slug,
+        settings=new_settings,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return body
+
+
+@router.delete(
+    "/{tenant_id}/embedding-settings",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Disable tenant embedding",
+)
+async def delete_embedding_settings(
+    tenant_id: UUID,
+    request: Request,
+    _auth: GatewayAuthContext = Depends(require_tenant_access),
+) -> None:
+    """Remove the embedding configuration for a tenant. Existing example
+    embeddings remain in storage but are no longer used for classification."""
+    svc = get_tenant_service(request)
+    tenant = await svc.get_tenant(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    new_settings = dict(tenant.settings or {})
+    new_settings.pop("embedding", None)
+    await svc.update_tenant(
+        tenant_id,
+        name=tenant.name,
+        slug=tenant.slug,
+        settings=new_settings,
     )
 
 

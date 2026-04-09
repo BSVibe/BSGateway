@@ -398,7 +398,8 @@ class TestLoadTenantConfig:
         }
 
         conn = AsyncMock()
-        conn.fetch = AsyncMock(side_effect=[rule_rows, cond_rows, model_rows])
+        # 4 fetches: rules, conditions, models, intent_examples (5th query in load_tenant_config)
+        conn.fetch = AsyncMock(side_effect=[rule_rows, cond_rows, model_rows, []])
         conn.fetchrow = AsyncMock(return_value=tenant_row)
 
         pool = AsyncMock()
@@ -411,8 +412,12 @@ class TestLoadTenantConfig:
 
         svc = ChatService(pool, ENCRYPTION_KEY)
 
-        with patch("bsgateway.chat.service._sql") as mock_sql:
+        with (
+            patch("bsgateway.chat.service._sql") as mock_sql,
+            patch("bsgateway.chat.service._rules_sql") as mock_rules_sql,
+        ):
             mock_sql.query.side_effect = lambda q: q
+            mock_rules_sql.query.side_effect = lambda q: q
 
             config = await svc.load_tenant_config(TENANT_ID)
 
@@ -429,7 +434,8 @@ class TestLoadTenantConfig:
         from contextlib import asynccontextmanager
 
         conn = AsyncMock()
-        conn.fetch = AsyncMock(side_effect=[[], [], []])
+        # 4 fetches: rules, conditions, models, intent_examples
+        conn.fetch = AsyncMock(side_effect=[[], [], [], []])
         conn.fetchrow = AsyncMock(
             return_value={
                 "id": TENANT_ID,
@@ -452,8 +458,12 @@ class TestLoadTenantConfig:
 
         svc = ChatService(pool, ENCRYPTION_KEY)
 
-        with patch("bsgateway.chat.service._sql") as mock_sql:
+        with (
+            patch("bsgateway.chat.service._sql") as mock_sql,
+            patch("bsgateway.chat.service._rules_sql") as mock_rules_sql,
+        ):
             mock_sql.query.side_effect = lambda q: q
+            mock_rules_sql.query.side_effect = lambda q: q
 
             config = await svc.load_tenant_config(TENANT_ID)
 

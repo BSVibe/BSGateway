@@ -69,20 +69,32 @@ RETURNING id, tenant_id, name, description, threshold, is_active, created_at, up
 DELETE FROM tenant_intents WHERE id = $1 AND tenant_id = $2;
 
 -- name: insert_intent_example
-INSERT INTO intent_examples (intent_id, text, embedding)
-VALUES ($1, $2, $3)
+INSERT INTO intent_examples (intent_id, text, embedding, embedding_model)
+VALUES ($1, $2, $3, $4)
 RETURNING id, intent_id, text, created_at;
 
 -- name: list_intent_examples
-SELECT id, intent_id, text, embedding, created_at
+SELECT id, intent_id, text, embedding, embedding_model, created_at
 FROM intent_examples WHERE intent_id = $1 ORDER BY created_at;
 
 -- name: delete_intent_example
 DELETE FROM intent_examples WHERE id = $1 AND intent_id = $2;
 
 -- name: list_intent_examples_for_tenant
-SELECT e.id, e.intent_id, e.text, e.embedding, e.created_at,
+SELECT e.id, e.intent_id, e.text, e.embedding, e.embedding_model, e.created_at,
        i.name as intent_name, i.threshold
 FROM intent_examples e
 JOIN tenant_intents i ON i.id = e.intent_id
 WHERE i.tenant_id = $1 AND i.is_active = TRUE;
+
+-- name: list_examples_needing_reembedding
+SELECT e.id, e.text, e.embedding_model
+FROM intent_examples e
+JOIN tenant_intents i ON i.id = e.intent_id
+WHERE i.tenant_id = $1
+  AND (e.embedding IS NULL OR e.embedding_model IS DISTINCT FROM $2);
+
+-- name: update_intent_example_embedding
+UPDATE intent_examples
+SET embedding = $2, embedding_model = $3
+WHERE id = $1;

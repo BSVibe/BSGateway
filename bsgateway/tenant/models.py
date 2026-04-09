@@ -42,6 +42,27 @@ class TenantUpdate(BaseModel):
     settings: dict | None = None
 
 
+class EmbeddingSettingsBody(BaseModel):
+    """Per-tenant embedding configuration.
+
+    Stored under ``tenants.settings['embedding']``. Set ``model = ""`` (or
+    DELETE the endpoint) to disable embedding-based intent classification for
+    this tenant.
+    """
+
+    model: str = Field(
+        ...,
+        description=(
+            "Embedding model identifier (e.g., 'text-embedding-3-small', 'ollama/nomic-embed-text')"
+        ),
+    )
+    api_base: str | None = Field(None, description="Custom endpoint for self-hosted models")
+    timeout: float = Field(10.0, gt=0, le=120, description="Request timeout in seconds")
+    max_input_length: int = Field(
+        8000, gt=0, le=32000, description="Truncate input texts to this many characters"
+    )
+
+
 class TenantResponse(BaseModel):
     id: UUID = Field(description="Unique tenant identifier")
     name: str = Field(description="Human-readable tenant name")
