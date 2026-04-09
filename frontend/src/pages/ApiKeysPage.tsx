@@ -213,21 +213,6 @@ export function ApiKeysPage() {
         )}
       </div>
 
-      {/* Documentation Link */}
-      <div className="p-8 rounded-2xl bg-gradient-to-r from-surface-container to-surface-container-low border border-outline-variant/10 relative overflow-hidden group">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="max-w-xl">
-            <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-              <span className="material-symbols-outlined text-amber-500">auto_awesome</span>
-              Secure your API implementation
-            </h3>
-            <p className="text-on-surface-variant">
-              Learn about best practices for rotating keys, scoping permissions, and monitoring for unauthorized access.
-            </p>
-          </div>
-        </div>
-        <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-64 h-64 bg-amber-500/5 blur-[100px] pointer-events-none" />
-      </div>
     </div>
   );
 }

@@ -33,17 +33,21 @@ export function useAuth() {
     };
   });
 
-  // Silent SSO check on init when no local session
+  // Silent SSO check on init when no local session.
+  // This must run in an effect (not in the lazy state initializer) because
+  // `auth.checkSession()` may set `window.location.href` to redirect to the
+  // auth server — a side effect that would double-fire under StrictMode if
+  // placed in render. The setState calls below reflect the result of
+  // integrating with that external (browser-history) state, which is the
+  // canonical use case for the eslint escape hatch on `set-state-in-effect`.
   useEffect(() => {
-    if (state.isAuthenticated) {
-      setState((prev) => ({ ...prev, isLoading: false }));
-      return;
-    }
+    if (state.isAuthenticated) return;
 
     const result = auth.checkSession();
     if (result === 'redirect') return; // page is navigating away
     if (result) {
       setAuthToken(result.accessToken);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({
         isAuthenticated: true,
         isLoading: false,

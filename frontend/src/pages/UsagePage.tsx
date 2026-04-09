@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
@@ -25,11 +25,7 @@ export function UsagePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadUsage();
-  }, [period]);
-
-  const loadUsage = async () => {
+  const loadUsage = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -42,7 +38,11 @@ export function UsagePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tid, period]);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
 
   if (loading) return <LoadingSpinner />;
 

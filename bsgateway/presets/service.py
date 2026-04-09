@@ -5,6 +5,7 @@ from uuid import UUID
 
 import structlog
 
+from bsgateway.embedding.service import EmbeddingService
 from bsgateway.presets.models import ModelMapping, PresetApplyResult
 from bsgateway.presets.registry import PresetRegistry
 from bsgateway.rules.repository import RulesRepository
@@ -31,12 +32,19 @@ class PresetService:
         tenant_id: UUID,
         preset_name: str,
         model_mapping: ModelMapping,
+        embedding_service: EmbeddingService | None = None,
     ) -> PresetApplyResult:
         """Apply a preset template to a tenant.
 
         Creates intents, examples, and rules based on the preset,
         mapping abstract model levels to concrete model names.
         All DB operations run in a single transaction for atomicity.
+
+        If ``embedding_service`` is provided, all preset example texts are
+        embedded in a single batch call before the transaction begins. This
+        keeps the transaction short and lets the embedding API failure
+        degrade gracefully (examples are still inserted, just without
+        embeddings, and can be backfilled via /intents/reembed).
         """
         preset = _registry.get(preset_name)
         if not preset:
@@ -64,6 +72,22 @@ class PresetService:
         examples_created = 0
         rules_created = 0
 
+        # Pre-compute embeddings outside the transaction so we hold no DB locks
+        # while waiting on the embedding API. The result is a flat list aligned
+        # to (intent_index, example_index); we look it up by text below.
+        embedded_lookup: dict[tuple[str, str], tuple[bytes | None, str | None]] = {}
+        if embedding_service:
+            flat_pairs: list[tuple[str, str]] = [
+                (intent_def.name, ex) for intent_def in preset.intents for ex in intent_def.examples
+            ]
+            if flat_pairs:
+                results = await embedding_service.embed_many([p[1] for p in flat_pairs])
+                for (intent_name, text), result in zip(flat_pairs, results, strict=True):
+                    embedded_lookup[(intent_name, text)] = (
+                        result.embedding,
+                        result.model if result.embedding else None,
+                    )
+
         # Run all DB writes in a single transaction
         async with self._repo._pool.acquire() as conn:
             async with conn.transaction():
@@ -79,11 +103,15 @@ class PresetService:
                     intents_created += 1
 
                     for example_text in intent_def.examples:
+                        embedding_bytes, embedding_model = embedded_lookup.get(
+                            (intent_def.name, example_text), (None, None)
+                        )
                         await conn.fetchrow(
                             self._repo._sql.query("insert_intent_example"),
                             intent_row["id"],
                             example_text,
-                            None,
+                            embedding_bytes,
+                            embedding_model,
                         )
                         examples_created += 1
 

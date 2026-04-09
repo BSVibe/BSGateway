@@ -2,9 +2,8 @@ import { Component, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { DashboardPage } from './pages/DashboardPage';
-import { RulesPage } from './pages/RulesPage';
+import { RoutesPage } from './pages/RoutesPage';
 import { ModelsPage } from './pages/ModelsPage';
-import { IntentsPage } from './pages/IntentsPage';
 import { RoutingTestPage } from './pages/RoutingTestPage';
 import { UsagePage } from './pages/UsagePage';
 import { AuditPage } from './pages/AuditPage';
@@ -78,9 +77,9 @@ function App() {
         ) : (
           <Route element={<Layout onLogout={logout} tenantSlug={tenantId} tenantName={tenantName} />}>
             <Route index element={<PageBoundary><DashboardPage /></PageBoundary>} />
-            <Route path="rules" element={<PageBoundary><RulesPage /></PageBoundary>} />
+            <Route path="rules" element={<PageBoundary><RoutesPage /></PageBoundary>} />
             <Route path="models" element={<PageBoundary><ModelsPage /></PageBoundary>} />
-            <Route path="intents" element={<PageBoundary><IntentsPage /></PageBoundary>} />
+            <Route path="intents" element={<Navigate to="/rules" replace />} />
             <Route path="test" element={<PageBoundary><RoutingTestPage /></PageBoundary>} />
             <Route path="api-keys" element={<PageBoundary><ApiKeysPage /></PageBoundary>} />
             <Route path="usage" element={<PageBoundary><UsagePage /></PageBoundary>} />

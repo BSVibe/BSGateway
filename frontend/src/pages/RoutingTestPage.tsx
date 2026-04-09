@@ -1,9 +1,6 @@
-import { useEffect, useState } from 'react';
-import { tenantsApi } from '../api/tenants';
+import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { rulesApi } from '../api/rules';
-import type { TenantModel } from '../types/api';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 
 interface TestMessage {
@@ -27,44 +24,26 @@ interface TestResult {
 export function RoutingTestPage() {
   const { tenantId } = useAuth();
   const tid = tenantId || '';
-  const [models, setModels] = useState<TenantModel[]>([]);
-  const [loadingModels, setLoadingModels] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('');
   const [messages, setMessages] = useState<TestMessage[]>([{ role: 'user', content: '' }]);
   const [result, setResult] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadModelsAndRules();
-  }, []);
-
-  const loadModelsAndRules = async () => {
-    try {
-      const m = await tenantsApi.listModels(tid);
-      setModels(m || []);
-      if (m && m.length > 0) {
-        setSelectedModel(m[0].model_name);
-      }
-    } catch {
-      setError('Failed to load models');
-    } finally {
-      setLoadingModels(false);
-    }
-  };
-
   const handleTest = async () => {
-    if (!selectedModel || !messages[0]?.content) {
-      setError('Model and at least one message required');
+    if (!messages[0]?.content) {
+      setError('At least one message is required');
       return;
     }
 
     setTesting(true);
     setError(null);
     try {
+      // Always test with model="auto" — the whole point is to see which
+      // concrete model the router picks. The model is the OUTPUT of the
+      // simulation, not an input.
       const data = await rulesApi.test(tid, {
-        model: selectedModel,
-        messages: messages.filter(m => m.content.trim()),
+        model: 'auto',
+        messages: messages.filter((m) => m.content.trim()),
       });
       setResult(data);
     } catch (err) {
@@ -73,8 +52,6 @@ export function RoutingTestPage() {
       setTesting(false);
     }
   };
-
-  if (loadingModels) return <LoadingSpinner />;
 
   return (
     <div className="p-8 space-y-8">
@@ -99,31 +76,6 @@ export function RoutingTestPage() {
             </div>
 
             <div className="space-y-6 flex-1 flex flex-col">
-              {/* Model selector */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Model</label>
-                {models.length > 0 ? (
-                  <div className="relative">
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      className="w-full bg-surface-container-low border-none rounded-lg py-2 px-3 text-sm appearance-none focus:ring-1 focus:ring-amber-500 border border-outline-variant/15"
-                    >
-                      {models.map((m) => (
-                        <option key={m.id} value={m.model_name}>
-                          {m.model_name} ({m.provider})
-                        </option>
-                      ))}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-2 top-2 text-slate-500 pointer-events-none">expand_more</span>
-                  </div>
-                ) : (
-                  <div className="border border-outline-variant/15 rounded-lg px-3 py-2 text-sm text-on-surface-variant bg-surface-container-low">
-                    No models registered
-                  </div>
-                )}
-              </div>
-
               {/* Messages */}
               <div className="space-y-2 flex-1 flex flex-col">
                 <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Prompt Content</label>
@@ -176,7 +128,7 @@ export function RoutingTestPage() {
 
               <button
                 onClick={handleTest}
-                disabled={testing || !selectedModel || !messages[0]?.content}
+                disabled={testing || !messages[0]?.content}
                 className="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary py-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-lg shadow-amber-900/20 disabled:opacity-50"
               >
                 {testing ? (
@@ -207,104 +159,68 @@ export function RoutingTestPage() {
                 </h3>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
-                {/* Model Selection */}
-                <div className="space-y-6">
-                  <div className="bg-surface-container-lowest p-5 rounded-lg border border-outline-variant/15">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs text-slate-500">Routed Model</span>
-                      {result.matched_rule && (
-                        <span className="bg-amber-500/10 text-amber-500 text-[10px] px-2 py-0.5 rounded font-bold border border-amber-500/20">
-                          MATCHED
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-2xl font-bold text-on-surface tracking-tight">
-                      {result.target_model || 'none'}
-                    </div>
-                    {result.matched_rule && (
-                      <div className="mt-4 flex items-center gap-2 text-slate-400 text-xs">
-                        <span className="material-symbols-outlined text-sm">gavel</span>
-                        <span>Rule: {result.matched_rule.name} (P{result.matched_rule.priority})</span>
-                      </div>
+              <div className="space-y-8 relative z-10">
+                {/* Primary result */}
+                <div className="bg-surface-container-lowest p-6 rounded-lg border border-outline-variant/15">
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-xs text-slate-500">Routed to</span>
+                    {result.matched_rule ? (
+                      <span className="bg-amber-500/10 text-amber-500 text-[10px] px-2 py-0.5 rounded font-bold border border-amber-500/20">
+                        MATCHED
+                      </span>
+                    ) : (
+                      <span className="bg-error/10 text-error text-[10px] px-2 py-0.5 rounded font-bold border border-error/20">
+                        NO MATCH
+                      </span>
                     )}
                   </div>
-
-                  {/* Context */}
-                  {result.context && Object.keys(result.context).length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Request Context</h4>
-                      <div className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/15 space-y-2">
-                        {Object.entries(result.context).map(([key, value]) =>
-                          value !== null && value !== undefined ? (
-                            <div key={key} className="flex items-center gap-2 text-xs">
-                              <span className="text-on-surface-variant">{key}:</span>
-                              <span className="font-mono text-on-surface truncate">{String(value)}</span>
-                            </div>
-                          ) : null
-                        )}
-                      </div>
-                    </div>
+                  <div className="text-2xl font-bold text-on-surface tracking-tight font-mono">
+                    {result.target_model || '(no model selected)'}
+                  </div>
+                  {result.matched_rule && (
+                    <p className="mt-3 text-sm text-on-surface-variant">
+                      Matched rule: <span className="text-on-surface font-medium">{result.matched_rule.name}</span>
+                    </p>
+                  )}
+                  {typeof result.context?.classified_intent === 'string' && result.context.classified_intent && (
+                    <p className="mt-1 text-sm text-on-surface-variant">
+                      Detected intent: <span className="text-amber-500 font-medium">{result.context.classified_intent}</span>
+                    </p>
                   )}
                 </div>
 
-                {/* Routing Flow & Triggered Rules */}
-                <div className="space-y-6">
-                  {/* Routing Path */}
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Routing Path</h4>
-                    <div className="flex items-center justify-between px-2">
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
-                          <span className="material-symbols-outlined text-xs">input</span>
-                        </div>
-                        <span className="text-[9px] text-slate-500">Input</span>
+                {/* Routing path */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Routing Path</h4>
+                  <div className="flex items-center justify-between px-2">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
+                        <span className="material-symbols-outlined text-xs">input</span>
                       </div>
-                      <div className="h-px flex-1 bg-gradient-to-r from-slate-700 to-amber-500/50 mx-1" />
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
-                          <span className="material-symbols-outlined text-xs text-amber-500">psychology</span>
-                        </div>
-                        <span className="text-[9px] text-amber-500">Classifier</span>
+                      <span className="text-[9px] text-slate-500">Input</span>
+                    </div>
+                    <div className="h-px flex-1 bg-gradient-to-r from-slate-700 to-amber-500/50 mx-1" />
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
+                        <span className="material-symbols-outlined text-xs text-amber-500">psychology</span>
                       </div>
-                      <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-amber-500/50 mx-1" />
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
-                          <span className="material-symbols-outlined text-xs text-amber-500">gavel</span>
-                        </div>
-                        <span className="text-[9px] text-amber-500">Rules</span>
+                      <span className="text-[9px] text-amber-500">Classifier</span>
+                    </div>
+                    <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-amber-500/50 mx-1" />
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
+                        <span className="material-symbols-outlined text-xs text-amber-500">gavel</span>
                       </div>
-                      <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-slate-700 mx-1" />
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
-                          <span className="material-symbols-outlined text-xs">memory</span>
-                        </div>
-                        <span className="text-[9px] text-slate-500 truncate max-w-[60px]">{result.target_model || 'None'}</span>
+                      <span className="text-[9px] text-amber-500">Rules</span>
+                    </div>
+                    <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-slate-700 mx-1" />
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
+                        <span className="material-symbols-outlined text-xs">memory</span>
                       </div>
+                      <span className="text-[9px] text-slate-500 truncate max-w-[60px]">{result.target_model || 'None'}</span>
                     </div>
                   </div>
-
-                  {/* Evaluation trace */}
-                  {result.evaluation_trace && result.evaluation_trace.length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Evaluation Trace</h4>
-                      <div className="space-y-2">
-                        {result.evaluation_trace.map((entry, i) => {
-                          const matched = entry.matched === true || entry.result === true;
-                          return (
-                            <div key={i} className={`flex items-center gap-3 p-2 bg-surface-container-lowest rounded border border-outline-variant/15 ${!matched ? 'opacity-50' : ''}`}>
-                              <span className={`material-symbols-outlined text-sm ${matched ? 'text-amber-500' : 'text-slate-500'}`}>
-                                {matched ? 'check_circle' : 'circle'}
-                              </span>
-                              <span className="text-xs font-medium text-on-surface font-mono truncate">
-                                {JSON.stringify(entry)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

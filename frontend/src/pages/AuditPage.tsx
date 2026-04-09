@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -20,11 +20,7 @@ export function AuditPage() {
   const limit = 50;
   const [offset, setOffset] = useState(0);
 
-  useEffect(() => {
-    loadAuditLogs();
-  }, [offset]);
-
-  const loadAuditLogs = async () => {
+  const loadAuditLogs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -38,7 +34,11 @@ export function AuditPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tid, offset]);
+
+  useEffect(() => {
+    loadAuditLogs();
+  }, [loadAuditLogs]);
 
   if (loading) return <LoadingSpinner />;
 

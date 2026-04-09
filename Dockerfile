@@ -4,8 +4,8 @@ FROM python:3.11-slim as builder
 WORKDIR /workspace
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
-# Install uv
-RUN apt-get update && apt-get install -y curl && \
+# Install uv (git is needed for bsvibe-auth git dependency)
+RUN apt-get update && apt-get install -y curl git && \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 

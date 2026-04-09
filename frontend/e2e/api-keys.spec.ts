@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { injectAuth, mockTenantInfo, mockGet, MOCK_API_KEYS, MOCK_USAGE, MOCK_RULES } from './helpers';
+import { injectAuth, mockTenantInfo, mockGet, MOCK_API_KEYS, MOCK_RULES } from './helpers';
 
 /**
  * Navigate to /api-keys via SPA routing (not direct URL).
@@ -130,11 +130,6 @@ test.describe('API Keys Page', () => {
 
     await expect(page.getByText(/copy it now/i)).toBeVisible();
     await expect(page.getByText('bsg_new_abcdef123456789')).toBeVisible();
-  });
-
-  test('shows security documentation section', async ({ page }) => {
-    await gotoApiKeys(page);
-    await expect(page.getByText('Secure your API implementation')).toBeVisible();
   });
 
   test('empty state when no keys exist', async ({ page }) => {

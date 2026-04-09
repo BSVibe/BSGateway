@@ -14,9 +14,14 @@ except ImportError:  # pragma: no cover
     litellm = None  # type: ignore[assignment]
 
 from bsgateway.core.security import decrypt_value
+from bsgateway.core.sql_loader import NamedSqlLoader
 from bsgateway.core.utils import parse_jsonb_value, safe_json_loads
+from bsgateway.embedding.provider import build_provider
+from bsgateway.embedding.serialization import hydrate_intent_definitions
+from bsgateway.embedding.settings import EmbeddingSettings
 from bsgateway.routing.collector import SqlLoader
 from bsgateway.rules.engine import RuleEngine
+from bsgateway.rules.intent import IntentClassifier, IntentDefinition
 from bsgateway.rules.models import (
     EvaluationContext,
     RoutingRule,
@@ -33,6 +38,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 _sql = SqlLoader()
+_rules_sql = NamedSqlLoader("rules_schema.sql", "rules_queries.sql")
 
 
 class ChatService:
@@ -54,7 +60,7 @@ class ChatService:
         )
 
     async def load_tenant_config(self, tenant_id: UUID) -> TenantConfig:
-        """Batch-load rules + conditions + models for a tenant (3 queries)."""
+        """Batch-load rules + conditions + models + intent examples for a tenant."""
         async with self._pool.acquire() as conn:
             # 1. Active rules
             rule_rows = await conn.fetch(
@@ -74,6 +80,11 @@ class ChatService:
             # 4. Tenant settings
             tenant_row = await conn.fetchrow(
                 _sql.query("get_tenant_by_id"),
+                tenant_id,
+            )
+            # 5. Intent examples (with embedding bytes + embedding_model tag)
+            intent_example_rows = await conn.fetch(
+                _rules_sql.query("list_intent_examples_for_tenant"),
                 tenant_id,
             )
 
@@ -121,13 +132,51 @@ class ChatService:
 
         settings = safe_json_loads(tenant_row["settings"]) if tenant_row else {}
 
+        # Hydrate intent definitions, dropping any embeddings that don't match
+        # the tenant's currently configured embedding model (stale after a
+        # model swap). When the tenant has no embedding model configured at
+        # all, hydration returns an empty list and intent classification is
+        # skipped entirely.
+        embedding_settings = EmbeddingSettings.from_tenant_settings(settings)
+        active_model = embedding_settings.model if embedding_settings else None
+        intent_definitions = hydrate_intent_definitions(
+            intent_example_rows, active_model=active_model
+        )
+
         return TenantConfig(
             tenant_id=str(tenant_id),
             slug=tenant_row["slug"] if tenant_row else "",
             models=models,
             rules=rules,
             settings=settings,
+            embedding_settings=embedding_settings,
+            intent_definitions=intent_definitions,
         )
+
+    @staticmethod
+    def _build_intent_classifier(
+        tenant_config: TenantConfig,
+    ) -> IntentClassifier | None:
+        """Build a per-request IntentClassifier from the tenant's config.
+
+        Returns None when intent classification cannot run for this request:
+        either no embedding model is configured, or no intent has any current
+        (non-stale) example embeddings.
+        """
+        if not tenant_config.embedding_settings:
+            return None
+        intents: list[IntentDefinition] = tenant_config.intent_definitions
+        if not intents:
+            return None
+        provider = build_provider(tenant_config.embedding_settings)
+        if provider is None:
+            return None
+
+        async def _embed_one(text: str) -> list[float]:
+            vectors = await provider.embed([text])
+            return vectors[0]
+
+        return IntentClassifier(embed_fn=_embed_one, intents=intents)
 
     async def resolve_model(
         self,
@@ -146,8 +195,14 @@ class ChatService:
                 )
             return model, None
 
-        # Rule engine evaluation
-        match = await self._engine.evaluate(request_data, tenant_config)
+        # Rule engine evaluation. Build a per-request IntentClassifier when the
+        # tenant has both an embedding model configured and at least one intent
+        # with current (non-stale) example embeddings. The classifier is only
+        # actually invoked by the engine if a rule has an intent condition.
+        intent_classifier = self._build_intent_classifier(tenant_config)
+        match = await self._engine.evaluate(
+            request_data, tenant_config, intent_classifier=intent_classifier
+        )
         if not match:
             raise NoRuleMatchedError("No routing rule matched for this request")
 

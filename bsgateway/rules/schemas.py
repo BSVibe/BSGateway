@@ -213,3 +213,11 @@ class ExampleResponse(BaseModel):
     intent_id: UUID
     text: str
     created_at: datetime
+
+
+class ReembedResponse(BaseModel):
+    """Result of a re-embedding backfill run."""
+
+    refreshed: int = Field(..., ge=0, description="Number of examples successfully re-embedded")
+    failed: int = Field(..., ge=0, description="Number of examples that failed to embed")
+    model: str = Field(..., description="Embedding model used for the backfill")

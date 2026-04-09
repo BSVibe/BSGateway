@@ -11,6 +11,7 @@ from bsgateway.api.deps import (
     require_admin,
     require_tenant_access,
 )
+from bsgateway.embedding.factory import build_service_for_tenant
 from bsgateway.presets.models import PresetApplyRequest
 from bsgateway.presets.registry import PresetRegistry
 from bsgateway.presets.schemas import PresetApplyResponse, PresetSummary
@@ -55,14 +56,16 @@ async def apply_preset(
     pool = get_pool(request)
     cache = get_cache(request)
     rules_repo = RulesRepository(pool, cache=cache)
-    tenant_repo = TenantRepository(pool)
+    tenant_repo = TenantRepository(pool, cache=cache)
     service = PresetService(rules_repo, tenant_repo)
+    embedding_service = await build_service_for_tenant(tenant_repo, tenant_id)
 
     try:
         result = await service.apply_preset(
             tenant_id=tenant_id,
             preset_name=body.preset_name,
             model_mapping=body.model_mapping,
+            embedding_service=embedding_service,
         )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid preset or configuration") from None

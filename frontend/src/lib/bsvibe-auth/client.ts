@@ -15,6 +15,13 @@ function generateState(): string {
   return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** sessionStorage key recording that silent SSO has failed at least once
+ *  in this browser session — prevents the StrictMode double-invocation +
+ *  full-page-reload loop where the URL param gets stripped before the
+ *  second `checkSession` call has a chance to read it. Cleared when the
+ *  user clicks Sign In or successfully authenticates. */
+const SSO_ERROR_FLAG = 'bsvibe_sso_error_seen';
+
 export class BSVibeAuth {
   private authUrl: string;
   private callbackPath: string;
@@ -26,6 +33,10 @@ export class BSVibeAuth {
 
   /** Redirect the user to the BSVibe login page */
   redirectToLogin(): void {
+    // Clear the silent-SSO failure marker so the post-login flow can retry
+    // a session check if needed.
+    sessionStorage.removeItem(SSO_ERROR_FLAG);
+
     const state = generateState();
     saveState(state);
 
@@ -39,6 +50,8 @@ export class BSVibeAuth {
 
   /** Redirect the user to the BSVibe signup page */
   redirectToSignup(): void {
+    sessionStorage.removeItem(SSO_ERROR_FLAG);
+
     const state = generateState();
     saveState(state);
 
@@ -57,9 +70,19 @@ export class BSVibeAuth {
    * Returns 'redirect' if redirecting to auth server (page will navigate away).
    */
   checkSession(): BSVibeUser | null | 'redirect' {
+    // 0. Test/dev bypass — if this flag is set, skip the silent-SSO redirect
+    //    and behave as fully unauthenticated. Used by Playwright e2e tests
+    //    and local dev when you want to inspect the LoginPage in isolation.
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('bsvibe_skip_sso')) {
+      return null;
+    }
+
     // 1. Check local storage
     const existing = this.getUser();
-    if (existing) return existing;
+    if (existing) {
+      sessionStorage.removeItem(SSO_ERROR_FLAG);
+      return existing;
+    }
 
     // 2. Check if we just returned from SSO with tokens in hash
     const hash = window.location.hash.substring(1);
@@ -71,20 +94,27 @@ export class BSVibeAuth {
         try {
           const user = parseToken(accessToken, refreshToken);
           saveSession(user);
+          sessionStorage.removeItem(SSO_ERROR_FLAG);
           history.replaceState(null, '', window.location.pathname + window.location.search);
           return user;
         } catch { /* fall through */ }
       }
     }
 
-    // 3. Check if SSO already failed
+    // 3. Check if SSO already failed in this browser session.
+    //    The flag is recorded in sessionStorage so it survives the
+    //    React StrictMode double-invocation of useEffect (which would
+    //    otherwise re-fire the redirect after step 4 strips the URL param)
+    //    AND the full page reload that follows the silent-check redirect.
     const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('sso_error')) {
-      // Clean up the error param from URL
-      searchParams.delete('sso_error');
-      const cleanSearch = searchParams.toString();
-      const cleanUrl = window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '');
-      history.replaceState(null, '', cleanUrl);
+    if (searchParams.get('sso_error') || sessionStorage.getItem(SSO_ERROR_FLAG)) {
+      sessionStorage.setItem(SSO_ERROR_FLAG, '1');
+      if (searchParams.get('sso_error')) {
+        searchParams.delete('sso_error');
+        const cleanSearch = searchParams.toString();
+        const cleanUrl = window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '');
+        history.replaceState(null, '', cleanUrl);
+      }
       return null;
     }
 

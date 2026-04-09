@@ -9,7 +9,7 @@ export default defineConfig({
       ? process.env.VITE_ALLOWED_HOSTS.split(',').map((h) => h.trim())
       : true,
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
     },
     headers: {
       'X-Content-Type-Options': 'nosniff',

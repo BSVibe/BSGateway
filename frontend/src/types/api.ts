@@ -110,6 +110,19 @@ export interface Example {
   created_at: string;
 }
 
+export interface EmbeddingSettings {
+  model: string;
+  api_base: string | null;
+  timeout: number;
+  max_input_length: number;
+}
+
+export interface ReembedResponse {
+  refreshed: number;
+  failed: number;
+  model: string;
+}
+
 export interface ApiKeyCreated {
   id: string;
   tenant_id: string;
@@ -167,4 +180,3 @@ export interface UsageResponse {
   by_rule: Record<string, number>;
   daily_breakdown: DailyUsage[];
 }
-

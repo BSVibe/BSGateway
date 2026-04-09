@@ -28,6 +28,8 @@ test.describe('Sidebar Navigation', () => {
       }
       return route.continue();
     });
+    // EmbeddingSettingsCard + DefaultFallbackCard on RoutesPage fetch these
+    await mockGet(page, '/embedding-settings', null);
   });
 
   test('sidebar shows BSGateway branding', async ({ page }) => {
@@ -46,7 +48,7 @@ test.describe('Sidebar Navigation', () => {
     await page.goto('/');
     const nav = page.locator('aside nav');
     await expect(nav.getByRole('link', { name: /Dashboard/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Rules/i })).toBeVisible();
+    await expect(nav.getByRole('link', { name: /^.*Routing$/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /Models/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /Routing Test/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /Analytics/i })).toBeVisible();
@@ -61,12 +63,13 @@ test.describe('Sidebar Navigation', () => {
     await expect(dashLink).toHaveClass(/text-amber-500/);
   });
 
-  test('navigating to Rules activates Rules link', async ({ page }) => {
+  test('navigating to Routing activates Routing link', async ({ page }) => {
     await page.goto('/');
-    await page.locator('aside').getByText('Rules').click();
+    // Wait for sidebar to fully render before clicking
+    const link = page.locator('aside a', { hasText: 'Routing' }).filter({ hasNotText: 'Test' });
+    await link.click();
     await expect(page).toHaveURL(/\/rules/);
-    const rulesLink = page.locator('aside a').filter({ hasText: 'Rules' });
-    await expect(rulesLink).toHaveClass(/text-amber-500/);
+    await expect(link).toHaveClass(/text-amber-500/);
   });
 
   test('navigating to Models activates Models link', async ({ page }) => {
