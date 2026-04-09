@@ -1,14 +1,46 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BSVibeAuth } from '../lib/bsvibe-auth';
 import { api, setAuthToken, setOnUnauthorized } from '../api/client';
 
 const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.bsvibe.dev';
 const TENANT_NAME_KEY = 'bsvibe_tenant_name';
 
-const auth = new BSVibeAuth({
-  authUrl: AUTH_URL,
-  callbackPath: '/auth/callback',
-});
+interface SessionResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+let cachedToken: { value: string; expiresAt: number } | null = null;
+
+export async function getAccessToken(): Promise<string | null> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt - 30_000) {
+    return cachedToken.value;
+  }
+  try {
+    const res = await fetch(`${AUTH_URL}/api/session`, { credentials: 'include' });
+    if (!res.ok) return null;
+    const data: SessionResponse = await res.json();
+    cachedToken = {
+      value: data.access_token,
+      expiresAt: Date.now() + data.expires_in * 1000,
+    };
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
+export function clearTokenCache() {
+  cachedToken = null;
+}
+
+function decodeJwt(token: string): Record<string, unknown> {
+  const parts = token.split('.');
+  let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+  const pad = base64.length % 4;
+  if (pad) base64 += '='.repeat(4 - pad);
+  return JSON.parse(atob(base64));
+}
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -20,46 +52,38 @@ interface AuthState {
 }
 
 export function useAuth() {
-  const [state, setState] = useState<AuthState>(() => {
-    const user = auth.getUser();
-    if (user) setAuthToken(user.accessToken);
-    return {
-      isAuthenticated: !!user,
-      isLoading: !user, // loading if no local session (will try silent SSO)
-      tenantId: user?.tenantId ?? null,
-      tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
-      role: user?.role ?? null,
-      email: user?.email ?? null,
-    };
+  const [state, setState] = useState<AuthState>({
+    isAuthenticated: false,
+    isLoading: true,
+    tenantId: null,
+    tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
+    role: null,
+    email: null,
   });
 
-  // Silent SSO check on init when no local session.
-  // This must run in an effect (not in the lazy state initializer) because
-  // `auth.checkSession()` may set `window.location.href` to redirect to the
-  // auth server — a side effect that would double-fire under StrictMode if
-  // placed in render. The setState calls below reflect the result of
-  // integrating with that external (browser-history) state, which is the
-  // canonical use case for the eslint escape hatch on `set-state-in-effect`.
   useEffect(() => {
-    if (state.isAuthenticated) return;
-
-    const result = auth.checkSession();
-    if (result === 'redirect') return; // page is navigating away
-    if (result) {
-      setAuthToken(result.accessToken);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    let cancelled = false;
+    (async () => {
+      const token = await getAccessToken();
+      if (cancelled) return;
+      if (!token) {
+        setState((prev) => ({ ...prev, isLoading: false }));
+        return;
+      }
+      setAuthToken(token);
+      const payload = decodeJwt(token);
+      const meta = payload.app_metadata as Record<string, string> | undefined;
       setState({
         isAuthenticated: true,
         isLoading: false,
-        tenantId: result.tenantId,
+        tenantId: meta?.tenant_id ?? null,
         tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
-        role: result.role,
-        email: result.email,
+        role: meta?.role ?? 'member',
+        email: (payload.email as string) ?? null,
       });
-    } else {
-      setState((prev) => ({ ...prev, isLoading: false }));
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Fetch tenant name on first auth
   useEffect(() => {
@@ -73,10 +97,20 @@ export function useAuth() {
       .catch(() => {});
   }, [state.isAuthenticated, state.tenantId, state.tenantName]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     setAuthToken(null);
+    clearTokenCache();
     sessionStorage.removeItem(TENANT_NAME_KEY);
-    auth.logout();
+    await fetch(`${AUTH_URL}/api/session`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+    setState({
+      isAuthenticated: false,
+      isLoading: false,
+      tenantId: null,
+      tenantName: null,
+      role: null,
+      email: null,
+    });
+    window.location.href = 'https://bsvibe.dev/';
   }, []);
 
   useEffect(() => {
@@ -84,14 +118,12 @@ export function useAuth() {
   }, [logout]);
 
   const login = useCallback(() => {
-    auth.redirectToLogin();
+    window.location.href = `${AUTH_URL}/login`;
   }, []);
 
   const signup = useCallback(() => {
-    auth.redirectToSignup();
+    window.location.href = `${AUTH_URL}/signup`;
   }, []);
 
   return { ...state, login, signup, logout };
 }
-
-export { auth };

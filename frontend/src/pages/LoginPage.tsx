@@ -1,4 +1,4 @@
-import { auth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth';
 
 const features = [
   {
@@ -19,6 +19,8 @@ const features = [
 ];
 
 export function LoginPage() {
+  const { login, signup } = useAuth();
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-surface px-4 relative overflow-hidden">
       {/* Ambient glow */}
@@ -77,7 +79,7 @@ export function LoginPage() {
 
         {/* CTA */}
         <button
-          onClick={() => auth.redirectToLogin()}
+          onClick={login}
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all bg-primary-container hover:brightness-110 text-on-primary active:scale-95"
         >
           <span className="material-symbols-outlined text-lg">login</span>
@@ -87,7 +89,7 @@ export function LoginPage() {
         <p className="text-center text-sm text-on-surface-variant mt-4">
           Don't have an account?{' '}
           <button
-            onClick={() => auth.redirectToSignup()}
+            onClick={signup}
             className="text-amber-500 hover:text-amber-400 font-medium transition-colors"
           >
             Sign up

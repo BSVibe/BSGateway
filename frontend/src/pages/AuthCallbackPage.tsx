@@ -1,23 +1,17 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth } from '../hooks/useAuth';
 
+/** Legacy callback page — shared-cookie auth no longer needs it. Kept as redirect until route is removed. */
 export function AuthCallbackPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const user = auth.handleCallback();
-    if (user) {
-      // Force full reload to re-initialize auth state
-      window.location.href = '/';
-    } else {
-      navigate('/', { replace: true });
-    }
+    navigate('/', { replace: true });
   }, [navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <p className="text-gray-500">Signing in...</p>
+      <p className="text-gray-500">Redirecting...</p>
     </div>
   );
 }
