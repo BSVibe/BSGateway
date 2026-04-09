@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, setAuthToken, setOnUnauthorized } from '../api/client';
+import { api, setOnUnauthorized, resetLogoutFlag } from '../api/client';
 
 const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.bsvibe.dev';
 const TENANT_NAME_KEY = 'bsvibe_tenant_name';
@@ -70,7 +70,6 @@ export function useAuth() {
         setState((prev) => ({ ...prev, isLoading: false }));
         return;
       }
-      setAuthToken(token);
       const payload = decodeJwt(token);
       const meta = payload.app_metadata as Record<string, string> | undefined;
       setState({
@@ -98,8 +97,8 @@ export function useAuth() {
   }, [state.isAuthenticated, state.tenantId, state.tenantName]);
 
   const logout = useCallback(async () => {
-    setAuthToken(null);
     clearTokenCache();
+    resetLogoutFlag();
     sessionStorage.removeItem(TENANT_NAME_KEY);
     await fetch(`${AUTH_URL}/api/session`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
     setState({

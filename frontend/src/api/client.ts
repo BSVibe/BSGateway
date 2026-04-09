@@ -1,3 +1,5 @@
+import { getAccessToken, clearTokenCache } from '../hooks/useAuth';
+
 const API_PATH_PREFIX = '/api/v1';
 
 /**
@@ -17,24 +19,16 @@ function buildBaseUrl(): string {
 
 const BASE_URL = buildBaseUrl();
 
-let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 let isLoggingOut = false;
-
-export function setAuthToken(token: string | null) {
-  authToken = token;
-  if (token) {
-    isLoggingOut = false;
-  }
-}
-
-export function getAuthToken(): string | null {
-  return authToken;
-}
 
 /** Register a callback for 401 responses (called once, then ignored for concurrent requests). */
 export function setOnUnauthorized(cb: () => void) {
   onUnauthorized = cb;
+}
+
+export function resetLogoutFlag() {
+  isLoggingOut = false;
 }
 
 class ApiError extends Error {
@@ -57,8 +51,9 @@ async function request<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
+  const token = await getAccessToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const controller = new AbortController();
@@ -79,9 +74,9 @@ async function request<T>(
     const body = await response.json().catch(() => ({}));
     const message = body?.error?.message || body?.detail || response.statusText;
 
-    if (response.status === 401 && authToken && !isLoggingOut) {
+    if (response.status === 401 && !isLoggingOut) {
       isLoggingOut = true;
-      authToken = null;
+      clearTokenCache();
       onUnauthorized?.();
     }
 
