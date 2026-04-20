@@ -63,6 +63,10 @@ docker compose up
 - Tests: `pytest-asyncio`, mock all external APIs, minimum 80% coverage
 - No `Co-Authored-By` in commits
 - Commit format: `type(scope): description`
+- Deferred follow-ups (`TODO:` comments) are mirrored in
+  [`docs/TODO.md`](docs/TODO.md) for central tracking. When adding a
+  `TODO:` during review, also add the row there; when picking one up,
+  remove both the inline comment and the row in the same PR.
 
 ## Important Files
 
