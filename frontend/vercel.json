@@ -1,1 +1,10 @@
-{"rewrites": [{"source": "/(.*)", "destination": "/index.html"}], "installCommand": "pnpm install"}
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api-gateway.bsvibe.dev/api/:path*"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "installCommand": "pnpm install"
+}
