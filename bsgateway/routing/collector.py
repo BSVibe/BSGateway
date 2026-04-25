@@ -189,8 +189,26 @@ class RoutingCollector:
             )
             vector = response.data[0]["embedding"]
             return struct.pack(f"{len(vector)}f", *vector)
-        except Exception:
-            logger.warning("embedding_generation_failed", exc_info=True)
+        except asyncio.CancelledError:
+            # Propagate cooperative cancellation; never silently retry.
+            raise
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+            ValueError,
+            KeyError,
+            IndexError,
+        ) as exc:
+            # Expected: embedding service unreachable / slow / returns
+            # a malformed payload. Embeddings are best-effort training
+            # signal — drop the vector and continue.
+            logger.warning("embedding_generation_failed", exc_info=exc)
+            return None
+        except Exception as exc:
+            # Programming bug — log under a distinct event so it is
+            # visible without crashing the routing path.
+            logger.error("embedding_unexpected_error", exc_info=exc)
             return None
 
     @staticmethod

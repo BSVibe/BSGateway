@@ -369,8 +369,43 @@ class BSGatewayRouter:
 
         try:
             result = await self.classifier.classify(data)
-        except Exception:
-            logger.exception("classifier_error", original_model=requested_model)
+        except asyncio.CancelledError:
+            # Cooperative cancellation must propagate so callers and
+            # the event loop can finish their teardown.
+            raise
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+            ValueError,
+            KeyError,
+        ) as exc:
+            # Expected classifier failure modes: local LLM offline,
+            # request timeout, malformed JSON, missing schema fields.
+            # Fall back to the default tier with a typed warning.
+            logger.warning(
+                "classifier_error",
+                original_model=requested_model,
+                exc_info=exc,
+            )
+            fallback = self._get_fallback_model()
+            return RoutingDecision(
+                method="auto",
+                original_model=requested_model,
+                resolved_model=fallback,
+                complexity_score=None,
+                tier=self.config.fallback_tier,
+                nexus_metadata=nexus_metadata,
+            )
+        except Exception as exc:
+            # Programming bugs: log under a distinct event name so the
+            # signal isn't buried alongside expected outages, but still
+            # degrade to fallback (better to route than to 5xx).
+            logger.error(
+                "classifier_unexpected_error",
+                original_model=requested_model,
+                exc_info=exc,
+            )
             fallback = self._get_fallback_model()
             return RoutingDecision(
                 method="auto",
@@ -467,20 +502,26 @@ class BSGatewayRouter:
         """
         # Drain background record() tasks first so they do not race
         # against close() and hit a closed pool. Best-effort: anything
-        # that raises is logged and the close path proceeds.
+        # that raises (other than cancellation) is logged and the close
+        # path proceeds. Cancellation must propagate so the parent
+        # shutdown sequence is not stalled.
         if self._background_tasks:
             pending = list(self._background_tasks)
             try:
                 await asyncio.wait(pending, timeout=5.0)
-            except Exception:
-                logger.warning("router_background_drain_error", exc_info=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("router_background_drain_error", exc_info=exc)
 
         if self.collector is not None:
             try:
                 await self.collector.close()
-            except Exception:
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
                 # Shutdown must not raise — log and continue.
-                logger.warning("router_collector_close_failed", exc_info=True)
+                logger.warning("router_collector_close_failed", exc_info=exc)
 
 
 def _create_proxy_handler() -> BSGatewayRouter:
