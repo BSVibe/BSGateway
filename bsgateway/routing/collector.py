@@ -16,6 +16,7 @@ from bsgateway.routing.classifiers.base import (
     extract_system_prompt,
     extract_user_text,
 )
+from bsgateway.routing.constants import WORDS_TO_TOKENS_RATIO
 from bsgateway.routing.models import EmbeddingConfig, RoutingDecision
 
 logger = structlog.get_logger(__name__)
@@ -197,7 +198,7 @@ class RoutingCollector:
         all_text = extract_all_text(messages)
         code_blocks = re.findall(r"```[\s\S]*?```", all_text)
         return {
-            "token_count": int(len(all_text.split()) * 1.3),
+            "token_count": int(len(all_text.split()) * WORDS_TO_TOKENS_RATIO),
             "conversation_turns": len([m for m in messages if m.get("role") == "user"]),
             "code_block_count": len(code_blocks),
             "code_lines": sum(b.count("\n") for b in code_blocks),

@@ -23,6 +23,7 @@ from bsgateway.executor.config import executor_settings
 from bsgateway.executor.dispatcher import WorkerDispatcher
 from bsgateway.executor.sql_loader import ExecutorSqlLoader
 from bsgateway.routing.collector import SqlLoader
+from bsgateway.routing.constants import LOG_TEXT_MAX_CHARS
 from bsgateway.routing.repository import RoutingLogsRepository
 from bsgateway.rules.engine import RuleEngine
 from bsgateway.rules.intent import IntentClassifier, IntentDefinition
@@ -477,8 +478,8 @@ class ChatService:
             await repo.insert_routing_log(
                 tenant_id=tenant_id,
                 rule_id=rule_id,
-                user_text=ctx.user_text[:2000],
-                system_prompt=ctx.system_prompt[:2000],
+                user_text=ctx.user_text[:LOG_TEXT_MAX_CHARS],
+                system_prompt=ctx.system_prompt[:LOG_TEXT_MAX_CHARS],
                 features={
                     "token_count": ctx.estimated_tokens,
                     "conversation_turns": ctx.conversation_turns,

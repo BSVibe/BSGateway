@@ -11,6 +11,10 @@ import yaml
 
 from bsgateway.routing.classifiers import ClassifierProtocol, create_classifier
 from bsgateway.routing.collector import RoutingCollector
+from bsgateway.routing.constants import (
+    CLASSIFIER_BLEND_WEIGHT,
+    COMPLEXITY_HINT_BLEND_WEIGHT,
+)
 from bsgateway.routing.models import (
     ClassifierConfig,
     ClassifierWeights,
@@ -380,7 +384,10 @@ class BSGatewayRouter:
         # Blend classifier score with complexity_hint when provided
         if nexus_metadata is not None and nexus_metadata.complexity_hint is not None:
             classifier_score = result.score if result.score is not None else 50
-            blended_score = round(0.7 * classifier_score + 0.3 * nexus_metadata.complexity_hint)
+            blended_score = round(
+                CLASSIFIER_BLEND_WEIGHT * classifier_score
+                + COMPLEXITY_HINT_BLEND_WEIGHT * nexus_metadata.complexity_hint
+            )
             blended_tier = self._score_to_tier(blended_score)
             tier = self._tier_map.get(blended_tier)
             target_model = tier.model if tier else self._get_fallback_model()
