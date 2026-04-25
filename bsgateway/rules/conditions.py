@@ -13,7 +13,7 @@ logger = structlog.get_logger(__name__)
 _REDOS_PATTERN = re.compile(r"\(.+[*+]\)[*+?]|\[.+[*+]\][*+?]")
 
 # Allowed fields for rule conditions — prevents access to internal/dunder attributes
-_ALLOWED_FIELDS: frozenset[str] = frozenset(
+ALLOWED_FIELDS: frozenset[str] = frozenset(
     {
         "user_text",
         "system_prompt",
@@ -41,11 +41,11 @@ def evaluate_condition(condition: RuleCondition, ctx: EvaluationContext) -> bool
 
     Returns True if the condition matches (before negate is applied).
     """
-    if condition.field not in _ALLOWED_FIELDS:
+    if condition.field not in ALLOWED_FIELDS:
         logger.warning(
             "invalid_condition_field",
             field=condition.field,
-            allowed=sorted(_ALLOWED_FIELDS),
+            allowed=sorted(ALLOWED_FIELDS),
             hint="condition will never match — check for typos",
         )
         return False
