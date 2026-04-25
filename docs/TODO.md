@@ -28,6 +28,13 @@ Remove completed rows once the corresponding inline comment is gone.
 |---|------|--------|---------|--------|
 | F1 | Extract a `<Sparkline bars color enabled />` component. Today it's inlined at two sites in `ModelsPage` (LLM grid / Executor Workers). Duplicated color + height ternaries. | `frontend/src/pages/ModelsPage.tsx::sparkBarsFor` | A 3rd consumer (Analytics page, per-worker detail view) appears | Open |
 
+## Security
+
+| # | Item | Source | Trigger | Status |
+|---|------|--------|---------|--------|
+| S1 | Plumb tenant_id from authenticated request context into LiteLLM `data["metadata"]["tenant_id"]` for the proxy callback path. Today `RoutingCollector.record` falls back to skipping when metadata is absent — correct for safety, but means proxy-direct traffic isn't logged. | `bsgateway/routing/hook.py::BSGatewayRouter._extract_tenant_id` | Once a non-`chat/service.py` ingress writes to LiteLLM directly | Open |
+| S2 | Audit other tables for tenant-scoping coverage parallel to routing_logs (executor_tasks already does it inline; rules / audit_events / api_keys / tenant_models / feedback should be re-checked at repository level). | n/a | Sprint 1+ hardening continuation | Open |
+
 ## Conventions
 
 - Each inline `TODO:` in the code should link back here by keeping its

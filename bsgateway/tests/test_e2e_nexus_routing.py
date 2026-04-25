@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -26,6 +27,11 @@ from bsgateway.routing.models import (
     RoutingConfig,
     TierConfig,
 )
+
+# All e2e collector tests inject tenant_id into metadata so the hook
+# records the row instead of skipping it (cross-tenant isolation guard).
+TENANT_ID = uuid4()
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -61,10 +67,24 @@ def mock_collector() -> MagicMock:
     return collector
 
 
+class _RouterWithFixedTenant(BSGatewayRouter):
+    """Test router that injects a fixed tenant_id so the collector fires.
+
+    The production hook refuses to log when ``metadata.tenant_id`` is
+    absent (cross-tenant isolation guard). These pre-existing scenario
+    tests predate tenant scoping, so the tenant resolution is the only
+    moving part we override here.
+    """
+
+    @staticmethod
+    def _extract_tenant_id(data: dict) -> object:
+        return TENANT_ID
+
+
 @pytest.fixture
 def router(routing_config: RoutingConfig, mock_collector: MagicMock) -> BSGatewayRouter:
     """Router with collector injected after construction."""
-    r = BSGatewayRouter(config=routing_config)
+    r = _RouterWithFixedTenant(config=routing_config)
     r.collector = mock_collector
     return r
 

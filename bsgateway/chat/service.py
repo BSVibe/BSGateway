@@ -23,6 +23,7 @@ from bsgateway.executor.config import executor_settings
 from bsgateway.executor.dispatcher import WorkerDispatcher
 from bsgateway.executor.sql_loader import ExecutorSqlLoader
 from bsgateway.routing.collector import SqlLoader
+from bsgateway.routing.repository import RoutingLogsRepository
 from bsgateway.rules.engine import RuleEngine
 from bsgateway.rules.intent import IntentClassifier, IntentDefinition
 from bsgateway.rules.models import (
@@ -462,30 +463,41 @@ class ChatService:
         request_data: dict,
         model: TenantModel,
     ) -> None:
-        """Log routing decision to DB and update budget tracker."""
+        """Log routing decision to DB and update budget tracker.
+
+        All persistence flows through ``RoutingLogsRepository`` which
+        forces ``tenant_id`` onto every routing_logs query — see C2 in
+        the BSVibe Ecosystem Audit.
+        """
         try:
             ctx = EvaluationContext.from_request(request_data)
             rule_id = uuid.UUID(rule_match.rule.id) if rule_match else None
+            repo = RoutingLogsRepository(self._pool)
 
-            async with self._pool.acquire() as conn:
-                await conn.execute(
-                    _sql.query("insert_routing_log_with_tenant"),
-                    tenant_id,  # $1
-                    rule_id,  # $2
-                    ctx.user_text[:2000],  # $3 truncate
-                    ctx.system_prompt[:2000],  # $4
-                    ctx.estimated_tokens,  # $5
-                    ctx.conversation_turns,  # $6
-                    0,  # $7 code_block_count
-                    0,  # $8 code_lines
-                    ctx.has_error_trace,  # $9
-                    ctx.tool_count,  # $10
-                    "rule" if rule_match else "direct",  # $11 tier
-                    "rule_engine",  # $12 strategy
-                    rule_match.rule.priority if rule_match else None,  # $13
-                    request_data.get("model", "auto"),  # $14
-                    model.litellm_model,  # $15
-                )
+            await repo.insert_routing_log(
+                tenant_id=tenant_id,
+                rule_id=rule_id,
+                user_text=ctx.user_text[:2000],
+                system_prompt=ctx.system_prompt[:2000],
+                features={
+                    "token_count": ctx.estimated_tokens,
+                    "conversation_turns": ctx.conversation_turns,
+                    "code_block_count": 0,
+                    "code_lines": 0,
+                    "has_error_trace": ctx.has_error_trace,
+                    "tool_count": ctx.tool_count,
+                },
+                tier="rule" if rule_match else "direct",
+                strategy="rule_engine",
+                score=rule_match.rule.priority if rule_match else None,
+                original_model=request_data.get("model", "auto"),
+                resolved_model=model.litellm_model,
+                embedding=None,
+                nexus_task_type=None,
+                nexus_priority=None,
+                nexus_complexity_hint=None,
+                decision_source="rule_engine",
+            )
         except (ConnectionError, TimeoutError, OSError):
             logger.warning("routing_log_failed", exc_info=True)
         except Exception:

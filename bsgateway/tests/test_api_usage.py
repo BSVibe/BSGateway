@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -42,7 +42,15 @@ def client(app) -> TestClient:
 
 
 def _setup_usage_pool(mock_pool, total_row, model_rows, rule_rows):
-    """Configure mock pool with proper async context manager for usage queries."""
+    """Configure mock pool so the usage repo returns the supplied fixtures.
+
+    The repo executes ``fetchrow`` once (usage_total) and ``fetch`` twice
+    (usage_by_model, then usage_by_rule). All queries route through
+    ``RoutingLogsRepository``, which always passes ``tenant_id`` as the
+    first parameter — so we don't need to assert against the SQL string;
+    the cross-tenant guarantee is asserted in
+    ``test_routing_logs_tenant_isolation.py``.
+    """
     conn = AsyncMock()
     conn.fetchrow = AsyncMock(return_value=total_row)
     conn.fetch = AsyncMock(side_effect=[model_rows, rule_rows])
@@ -52,6 +60,7 @@ def _setup_usage_pool(mock_pool, total_row, model_rows, rule_rows):
         yield conn
 
     mock_pool.acquire = mock_acquire
+    return conn
 
 
 class TestUsageAPI:
@@ -76,11 +85,8 @@ class TestUsageAPI:
             {"rule_id": uuid4(), "rule_name": "default", "requests": 70},
         ]
 
-        _setup_usage_pool(mock_pool, total_row, model_rows, rule_rows)
-
-        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
-            mock_sql.query.side_effect = lambda q: q
-            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage")
+        conn = _setup_usage_pool(mock_pool, total_row, model_rows, rule_rows)
+        resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -90,15 +96,17 @@ class TestUsageAPI:
         assert data["by_model"]["openai/gpt-4o"]["requests"] == 100
         assert "code-review" in data["by_rule"]
         assert len(data["daily_breakdown"]) == 1
+        # Repo invocation must have passed the authenticated tenant_id.
+        for call in conn.fetchrow.call_args_list + conn.fetch.call_args_list:
+            assert TENANT_ID in call.args, (
+                "every routing_logs query must scope by the caller's tenant_id"
+            )
 
     def test_empty_period_returns_zeros(self, client, mock_pool):
         total_row = {"total_requests": 0, "total_tokens": 0}
-
         _setup_usage_pool(mock_pool, total_row, [], [])
 
-        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
-            mock_sql.query.side_effect = lambda q: q
-            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage?period=week")
+        resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage?period=week")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -110,14 +118,11 @@ class TestUsageAPI:
 
     def test_date_range_filtering(self, client, mock_pool):
         total_row = {"total_requests": 10, "total_tokens": 1000}
-
         _setup_usage_pool(mock_pool, total_row, [], [])
 
-        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
-            mock_sql.query.side_effect = lambda q: q
-            resp = client.get(
-                f"/api/v1/tenants/{TENANT_ID}/usage?from=2024-01-01&to=2024-01-31",
-            )
+        resp = client.get(
+            f"/api/v1/tenants/{TENANT_ID}/usage?from=2024-01-01&to=2024-01-31",
+        )
 
         assert resp.status_code == 200
         assert resp.json()["total_requests"] == 10
@@ -135,10 +140,7 @@ class TestUsageAPI:
         total_row = {"total_requests": 5, "total_tokens": 500}
         _setup_usage_pool(mock_pool, total_row, [], [])
 
-        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
-            mock_sql.query.side_effect = lambda q: q
-            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage")
-
+        resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage")
         assert resp.status_code == 200
 
     def test_tenant_cannot_access_other_tenant(self, mock_pool):
@@ -182,9 +184,7 @@ class TestUsageAPI:
 
         mock_pool.acquire = mock_acquire
 
-        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
-            mock_sql.query.side_effect = lambda q: q
-            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage/sparklines?days=7")
+        resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage/sparklines?days=7")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -196,6 +196,9 @@ class TestUsageAPI:
         assert data["worker-A"][6] == 2  # today
         assert data["worker-B"][6] == 1  # today
         assert len(data["gpt-4o"]) == 7
+        # Both fetches must scope by the caller's tenant_id.
+        for call in conn.fetch.call_args_list:
+            assert TENANT_ID in call.args
 
     def test_sparklines_empty_returns_empty_dict(self, client, mock_pool):
         """When no activity in window, return {} (frontend treats missing as zeros)."""
@@ -208,10 +211,7 @@ class TestUsageAPI:
 
         mock_pool.acquire = mock_acquire
 
-        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
-            mock_sql.query.side_effect = lambda q: q
-            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage/sparklines")
-
+        resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage/sparklines")
         assert resp.status_code == 200
         assert resp.json() == {}
 
@@ -228,12 +228,9 @@ class TestUsageAPI:
             {"day": date(2024, 1, 15), "resolved_model": "gpt-4o", "requests": 10, "tokens": 1500},
             {"day": date(2024, 1, 16), "resolved_model": "gpt-4o", "requests": 5, "tokens": 500},
         ]
-
         _setup_usage_pool(mock_pool, total_row, model_rows, [])
 
-        with patch("bsgateway.api.routers.usage._sql") as mock_sql:
-            mock_sql.query.side_effect = lambda q: q
-            resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage?period=week")
+        resp = client.get(f"/api/v1/tenants/{TENANT_ID}/usage?period=week")
 
         data = resp.json()
         dates = [d["date"] for d in data["daily_breakdown"]]

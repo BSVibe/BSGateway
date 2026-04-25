@@ -4,6 +4,7 @@ import asyncio
 import os
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Literal
+from uuid import UUID
 
 import structlog
 import yaml
@@ -313,6 +314,27 @@ class BSGatewayRouter:
             return None
         return max(self.config.tiers, key=lambda t: t.score_range[1])
 
+    @staticmethod
+    def _extract_tenant_id(data: dict) -> UUID | None:
+        """Pull a tenant UUID out of LiteLLM-style request metadata.
+
+        Returns ``None`` (rather than raising) when the field is
+        missing or malformed. Callers MUST treat ``None`` as
+        "do not record" to avoid cross-tenant leakage in
+        ``routing_logs``.
+        """
+        metadata = data.get("metadata") or {}
+        raw = metadata.get("tenant_id")
+        if raw is None:
+            return None
+        if isinstance(raw, UUID):
+            return raw
+        try:
+            return UUID(str(raw))
+        except (ValueError, TypeError):
+            logger.warning("invalid_tenant_id_in_metadata", raw=str(raw))
+            return None
+
     async def _auto_route(
         self,
         requested_model: str,
@@ -390,12 +412,24 @@ class BSGatewayRouter:
             decision_source=decision_source,
         )
 
-        # Record asynchronously (non-blocking), track for graceful shutdown
+        # Record asynchronously (non-blocking), track for graceful shutdown.
+        # Skip recording when no tenant_id is present so we never write a
+        # NULL-tenant row that other tenants' queries could sweep up.
         if self.collector:
-            _task = asyncio.create_task(self.collector.record(data, result, decision))
-            if hasattr(self, "_background_tasks"):
-                self._background_tasks.add(_task)
-                _task.add_done_callback(self._background_tasks.discard)
+            tenant_id = self._extract_tenant_id(data)
+            if tenant_id is not None:
+                _task = asyncio.create_task(
+                    self.collector.record(data, result, decision, tenant_id=tenant_id)
+                )
+                if hasattr(self, "_background_tasks"):
+                    self._background_tasks.add(_task)
+                    _task.add_done_callback(self._background_tasks.discard)
+            else:
+                logger.debug(
+                    "routing_collector_skipped",
+                    reason="no tenant_id on metadata; refusing to log",
+                    original_model=requested_model,
+                )
 
         return decision
 
