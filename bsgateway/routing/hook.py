@@ -11,6 +11,10 @@ import yaml
 
 from bsgateway.routing.classifiers import ClassifierProtocol, create_classifier
 from bsgateway.routing.collector import RoutingCollector
+from bsgateway.routing.constants import (
+    CLASSIFIER_BLEND_WEIGHT,
+    COMPLEXITY_HINT_BLEND_WEIGHT,
+)
 from bsgateway.routing.models import (
     ClassifierConfig,
     ClassifierWeights,
@@ -236,7 +240,9 @@ class BSGatewayRouter:
 
         requested_model = data.get("model", "auto")
         nexus_metadata = _extract_nexus_metadata(data, self.config.nexus_headers)
-        decision = await self._route(requested_model, data, nexus_metadata)
+        decision = await self._route(
+            requested_model, data, nexus_metadata, user_api_key=user_api_key_dict
+        )
 
         data["model"] = decision.resolved_model
         metadata = data.setdefault("metadata", {})
@@ -274,6 +280,7 @@ class BSGatewayRouter:
         requested_model: str,
         data: dict,
         nexus_metadata: NexusMetadata | None = None,
+        user_api_key: UserAPIKeyAuth | None = None,
     ) -> RoutingDecision:
         """Determine the target model for a request."""
         # 1. Passthrough: known direct model names
@@ -302,7 +309,9 @@ class BSGatewayRouter:
             pass  # Fall through to auto-routing
 
         # 4. Auto-route based on complexity
-        return await self._auto_route(requested_model, data, nexus_metadata)
+        return await self._auto_route(
+            requested_model, data, nexus_metadata, user_api_key=user_api_key
+        )
 
     def _matches_auto_route_pattern(self, model: str) -> bool:
         """Check if a model name matches any auto_route_patterns."""
@@ -315,31 +324,67 @@ class BSGatewayRouter:
         return max(self.config.tiers, key=lambda t: t.score_range[1])
 
     @staticmethod
-    def _extract_tenant_id(data: dict) -> UUID | None:
+    def _extract_tenant_id(
+        data: dict,
+        user_api_key: UserAPIKeyAuth | None = None,
+    ) -> UUID | None:
         """Pull a tenant UUID out of LiteLLM-style request metadata.
 
-        Returns ``None`` (rather than raising) when the field is
-        missing or malformed. Callers MUST treat ``None`` as
-        "do not record" to avoid cross-tenant leakage in
-        ``routing_logs``.
+        Resolution order (first hit wins):
+
+        1. ``data["metadata"]["tenant_id"]`` — set by the BSGateway
+           chat router (`ChatService.complete`).
+        2. ``user_api_key.metadata["tenant_id"]`` — for proxy-direct
+           traffic, LiteLLM may attach tenant context to the auth
+           payload via the master-key admin UI (Sprint 0 follow-up,
+           docs/TODO.md S1).
+        3. ``user_api_key.team_id`` — LiteLLM convention for grouping
+           keys by tenant; we treat the team_id as a tenant_id when
+           nothing more specific is available.
+
+        Returns ``None`` when no source supplies a parseable UUID.
+        Callers MUST treat ``None`` as "do not record" to avoid
+        cross-tenant leakage in ``routing_logs``.
         """
+
+        def _coerce(raw: object) -> UUID | None:
+            if raw is None:
+                return None
+            if isinstance(raw, UUID):
+                return raw
+            try:
+                return UUID(str(raw))
+            except (ValueError, TypeError, AttributeError):
+                logger.warning("invalid_tenant_id_in_metadata", raw=str(raw))
+                return None
+
+        # 1. Explicit data metadata (chat-router path).
         metadata = data.get("metadata") or {}
-        raw = metadata.get("tenant_id")
-        if raw is None:
-            return None
-        if isinstance(raw, UUID):
-            return raw
-        try:
-            return UUID(str(raw))
-        except (ValueError, TypeError):
-            logger.warning("invalid_tenant_id_in_metadata", raw=str(raw))
-            return None
+        resolved = _coerce(metadata.get("tenant_id"))
+        if resolved is not None:
+            return resolved
+
+        # 2/3. Fall back to the LiteLLM auth payload for proxy-direct
+        # traffic. ``user_api_key`` is optional so existing call sites
+        # that only pass ``data`` keep working.
+        if user_api_key is not None:
+            auth_metadata = getattr(user_api_key, "metadata", None) or {}
+            if isinstance(auth_metadata, dict):
+                resolved = _coerce(auth_metadata.get("tenant_id"))
+                if resolved is not None:
+                    return resolved
+            resolved = _coerce(getattr(user_api_key, "team_id", None))
+            if resolved is not None:
+                return resolved
+
+        return None
 
     async def _auto_route(
         self,
         requested_model: str,
         data: dict,
         nexus_metadata: NexusMetadata | None = None,
+        user_api_key: UserAPIKeyAuth | None = None,
     ) -> RoutingDecision:
         """Classify complexity and select the appropriate tier model."""
         # Priority override: critical → skip classification, route to highest tier
@@ -365,8 +410,43 @@ class BSGatewayRouter:
 
         try:
             result = await self.classifier.classify(data)
-        except Exception:
-            logger.exception("classifier_error", original_model=requested_model)
+        except asyncio.CancelledError:
+            # Cooperative cancellation must propagate so callers and
+            # the event loop can finish their teardown.
+            raise
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+            ValueError,
+            KeyError,
+        ) as exc:
+            # Expected classifier failure modes: local LLM offline,
+            # request timeout, malformed JSON, missing schema fields.
+            # Fall back to the default tier with a typed warning.
+            logger.warning(
+                "classifier_error",
+                original_model=requested_model,
+                exc_info=exc,
+            )
+            fallback = self._get_fallback_model()
+            return RoutingDecision(
+                method="auto",
+                original_model=requested_model,
+                resolved_model=fallback,
+                complexity_score=None,
+                tier=self.config.fallback_tier,
+                nexus_metadata=nexus_metadata,
+            )
+        except Exception as exc:
+            # Programming bugs: log under a distinct event name so the
+            # signal isn't buried alongside expected outages, but still
+            # degrade to fallback (better to route than to 5xx).
+            logger.error(
+                "classifier_unexpected_error",
+                original_model=requested_model,
+                exc_info=exc,
+            )
             fallback = self._get_fallback_model()
             return RoutingDecision(
                 method="auto",
@@ -380,7 +460,10 @@ class BSGatewayRouter:
         # Blend classifier score with complexity_hint when provided
         if nexus_metadata is not None and nexus_metadata.complexity_hint is not None:
             classifier_score = result.score if result.score is not None else 50
-            blended_score = round(0.7 * classifier_score + 0.3 * nexus_metadata.complexity_hint)
+            blended_score = round(
+                CLASSIFIER_BLEND_WEIGHT * classifier_score
+                + COMPLEXITY_HINT_BLEND_WEIGHT * nexus_metadata.complexity_hint
+            )
             blended_tier = self._score_to_tier(blended_score)
             tier = self._tier_map.get(blended_tier)
             target_model = tier.model if tier else self._get_fallback_model()
@@ -416,7 +499,7 @@ class BSGatewayRouter:
         # Skip recording when no tenant_id is present so we never write a
         # NULL-tenant row that other tenants' queries could sweep up.
         if self.collector:
-            tenant_id = self._extract_tenant_id(data)
+            tenant_id = self._extract_tenant_id(data, user_api_key=user_api_key)
             if tenant_id is not None:
                 _task = asyncio.create_task(
                     self.collector.record(data, result, decision, tenant_id=tenant_id)
@@ -460,20 +543,26 @@ class BSGatewayRouter:
         """
         # Drain background record() tasks first so they do not race
         # against close() and hit a closed pool. Best-effort: anything
-        # that raises is logged and the close path proceeds.
+        # that raises (other than cancellation) is logged and the close
+        # path proceeds. Cancellation must propagate so the parent
+        # shutdown sequence is not stalled.
         if self._background_tasks:
             pending = list(self._background_tasks)
             try:
                 await asyncio.wait(pending, timeout=5.0)
-            except Exception:
-                logger.warning("router_background_drain_error", exc_info=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("router_background_drain_error", exc_info=exc)
 
         if self.collector is not None:
             try:
                 await self.collector.close()
-            except Exception:
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
                 # Shutdown must not raise — log and continue.
-                logger.warning("router_collector_close_failed", exc_info=True)
+                logger.warning("router_collector_close_failed", exc_info=exc)
 
 
 def _create_proxy_handler() -> BSGatewayRouter:

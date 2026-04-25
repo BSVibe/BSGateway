@@ -270,3 +270,59 @@ class TestCollectorRequiresTenantId:
 
         await collector.record(sample_data, sample_result, sample_decision, tenant_id=None)
         conn.execute.assert_not_called()
+
+
+class TestRoutingLogsCompositeIndex:
+    """Audit M4: routing_logs needs a (tenant_id, timestamp) composite index.
+
+    Every hot SELECT (usage_total / usage_by_model / usage_by_rule /
+    get_logs_by_tier) filters by tenant_id and ranges by timestamp. A
+    single-column index on either side forces a scan + filter on the
+    other; a composite covers both in one b-tree lookup.
+
+    The composite is declared in ``tenant_schema.sql`` (which extends
+    ``routing_logs`` with the ``tenant_id`` column post-creation), not
+    in the original ``schema.sql`` — both are loaded at startup so
+    runtime correctness is preserved.
+    """
+
+    def _load(self, name: str) -> str:
+        from pathlib import Path
+
+        sql_dir = Path(__file__).resolve().parents[1] / "routing" / "sql"
+        return (sql_dir / name).read_text().lower()
+
+    def test_routing_logs_has_tenant_time_composite_index(self) -> None:
+        # The composite covers (tenant_id, timestamp [DESC]) so range scans
+        # for usage queries don't need a separate filter step.
+        tenant_schema = self._load("tenant_schema.sql")
+        assert "create index" in tenant_schema and "routing_logs" in tenant_schema
+        assert "(tenant_id, timestamp" in tenant_schema, (
+            "routing_logs must have a composite index on (tenant_id, timestamp); "
+            "every hot query filters by both"
+        )
+
+    def test_api_keys_has_tenant_created_composite_index(self) -> None:
+        """list_api_keys_by_tenant filters tenant_id ORDER BY created_at DESC.
+
+        A composite (tenant_id, created_at DESC) lets PG read the index
+        in order without a separate sort.
+        """
+        apikey_schema = self._load("apikey_schema.sql")
+        assert "(tenant_id, created_at" in apikey_schema, (
+            "api_keys must have a composite index on (tenant_id, created_at); "
+            "list_api_keys_by_tenant filters by tenant_id and orders by created_at"
+        )
+
+    def test_indexes_are_idempotent(self) -> None:
+        """Schema files are re-executed on each collector startup — every
+        CREATE INDEX must be IF NOT EXISTS to survive repeat runs."""
+        for name in ("schema.sql", "tenant_schema.sql", "apikey_schema.sql"):
+            content = self._load(name)
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith("create index"):
+                    assert "if not exists" in line, (
+                        f"{name} CREATE INDEX must be IF NOT EXISTS for "
+                        f"idempotent startup: {line!r}"
+                    )

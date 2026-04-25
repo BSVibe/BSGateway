@@ -19,6 +19,12 @@ ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_key_hash_key;
 CREATE INDEX IF NOT EXISTS idx_api_keys_tenant ON api_keys(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
 
+-- Audit M4: list_api_keys_by_tenant filters tenant_id and orders by
+-- created_at DESC. The composite lets PG walk the index in order
+-- without a separate sort step.
+CREATE INDEX IF NOT EXISTS idx_api_keys_tenant_created
+    ON api_keys(tenant_id, created_at DESC);
+
 -- Drop the obsolete hash-lookup index; we now look up by key_prefix.
 DROP INDEX IF EXISTS idx_api_keys_hash;
 

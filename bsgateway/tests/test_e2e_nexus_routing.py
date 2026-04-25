@@ -77,7 +77,14 @@ class _RouterWithFixedTenant(BSGatewayRouter):
     """
 
     @staticmethod
-    def _extract_tenant_id(data: dict) -> object:
+    def _extract_tenant_id(
+        data: dict,
+        user_api_key: object | None = None,
+    ) -> object:
+        # ``user_api_key`` is accepted for signature parity with the
+        # production ``BSGatewayRouter._extract_tenant_id`` (Sprint 0
+        # follow-up S1) but the fixed-tenant test override ignores it.
+        del user_api_key
         return TENANT_ID
 
 

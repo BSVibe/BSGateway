@@ -16,6 +16,7 @@ from bsgateway.routing.classifiers.base import (
     extract_system_prompt,
     extract_user_text,
 )
+from bsgateway.routing.constants import WORDS_TO_TOKENS_RATIO
 from bsgateway.routing.models import EmbeddingConfig, RoutingDecision
 
 logger = structlog.get_logger(__name__)
@@ -188,8 +189,26 @@ class RoutingCollector:
             )
             vector = response.data[0]["embedding"]
             return struct.pack(f"{len(vector)}f", *vector)
-        except Exception:
-            logger.warning("embedding_generation_failed", exc_info=True)
+        except asyncio.CancelledError:
+            # Propagate cooperative cancellation; never silently retry.
+            raise
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+            ValueError,
+            KeyError,
+            IndexError,
+        ) as exc:
+            # Expected: embedding service unreachable / slow / returns
+            # a malformed payload. Embeddings are best-effort training
+            # signal — drop the vector and continue.
+            logger.warning("embedding_generation_failed", exc_info=exc)
+            return None
+        except Exception as exc:
+            # Programming bug — log under a distinct event so it is
+            # visible without crashing the routing path.
+            logger.error("embedding_unexpected_error", exc_info=exc)
             return None
 
     @staticmethod
@@ -197,7 +216,7 @@ class RoutingCollector:
         all_text = extract_all_text(messages)
         code_blocks = re.findall(r"```[\s\S]*?```", all_text)
         return {
-            "token_count": int(len(all_text.split()) * 1.3),
+            "token_count": int(len(all_text.split()) * WORDS_TO_TOKENS_RATIO),
             "conversation_turns": len([m for m in messages if m.get("role") == "user"]),
             "code_block_count": len(code_blocks),
             "code_lines": sum(b.count("\n") for b in code_blocks),

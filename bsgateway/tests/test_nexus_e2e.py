@@ -34,10 +34,24 @@ TENANT_ID = uuid4()
 
 
 class _RouterWithFixedTenant(BSGatewayRouter):
-    """Inject a fixed tenant_id so collector fires in legacy scenario tests."""
+    """Inject a fixed tenant_id so collector fires in legacy scenario tests.
+
+    Accepts the optional ``user_api_key`` kwarg that the production
+    ``_extract_tenant_id`` learned in the Sprint 0 follow-up (S1) so
+    older test scenarios keep exercising the collector path even when
+    the hook plumbs the auth payload through.
+    """
 
     @staticmethod
-    def _extract_tenant_id(data: dict) -> object:
+    def _extract_tenant_id(
+        data: dict,
+        user_api_key: object | None = None,
+    ) -> object:
+        # ``user_api_key`` is accepted for signature parity with the
+        # production ``BSGatewayRouter._extract_tenant_id`` (Sprint 0
+        # follow-up S1) but the fixed-tenant test override deliberately
+        # ignores it.
+        del user_api_key
         return TENANT_ID
 
 

@@ -32,7 +32,6 @@ Remove completed rows once the corresponding inline comment is gone.
 
 | # | Item | Source | Trigger | Status |
 |---|------|--------|---------|--------|
-| S1 | Plumb tenant_id from authenticated request context into LiteLLM `data["metadata"]["tenant_id"]` for the proxy callback path. Today `RoutingCollector.record` falls back to skipping when metadata is absent — correct for safety, but means proxy-direct traffic isn't logged. | `bsgateway/routing/hook.py::BSGatewayRouter._extract_tenant_id` | Once a non-`chat/service.py` ingress writes to LiteLLM directly | Open |
 | S2 | Audit other tables for tenant-scoping coverage parallel to routing_logs (executor_tasks already does it inline; rules / audit_events / api_keys / tenant_models / feedback should be re-checked at repository level). | n/a | Sprint 1+ hardening continuation | Open |
 
 ## Conventions
