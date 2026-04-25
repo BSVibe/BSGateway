@@ -67,6 +67,41 @@ async def test_get_pool_reuses_existing_pool():
 
 
 @pytest.mark.asyncio
+async def test_get_pool_concurrent_callers_create_one_pool():
+    """Concurrent first-time callers must get the same pool — exactly one
+    create_pool call (audit issue H14, no double-init race)."""
+    import asyncio
+
+    new_pool = _make_pool_mock()
+    create_count = 0
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def slow_create_pool(*_args, **_kwargs):
+        nonlocal create_count
+        create_count += 1
+        # Park inside the lock-protected critical section so other callers
+        # have a chance to race in.
+        started.set()
+        await finish.wait()
+        return new_pool
+
+    with patch(
+        "bsgateway.core.database.asyncpg.create_pool",
+        new=slow_create_pool,
+    ):
+        t1 = asyncio.create_task(get_pool("postgresql://localhost/test"))
+        t2 = asyncio.create_task(get_pool("postgresql://localhost/test"))
+        t3 = asyncio.create_task(get_pool("postgresql://localhost/test"))
+        await started.wait()
+        finish.set()
+        results = await asyncio.gather(t1, t2, t3)
+
+    assert create_count == 1
+    assert all(r is new_pool for r in results)
+
+
+@pytest.mark.asyncio
 async def test_get_pool_creates_new_when_closing():
     """get_pool creates a new pool when the existing one is closing."""
     closing_pool = _make_pool_mock(is_closing=True)

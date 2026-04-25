@@ -3,9 +3,9 @@ INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, scopes, expires_at)
 VALUES ($1, $2, $3, $4, $5::jsonb, $6)
 RETURNING id, tenant_id, name, key_hash, key_prefix, scopes, is_active, expires_at, last_used_at, created_at;
 
--- name: get_api_key_by_hash
+-- name: list_api_keys_by_prefix
 SELECT id, tenant_id, name, key_hash, key_prefix, scopes, is_active, expires_at, last_used_at, created_at
-FROM api_keys WHERE key_hash = $1;
+FROM api_keys WHERE key_prefix = $1;
 
 -- name: list_api_keys_by_tenant
 SELECT id, tenant_id, name, key_prefix, scopes, is_active, expires_at, last_used_at, created_at

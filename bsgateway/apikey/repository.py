@@ -52,9 +52,15 @@ class ApiKeyRepository:
                 expires_at,
             )
 
-    async def get_by_hash(self, key_hash: str) -> asyncpg.Record | None:
+    async def list_active_by_prefix(self, key_prefix: str) -> list[asyncpg.Record]:
+        """Return active rows whose key_prefix matches.
+
+        With salted PBKDF2 hashes we can no longer look up by ``key_hash``
+        (each verify needs the per-row salt). The 12-char prefix is already
+        indexed and almost always returns at most one row.
+        """
         async with self._pool.acquire() as conn:
-            return await conn.fetchrow(_sql.query("get_api_key_by_hash"), key_hash)
+            return await conn.fetch(_sql.query("list_api_keys_by_prefix"), key_prefix)
 
     async def list_by_tenant(self, tenant_id: UUID) -> list[asyncpg.Record]:
         async with self._pool.acquire() as conn:

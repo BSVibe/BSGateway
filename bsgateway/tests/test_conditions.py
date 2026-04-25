@@ -222,3 +222,50 @@ class TestReDoSProtection:
             value="(a+)+b",
         )
         assert evaluate_condition(cond, ctx) is False
+
+
+class TestFieldWhitelist:
+    """Schema-level whitelist enforcement for condition fields (audit H4)."""
+
+    def test_unknown_field_rejected_at_schema(self):
+        """Arbitrary field names are rejected at the schema layer."""
+        with pytest.raises(ValidationError, match="field"):
+            ConditionSchema(
+                condition_type="text_pattern",
+                field="__class__",
+                operator="eq",
+                value="x",
+            )
+
+    def test_dunder_field_rejected_at_schema(self):
+        """Dunder attribute names cannot be smuggled through field=."""
+        with pytest.raises(ValidationError, match="field"):
+            ConditionSchema(
+                condition_type="text_pattern",
+                field="__dict__",
+                operator="contains",
+                value="x",
+            )
+
+    def test_typo_field_rejected_at_schema(self):
+        """Typos are caught at write-time, not silently never-matching."""
+        with pytest.raises(ValidationError, match="field"):
+            ConditionSchema(
+                condition_type="token_count",
+                field="estimated_token",  # missing trailing s
+                operator="gt",
+                value=100,
+            )
+
+    def test_all_allowed_fields_pass_schema(self):
+        """Every field returned by the runtime whitelist must round-trip."""
+        from bsgateway.rules.conditions import ALLOWED_FIELDS
+
+        for f in ALLOWED_FIELDS:
+            schema = ConditionSchema(
+                condition_type="text_pattern",
+                field=f,
+                operator="eq",
+                value="x",
+            )
+            assert schema.field == f

@@ -281,8 +281,8 @@ class TestConcurrentRateLimitChecks:
             assert allowed == rpm  # 3 allowed out of 5
 
     @pytest.mark.asyncio
-    async def test_concurrent_rate_limit_redis_failure_fail_open(self) -> None:
-        """When Redis fails, all concurrent checks should fail-open."""
+    async def test_concurrent_rate_limit_redis_failure_fail_closed(self) -> None:
+        """When Redis fails, all concurrent checks must fail-CLOSED (audit H1)."""
         redis_mock = AsyncMock()
         redis_mock.incr = AsyncMock(side_effect=ConnectionError("Redis down"))
 
@@ -293,5 +293,6 @@ class TestConcurrentRateLimitChecks:
 
         assert len(results) == 10
         for r in results:
-            assert r.allowed is True
+            assert r.allowed is False
             assert r.degraded is True
+            assert r.remaining == 0

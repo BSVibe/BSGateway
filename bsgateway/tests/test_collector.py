@@ -448,3 +448,33 @@ class TestClose:
     async def test_close_no_pool(self) -> None:
         collector = RoutingCollector(database_url="postgresql://test:test@localhost/test")
         await collector.close()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_close_is_idempotent(
+        self, collector: RoutingCollector, mock_pool: _MockPool
+    ) -> None:
+        await collector.close()
+        await collector.close()  # second call must not raise nor double-close
+        mock_pool.close.assert_called_once()
+        assert collector._pool is None
+        assert collector._closed is True
+
+    @pytest.mark.asyncio
+    async def test_record_after_close_drops_silently(
+        self,
+        collector: RoutingCollector,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+        sample_decision: RoutingDecision,
+        mock_pool: _MockPool,
+    ) -> None:
+        """Late record() after shutdown must not resurrect the closed pool."""
+        await collector.close()
+        # Should not raise nor try to acquire on the closed pool
+        await collector.record(
+            sample_data,
+            sample_result,
+            sample_decision,
+            tenant_id=TENANT_ID,
+        )
+        mock_pool.conn.execute.assert_not_called()

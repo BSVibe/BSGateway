@@ -72,26 +72,40 @@ class TestRateLimiter:
         # expire should not be called for count > 1
         redis.expire.assert_not_called()
 
-    async def test_redis_error_fails_open(self):
+    async def test_redis_error_fails_closed(self):
+        """When Redis is unreachable the limiter MUST fail-closed (deny)."""
         redis = AsyncMock()
         redis.incr = AsyncMock(side_effect=ConnectionError("Redis down"))
 
         limiter = RateLimiter(redis)
         result = await limiter.check("tenant-1", rpm=60)
 
-        assert result.allowed is True  # Fail-open
+        assert result.allowed is False  # Fail-closed
         assert result.degraded is True
+        assert result.remaining == 0
 
-    async def test_expire_failure_still_returns_result(self):
-        """If redis.expire() fails after incr succeeds, the result is still valid."""
+    async def test_expire_failure_fails_closed(self):
+        """If redis.expire() raises after incr succeeds the result MUST be fail-closed."""
         redis = AsyncMock()
         redis.incr = AsyncMock(return_value=1)
         redis.expire = AsyncMock(side_effect=ConnectionError("Redis expire failed"))
 
         limiter = RateLimiter(redis)
-        # expire failure propagates as general exception → fail-open
         result = await limiter.check("tenant-1", rpm=60)
-        assert result.allowed is True
+        assert result.allowed is False
+        assert result.degraded is True
+        assert result.remaining == 0
+
+    async def test_redis_timeout_fails_closed(self):
+        """asyncio.TimeoutError on Redis call must also deny the request."""
+        import asyncio
+
+        redis = AsyncMock()
+        redis.incr = AsyncMock(side_effect=TimeoutError("redis ping timed out"))
+
+        limiter = RateLimiter(redis)
+        result = await asyncio.wait_for(limiter.check("tenant-1", rpm=10), timeout=2.0)
+        assert result.allowed is False
         assert result.degraded is True
 
     async def test_independent_per_tenant(self):
@@ -209,6 +223,32 @@ class TestRateLimitAPI:
             )
 
         assert resp.status_code == 200
+
+    def test_redis_outage_fails_closed_at_api(self, client: TestClient):
+        """When Redis raises during rate-limit check the API MUST 429 with
+        the fail-closed code, not silently proxy the request."""
+        with (
+            self._patch_tenant('{"rate_limit": {"requests_per_minute": 5}}'),
+            patch(
+                "bsgateway.chat.ratelimit.RateLimiter.check",
+                new_callable=AsyncMock,
+                return_value=RateLimitResult(
+                    allowed=False,
+                    limit=5,
+                    remaining=0,
+                    reset_at=9999999999,
+                    degraded=True,
+                ),
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/chat/completions",
+                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+            )
+
+        assert resp.status_code == 429
+        body = resp.json()
+        assert body["error"]["code"] == "rate_limit_unavailable"
 
     def test_no_redis_skips_rate_limit(self, mock_pool):
         """When Redis is not available, rate limiting is skipped."""

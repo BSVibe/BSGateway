@@ -94,14 +94,19 @@ async def _check_rate_limit(
     if result.allowed:
         return None
 
+    # Distinguish actual quota exhaustion from fail-closed (Redis outage).
+    # Both surface as 429 to keep clients on the existing retry/back-off
+    # path, but operators get a separate code for alerting.
+    code = "rate_limit_unavailable" if result.degraded else "rate_limit_exceeded"
+    message = "Rate limiter temporarily unavailable" if result.degraded else "Rate limit exceeded"
     return JSONResponse(
         status_code=429,
         content={
             "error": {
-                "message": "Rate limit exceeded",
+                "message": message,
                 "type": "rate_limit_error",
                 "param": None,
-                "code": "rate_limit_exceeded",
+                "code": code,
             }
         },
         headers={

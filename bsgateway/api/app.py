@@ -128,6 +128,17 @@ async def lifespan(app: FastAPI):
             logger.warning("cancelling_background_task", task=t.get_name())
             t.cancel()
 
+    # Close the BSGateway router (drains its own background tasks +
+    # closes the RoutingCollector pool — audit issue H15). The router is
+    # constructed at module import time as a side effect of importing
+    # bsgateway.routing.hook so we resolve it lazily here.
+    try:
+        from bsgateway.routing.hook import proxy_handler_instance
+
+        await proxy_handler_instance.aclose()
+    except Exception:
+        logger.warning("router_aclose_failed", exc_info=True)
+
     # Cleanup Redis
     if app.state.redis:
         await app.state.redis.aclose()

@@ -73,14 +73,22 @@ class RoutingCollector:
     ) -> None:
         self.database_url = database_url
         self.embedding_config = embedding_config
-        self._pool: asyncpg.Pool = None  # type: ignore[assignment]
+        self._pool: asyncpg.Pool | None = None
         self._initialized = False
+        self._closed = False
         self._init_lock = asyncio.Lock()
 
     async def _ensure_db(self) -> None:
+        if self._closed:
+            # Once closed, never re-create the pool. Late-arriving record()
+            # calls are dropped instead of resurrecting connections during
+            # graceful shutdown (audit issue H15).
+            raise RuntimeError("RoutingCollector is closed")
         if self._initialized:
             return
         async with self._init_lock:
+            if self._closed:
+                raise RuntimeError("RoutingCollector is closed")
             if self._initialized:
                 return
             self._pool = await asyncpg.create_pool(self.database_url, min_size=1, max_size=5)
@@ -117,6 +125,12 @@ class RoutingCollector:
                 reason="record() called without tenant_id; refusing to log "
                 "to prevent cross-tenant leakage",
             )
+            return
+
+        if self._closed:
+            # Late background task firing after shutdown — drop the row
+            # instead of resurrecting the closed pool.
+            logger.debug("routing_record_skipped_closed")
             return
 
         await self._ensure_db()
@@ -192,5 +206,18 @@ class RoutingCollector:
         }
 
     async def close(self) -> None:
-        if self._pool:
-            await self._pool.close()
+        """Close the lazy asyncpg pool. Idempotent.
+
+        Sprint 1 H15: callers (BSGatewayRouter / API lifespan) MUST invoke
+        this on shutdown to release pooled connections. ``_closed=True``
+        also blocks any late-arriving ``record()`` from resurrecting the
+        pool mid-shutdown.
+        """
+        async with self._init_lock:
+            self._closed = True
+            if self._pool is not None:
+                try:
+                    await self._pool.close()
+                finally:
+                    self._pool = None
+                    self._initialized = False

@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from bsgateway.rules.conditions import ALLOWED_FIELDS
+
 # ---------------------------------------------------------------------------
 # Rule Conditions
 # ---------------------------------------------------------------------------
@@ -56,6 +58,21 @@ class ConditionSchema(BaseModel):
             },
         },
     }
+
+    @field_validator("field")
+    @classmethod
+    def validate_field_whitelist(cls, v: str) -> str:
+        """Reject any field name outside the EvaluationContext whitelist.
+
+        Audit issue H4. Without write-time validation a stored condition
+        with a typoed or attacker-controlled field would be persisted
+        forever and silently never match — operators would never notice
+        the rule was a no-op.
+        """
+        if v not in ALLOWED_FIELDS:
+            allowed_preview = ", ".join(sorted(ALLOWED_FIELDS)[:8])
+            raise ValueError(f"unknown condition field {v!r}; allowed: {allowed_preview}, ...")
+        return v
 
     @field_validator("value")
     @classmethod

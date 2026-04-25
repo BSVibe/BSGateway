@@ -450,6 +450,31 @@ class BSGatewayRouter:
             return self.config.tiers[0].model
         return "gpt-4o-mini"
 
+    async def aclose(self) -> None:
+        """Release any resources held by the router (audit issue H15).
+
+        Currently this drains the optional :class:`RoutingCollector`'s
+        asyncpg pool. The API lifespan calls this during graceful
+        shutdown so connections are not leaked when the litellm proxy
+        embeds the router as ``proxy_handler_instance``.
+        """
+        # Drain background record() tasks first so they do not race
+        # against close() and hit a closed pool. Best-effort: anything
+        # that raises is logged and the close path proceeds.
+        if self._background_tasks:
+            pending = list(self._background_tasks)
+            try:
+                await asyncio.wait(pending, timeout=5.0)
+            except Exception:
+                logger.warning("router_background_drain_error", exc_info=True)
+
+        if self.collector is not None:
+            try:
+                await self.collector.close()
+            except Exception:
+                # Shutdown must not raise — log and continue.
+                logger.warning("router_collector_close_failed", exc_info=True)
+
 
 def _create_proxy_handler() -> BSGatewayRouter:
     """Create the proxy handler instance that LiteLLM will import.
