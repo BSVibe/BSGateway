@@ -240,7 +240,9 @@ class BSGatewayRouter:
 
         requested_model = data.get("model", "auto")
         nexus_metadata = _extract_nexus_metadata(data, self.config.nexus_headers)
-        decision = await self._route(requested_model, data, nexus_metadata)
+        decision = await self._route(
+            requested_model, data, nexus_metadata, user_api_key=user_api_key_dict
+        )
 
         data["model"] = decision.resolved_model
         metadata = data.setdefault("metadata", {})
@@ -278,6 +280,7 @@ class BSGatewayRouter:
         requested_model: str,
         data: dict,
         nexus_metadata: NexusMetadata | None = None,
+        user_api_key: UserAPIKeyAuth | None = None,
     ) -> RoutingDecision:
         """Determine the target model for a request."""
         # 1. Passthrough: known direct model names
@@ -306,7 +309,9 @@ class BSGatewayRouter:
             pass  # Fall through to auto-routing
 
         # 4. Auto-route based on complexity
-        return await self._auto_route(requested_model, data, nexus_metadata)
+        return await self._auto_route(
+            requested_model, data, nexus_metadata, user_api_key=user_api_key
+        )
 
     def _matches_auto_route_pattern(self, model: str) -> bool:
         """Check if a model name matches any auto_route_patterns."""
@@ -319,31 +324,67 @@ class BSGatewayRouter:
         return max(self.config.tiers, key=lambda t: t.score_range[1])
 
     @staticmethod
-    def _extract_tenant_id(data: dict) -> UUID | None:
+    def _extract_tenant_id(
+        data: dict,
+        user_api_key: UserAPIKeyAuth | None = None,
+    ) -> UUID | None:
         """Pull a tenant UUID out of LiteLLM-style request metadata.
 
-        Returns ``None`` (rather than raising) when the field is
-        missing or malformed. Callers MUST treat ``None`` as
-        "do not record" to avoid cross-tenant leakage in
-        ``routing_logs``.
+        Resolution order (first hit wins):
+
+        1. ``data["metadata"]["tenant_id"]`` — set by the BSGateway
+           chat router (`ChatService.complete`).
+        2. ``user_api_key.metadata["tenant_id"]`` — for proxy-direct
+           traffic, LiteLLM may attach tenant context to the auth
+           payload via the master-key admin UI (Sprint 0 follow-up,
+           docs/TODO.md S1).
+        3. ``user_api_key.team_id`` — LiteLLM convention for grouping
+           keys by tenant; we treat the team_id as a tenant_id when
+           nothing more specific is available.
+
+        Returns ``None`` when no source supplies a parseable UUID.
+        Callers MUST treat ``None`` as "do not record" to avoid
+        cross-tenant leakage in ``routing_logs``.
         """
+
+        def _coerce(raw: object) -> UUID | None:
+            if raw is None:
+                return None
+            if isinstance(raw, UUID):
+                return raw
+            try:
+                return UUID(str(raw))
+            except (ValueError, TypeError, AttributeError):
+                logger.warning("invalid_tenant_id_in_metadata", raw=str(raw))
+                return None
+
+        # 1. Explicit data metadata (chat-router path).
         metadata = data.get("metadata") or {}
-        raw = metadata.get("tenant_id")
-        if raw is None:
-            return None
-        if isinstance(raw, UUID):
-            return raw
-        try:
-            return UUID(str(raw))
-        except (ValueError, TypeError):
-            logger.warning("invalid_tenant_id_in_metadata", raw=str(raw))
-            return None
+        resolved = _coerce(metadata.get("tenant_id"))
+        if resolved is not None:
+            return resolved
+
+        # 2/3. Fall back to the LiteLLM auth payload for proxy-direct
+        # traffic. ``user_api_key`` is optional so existing call sites
+        # that only pass ``data`` keep working.
+        if user_api_key is not None:
+            auth_metadata = getattr(user_api_key, "metadata", None) or {}
+            if isinstance(auth_metadata, dict):
+                resolved = _coerce(auth_metadata.get("tenant_id"))
+                if resolved is not None:
+                    return resolved
+            resolved = _coerce(getattr(user_api_key, "team_id", None))
+            if resolved is not None:
+                return resolved
+
+        return None
 
     async def _auto_route(
         self,
         requested_model: str,
         data: dict,
         nexus_metadata: NexusMetadata | None = None,
+        user_api_key: UserAPIKeyAuth | None = None,
     ) -> RoutingDecision:
         """Classify complexity and select the appropriate tier model."""
         # Priority override: critical → skip classification, route to highest tier
@@ -458,7 +499,7 @@ class BSGatewayRouter:
         # Skip recording when no tenant_id is present so we never write a
         # NULL-tenant row that other tenants' queries could sweep up.
         if self.collector:
-            tenant_id = self._extract_tenant_id(data)
+            tenant_id = self._extract_tenant_id(data, user_api_key=user_api_key)
             if tenant_id is not None:
                 _task = asyncio.create_task(
                     self.collector.record(data, result, decision, tenant_id=tenant_id)

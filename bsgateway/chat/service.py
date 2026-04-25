@@ -265,10 +265,18 @@ class ChatService:
                     status_code=500,
                 ) from exc
 
-        # Build litellm call kwargs
+        # Build litellm call kwargs.
+        #
+        # Sprint 0 follow-up (docs/TODO.md S1): plumb tenant_id into the
+        # litellm metadata so the BSGateway proxy hook (which reads
+        # ``data["metadata"]["tenant_id"]``) can scope its routing_logs
+        # write. Pre-fix the hook saw no tenant and skipped recording.
+        request_metadata = dict(request_data.get("metadata") or {})
+        request_metadata["tenant_id"] = str(tenant_id)
         litellm_kwargs: dict[str, Any] = {
             "model": model.litellm_model,
             "messages": request_data["messages"],
+            "metadata": request_metadata,
         }
         if api_key:
             litellm_kwargs["api_key"] = api_key
@@ -291,8 +299,11 @@ class ChatService:
             if param in request_data:
                 litellm_kwargs[param] = request_data[param]
 
-        # Extra params from model config (never allow overriding request-critical fields)
-        _protected = {"model", "messages", "stream", "api_key", "api_base"}
+        # Extra params from model config (never allow overriding request-critical fields).
+        # ``metadata`` is protected because we just stamped tenant_id into
+        # it — letting per-model extra_params clobber it would silently
+        # un-scope routing_logs (regression of C2).
+        _protected = {"model", "messages", "stream", "api_key", "api_base", "metadata"}
         if model.extra_params:
             for k, v in model.extra_params.items():
                 if k not in _protected:
