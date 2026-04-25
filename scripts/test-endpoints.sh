@@ -2,7 +2,14 @@
 set -e
 
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:4000}"
-API_KEY="${LITELLM_MASTER_KEY:-sk-test-key}"
+# LITELLM_MASTER_KEY MUST be supplied via the environment — no hardcoded
+# fallback so a missing env var causes an immediate, visible failure
+# instead of silently authenticating with a guessable string.
+if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
+    echo "error: LITELLM_MASTER_KEY env var is required" >&2
+    exit 1
+fi
+API_KEY="$LITELLM_MASTER_KEY"
 
 echo "Testing BSGateway endpoints at $GATEWAY_URL"
 echo "============================================="

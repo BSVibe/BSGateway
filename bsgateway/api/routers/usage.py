@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from bsgateway.api.deps import GatewayAuthContext, get_pool, require_tenant_access
-from bsgateway.routing.collector import SqlLoader
+from bsgateway.routing.repository import RoutingLogsRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -18,8 +18,6 @@ router = APIRouter(
     prefix="/tenants/{tenant_id}/usage",
     tags=["usage"],
 )
-
-_sql = SqlLoader()
 
 
 class ModelUsage(BaseModel):
@@ -79,21 +77,12 @@ async def get_usage(
     """Get usage statistics for a tenant."""
     pool = get_pool(request)
     start, end = _parse_period(period, from_date, to_date)
-
-    async def _fetch_total():
-        async with pool.acquire() as conn:
-            return await conn.fetchrow(_sql.query("usage_total"), tenant_id, start, end)
-
-    async def _fetch_models():
-        async with pool.acquire() as conn:
-            return await conn.fetch(_sql.query("usage_by_model"), tenant_id, start, end)
-
-    async def _fetch_rules():
-        async with pool.acquire() as conn:
-            return await conn.fetch(_sql.query("usage_by_rule"), tenant_id, start, end)
+    repo = RoutingLogsRepository(pool)
 
     total_row, model_rows, rule_rows = await asyncio.gather(
-        _fetch_total(), _fetch_models(), _fetch_rules()
+        repo.usage_total(tenant_id, start, end),
+        repo.usage_by_model(tenant_id, start, end),
+        repo.usage_by_rule(tenant_id, start, end),
     )
 
     total_requests = total_row["total_requests"] if total_row else 0
@@ -158,12 +147,12 @@ async def get_sparklines(
     start = today - timedelta(days=days - 1)
     start_dt = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
     end_dt = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
-
-    async def _fetch_llm():
-        async with pool.acquire() as conn:
-            return await conn.fetch(_sql.query("usage_by_model"), tenant_id, start_dt, end_dt)
+    repo = RoutingLogsRepository(pool)
 
     async def _fetch_exec():
+        # executor_tasks already enforces tenant_id at the SQL level — kept
+        # inline because it lives in the executor schema rather than
+        # routing_logs. The WHERE clause below is the contract test.
         async with pool.acquire() as conn:
             return await conn.fetch(
                 "SELECT DATE(t.created_at) AS day, w.name AS resolved_model, "
@@ -176,7 +165,9 @@ async def get_sparklines(
                 end_dt,
             )
 
-    llm_rows, exec_rows = await asyncio.gather(_fetch_llm(), _fetch_exec())
+    llm_rows, exec_rows = await asyncio.gather(
+        repo.usage_by_model(tenant_id, start_dt, end_dt), _fetch_exec()
+    )
 
     day_index = {start + timedelta(days=i): i for i in range(days)}
     result: dict[str, list[int]] = {}

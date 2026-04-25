@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -28,6 +29,16 @@ from bsgateway.routing.models import (
     RoutingConfig,
     TierConfig,
 )
+
+TENANT_ID = uuid4()
+
+
+class _RouterWithFixedTenant(BSGatewayRouter):
+    """Inject a fixed tenant_id so collector fires in legacy scenario tests."""
+
+    @staticmethod
+    def _extract_tenant_id(data: dict) -> object:
+        return TENANT_ID
 
 
 @pytest.fixture
@@ -66,7 +77,7 @@ def mock_collector() -> AsyncMock:
 
 @pytest.fixture
 def router(routing_config: RoutingConfig, mock_collector: AsyncMock) -> BSGatewayRouter:
-    r = BSGatewayRouter(config=routing_config)
+    r = _RouterWithFixedTenant(config=routing_config)
     r.collector = mock_collector  # Inject mock collector to capture calls
     return r
 

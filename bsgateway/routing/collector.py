@@ -4,6 +4,7 @@ import asyncio
 import re
 import struct
 from pathlib import Path
+from uuid import UUID
 
 import asyncpg
 import litellm
@@ -96,7 +97,28 @@ class RoutingCollector:
         data: dict,
         result: ClassificationResult,
         decision: RoutingDecision,
+        *,
+        tenant_id: UUID | None,
+        rule_id: UUID | None = None,
     ) -> None:
+        """Persist a routing decision row.
+
+        ``tenant_id`` is mandatory. Without it the row would be written
+        as NULL-tenant and could be co-mingled into another tenant's
+        aggregate queries (see C2 in the BSVibe Ecosystem Audit). When
+        the caller cannot resolve a tenant — e.g. a bare LiteLLM proxy
+        request that did not flow through the BSGateway chat router —
+        the record is silently dropped rather than written without
+        scoping.
+        """
+        if tenant_id is None:
+            logger.debug(
+                "routing_record_skipped_no_tenant",
+                reason="record() called without tenant_id; refusing to log "
+                "to prevent cross-tenant leakage",
+            )
+            return
+
         await self._ensure_db()
         messages = data.get("messages", [])
         user_text = extract_user_text(messages)
@@ -111,6 +133,8 @@ class RoutingCollector:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 sql.query("insert_routing_log"),
+                tenant_id,
+                rule_id,
                 user_text,
                 system_prompt,
                 features["token_count"],
