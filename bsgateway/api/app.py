@@ -76,6 +76,18 @@ async def lifespan(app: FastAPI):
     # Initialize cache manager if Redis is available
     app.state.cache = CacheManager(app.state.redis) if app.state.redis else None
 
+    # Sprint 3 / S3-3: wire the Redis cache into the LiteLLM proxy router so
+    # the static classifier's deterministic keyword scan gets memoised. The
+    # router instance is created at module import (before lifespan), so we
+    # patch in the cache after CacheManager is constructed.
+    if app.state.cache is not None:
+        try:
+            from bsgateway.routing.hook import proxy_handler_instance
+
+            proxy_handler_instance.attach_cache(app.state.cache)
+        except Exception:
+            logger.warning("classifier_cache_attach_failed", exc_info=True)
+
     # Initialize schemas — routing_logs must exist first (tenant_schema ALTERs it)
     routing_sql = SqlLoader()
     await execute_schema(pool, routing_sql.schema())

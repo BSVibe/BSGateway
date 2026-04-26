@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from litellm.caching.dual_cache import DualCache
     from litellm.proxy._types import UserAPIKeyAuth
 
+    from bsgateway.core.cache import CacheManager
+
 logger = structlog.get_logger(__name__)
 
 # Lazy import to avoid circular dependency with litellm
@@ -200,9 +202,14 @@ class BSGatewayRouter:
         self,
         config: RoutingConfig | None = None,
         classifier: ClassifierProtocol | None = None,
+        cache: CacheManager | None = None,
     ) -> None:
         self.config = config or load_routing_config()
-        self.classifier = classifier or create_classifier(self.config)
+        # When ``classifier`` is supplied directly we skip the factory entirely
+        # so existing tests that inject a stub keep working. When ``cache`` is
+        # provided alongside the default classifier path the static classifier
+        # is wrapped in a Redis-backed CachingClassifier (Sprint 3 / S3-3).
+        self.classifier = classifier or create_classifier(self.config, cache=cache)
         self._tier_map = {t.name: t for t in self.config.tiers}
         self._background_tasks: set[asyncio.Task] = set()
 
@@ -532,6 +539,48 @@ class BSGatewayRouter:
         if self.config.tiers:
             return self.config.tiers[0].model
         return "gpt-4o-mini"
+
+    def attach_cache(self, cache: CacheManager | None) -> None:
+        """Wire a Redis-backed cache into the static classifier (S3-3).
+
+        ``proxy_handler_instance`` is built at module import time, before
+        the FastAPI lifespan has had a chance to spin up Redis. Once the
+        ``CacheManager`` is available the API lifespan calls this method
+        so the static classifier gets transparently replaced by a
+        :class:`CachingClassifier`.
+
+        Idempotent — calling with ``cache=None`` (Redis disabled) leaves
+        the existing classifier alone. Wrapping is only applied when the
+        router's current classifier is a bare :class:`StaticClassifier`;
+        the LLM and ML strategies are intentionally not cached because
+        their outputs are non-deterministic / already memoised.
+        """
+        if cache is None:
+            return
+
+        from bsgateway.routing.cache_classifier import (
+            CachingClassifier,
+            classifier_cache_ttl,
+        )
+        from bsgateway.routing.classifiers.static import StaticClassifier
+
+        if isinstance(self.classifier, CachingClassifier):
+            return  # already wrapped — idempotent
+
+        if not isinstance(self.classifier, StaticClassifier):
+            logger.info(
+                "classifier_cache_skipped",
+                reason="classifier_not_static",
+                classifier_type=type(self.classifier).__name__,
+            )
+            return
+
+        ttl = classifier_cache_ttl()
+        self.classifier = CachingClassifier(self.classifier, cache, ttl=ttl)
+        logger.info(
+            "classifier_cache_attached",
+            ttl_seconds=int(ttl.total_seconds()),
+        )
 
     async def aclose(self) -> None:
         """Release any resources held by the router (audit issue H15).
