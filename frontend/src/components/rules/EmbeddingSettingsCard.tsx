@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useEffect, useState } from 'react';
 import { routesApi } from '../../api/routes';
 import type { EmbeddingSettings } from '../../types/api';

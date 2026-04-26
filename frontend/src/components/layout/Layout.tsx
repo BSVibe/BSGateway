@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+'use client';
+
+import { useState, type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { HelpButton } from '../help/HelpButton';
 
@@ -7,9 +8,10 @@ interface LayoutProps {
   onLogout?: () => void;
   tenantSlug?: string | null;
   tenantName?: string | null;
+  children: ReactNode;
 }
 
-export function Layout({ onLogout, tenantSlug, tenantName }: LayoutProps) {
+export function Layout({ onLogout, tenantSlug, tenantName, children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -31,7 +33,7 @@ export function Layout({ onLogout, tenantSlug, tenantName }: LayoutProps) {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <Outlet />
+        {children}
       </main>
       <HelpButton />
     </div>

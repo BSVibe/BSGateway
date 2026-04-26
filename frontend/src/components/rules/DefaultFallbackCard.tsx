@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 import { routesApi } from '../../api/routes';
 import type { RouteCard as RouteCardType } from '../../api/routes';

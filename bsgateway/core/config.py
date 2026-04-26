@@ -26,6 +26,26 @@ class Settings(BaseSettings):
     bsvibe_auth_url: str = "https://auth.bsvibe.dev"
     encryption_key: str = ""  # 32-byte hex string for AES-256-GCM
 
+    # ----------------------------------------------------------------------
+    # Phase 0 P0.7 — service-account credentials for minting BSupervisor JWTs.
+    # ----------------------------------------------------------------------
+    # Long-lived BSVibe-Auth user access token for a dedicated service
+    # account user (admin/owner of the tenant below). Generated out-of-band
+    # via the BSVibe-Auth admin console; rotated quarterly.
+    bsvibe_service_account_token: str = ""
+    # Tenant the service-account user is operating on behalf of.
+    bsvibe_service_account_tenant_id: str = ""
+
+    # ----------------------------------------------------------------------
+    # Phase 0 P0.7 — BSupervisor preflight integration.
+    # ----------------------------------------------------------------------
+    bsupervisor_url: str = ""
+    bsupervisor_audit_enabled: bool = False
+    bsupervisor_audit_timeout_ms: int = 200
+    # "open" → fail-open (default, matches BSNexus's pre-cutover behaviour);
+    # "closed" → block runs when BSupervisor is unreachable.
+    bsupervisor_audit_fail_mode: str = "open"
+
     # CORS (comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com")
     cors_allowed_origins: str = ""
 

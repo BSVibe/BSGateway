@@ -1,3 +1,5 @@
+'use client';
+
 import { useApi } from '../hooks/useApi';
 import { useForm } from '../hooks/useForm';
 import { useDeleteConfirm } from '../hooks/useDeleteConfirm';

@@ -338,6 +338,7 @@ dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "bsvibe-auth", extra = ["fastapi"] },
+    { name = "bsvibe-authz" },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -364,6 +365,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "bsvibe-auth", extras = ["fastapi"], git = "https://github.com/BSVibe/BSVibe-Auth.git?subdirectory=python&rev=v0.4.0" },
+    { name = "bsvibe-authz", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=feat%2Fbsvibe-authz-impl" },
     { name = "cryptography", specifier = ">=42.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -395,6 +397,19 @@ dependencies = [
 [package.optional-dependencies]
 fastapi = [
     { name = "fastapi" },
+]
+
+[[package]]
+name = "bsvibe-authz"
+version = "0.1.0"
+source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=feat%2Fbsvibe-authz-impl#faff9e171aa8e60750cd9354a4918bf9c6cd259b" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyjwt", extra = ["crypto"] },
+    { name = "structlog" },
 ]
 
 [[package]]

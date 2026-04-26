@@ -203,6 +203,7 @@ class BSGatewayRouter:
         config: RoutingConfig | None = None,
         classifier: ClassifierProtocol | None = None,
         cache: CacheManager | None = None,
+        supervisor: object | None = None,
     ) -> None:
         self.config = config or load_routing_config()
         # When ``classifier`` is supplied directly we skip the factory entirely
@@ -212,6 +213,9 @@ class BSGatewayRouter:
         self.classifier = classifier or create_classifier(self.config, cache=cache)
         self._tier_map = {t.name: t for t in self.config.tiers}
         self._background_tasks: set[asyncio.Task] = set()
+        # P0.7 — BSGateway absorbs run.pre/run.post. Set via ``attach_supervisor``
+        # at lifespan time so the hook stays test-friendly.
+        self.supervisor: object | None = supervisor
 
         if self.config.collector.enabled:
             from bsgateway.core.config import settings
@@ -280,7 +284,144 @@ class BSGatewayRouter:
             tier=decision.tier,
         )
 
+        # P0.7 — BSupervisor preflight. Only fires when both:
+        #   * a BSupervisor client is attached (tests pass None for hook
+        #     unit tests; production lifespan wires the real client), AND
+        #   * the inbound request carries a run_id BSNexus owns. Pure
+        #     proxy traffic gets no precheck (nothing to correlate with).
+        if self.supervisor is not None:
+            await self._maybe_run_preflight(metadata, resolved_model=decision.resolved_model)
+
         return data
+
+    async def _maybe_run_preflight(
+        self,
+        metadata: dict,
+        *,
+        resolved_model: str,
+    ) -> None:
+        """Call BSupervisor /api/events run.pre and abort the LLM call on deny."""
+        from bsgateway.supervisor.client import RunMetadata
+
+        run_meta = RunMetadata.from_request_metadata(metadata, resolved_model=resolved_model)
+        if run_meta is None:
+            # No run_id / tenant_id → no audit event to emit.
+            return
+
+        result = await self.supervisor.run_pre(run_meta)  # type: ignore[union-attr]
+        if not result.blocked:
+            return
+
+        # Block: surface the verdict via a litellm-aware exception so
+        # downstream error mapping (`chat_completions` returns 400) keeps
+        # working. We use the LiteLLM-native BadRequestError when present
+        # and fall back to a typed ValueError so tests that don't import
+        # litellm still see a clean abort.
+        reason = result.reason or "blocked by BSupervisor policy"
+        try:
+            from litellm.exceptions import BadRequestError  # type: ignore[import-not-found]
+        except Exception:  # pragma: no cover - exercised only if litellm absent
+            raise PermissionError(f"BSupervisor denied request: {reason}") from None
+        raise BadRequestError(
+            message=f"BSupervisor denied request: {reason}",
+            model=resolved_model,
+            llm_provider="bsgateway",
+        )
+
+    async def async_log_success_event(
+        self,
+        kwargs: dict,
+        response_obj: object,
+        start_time: float,
+        end_time: float,
+    ) -> None:
+        """LiteLLM CustomLogger hook — fires after a successful provider call.
+
+        We use this entry point to emit BSupervisor run.post fire-and-forget
+        so a slow supervisor never delays the user's response.
+        """
+        if self.supervisor is None:
+            return
+        await self._emit_run_post(
+            kwargs,
+            status_value="success",
+            start_time=start_time,
+            end_time=end_time,
+            response_obj=response_obj,
+        )
+
+    async def async_log_failure_event(
+        self,
+        kwargs: dict,
+        response_obj: object,
+        start_time: float,
+        end_time: float,
+    ) -> None:
+        """LiteLLM CustomLogger hook — fires after a failed provider call."""
+        if self.supervisor is None:
+            return
+        await self._emit_run_post(
+            kwargs,
+            status_value="error",
+            start_time=start_time,
+            end_time=end_time,
+            error=str(response_obj) if response_obj is not None else None,
+        )
+
+    async def _emit_run_post(
+        self,
+        kwargs: dict,
+        *,
+        status_value: str,
+        start_time: float,
+        end_time: float,
+        response_obj: object | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Schedule a fire-and-forget BSupervisor run.post call.
+
+        ``run.post`` is best-effort: errors are swallowed inside
+        :meth:`BSupervisorClient.run_post`, but we additionally guard
+        the construction phase so an unexpected payload shape never
+        bubbles up to LiteLLM.
+        """
+        from bsgateway.supervisor.client import RunMetadata
+
+        try:
+            metadata = kwargs.get("metadata") or {}
+            resolved_model = kwargs.get("model")
+            run_meta = RunMetadata.from_request_metadata(metadata, resolved_model=resolved_model)
+            if run_meta is None:
+                return
+
+            tokens_in: int | None = None
+            tokens_out: int | None = None
+            if response_obj is not None:
+                usage = getattr(response_obj, "usage", None)
+                if usage is not None:
+                    tokens_in = getattr(usage, "prompt_tokens", None)
+                    tokens_out = getattr(usage, "completion_tokens", None)
+
+            duration_ms: int | None = None
+            try:
+                duration_ms = max(0, int((end_time - start_time) * 1000))
+            except (TypeError, ValueError):
+                duration_ms = None
+
+            task = asyncio.create_task(
+                self.supervisor.run_post(  # type: ignore[union-attr]
+                    run_meta,
+                    status=status_value,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    duration_ms=duration_ms,
+                    error=error,
+                ),
+            )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+        except Exception as exc:
+            logger.warning("supervisor_run_post_schedule_failed", error=str(exc))
 
     async def _route(
         self,
@@ -539,6 +680,16 @@ class BSGatewayRouter:
         if self.config.tiers:
             return self.config.tiers[0].model
         return "gpt-4o-mini"
+
+    def attach_supervisor(self, supervisor: object | None) -> None:
+        """Wire a :class:`BSupervisorClient` into the hook (P0.7).
+
+        Idempotent — passing ``None`` leaves any previously attached client
+        in place so the lifespan can be re-run in tests.
+        """
+        if supervisor is None:
+            return
+        self.supervisor = supervisor
 
     def attach_cache(self, cache: CacheManager | None) -> None:
         """Wire a Redis-backed cache into the static classifier (S3-3).

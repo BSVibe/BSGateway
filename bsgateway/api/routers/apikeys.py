@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Request, status
 from bsgateway.api.deps import (
     GatewayAuthContext,
     get_pool,
+    require_permission,
     require_tenant_access,
 )
 from bsgateway.apikey.models import (
@@ -35,6 +36,7 @@ async def create_api_key(
     body: ApiKeyCreate,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _allowed: None = Depends(require_permission("bsgateway.api-keys.create")),
 ) -> ApiKeyCreatedResponse:
     svc = _get_apikey_service(request)
     result = await svc.create_key(
@@ -55,6 +57,7 @@ async def list_api_keys(
     tenant_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _allowed: None = Depends(require_permission("bsgateway.api-keys.read")),
 ) -> list[ApiKeyInfoResponse]:
     svc = _get_apikey_service(request)
     keys = await svc.list_keys(tenant_id)
@@ -71,6 +74,7 @@ async def revoke_api_key(
     key_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _allowed: None = Depends(require_permission("bsgateway.api-keys.delete")),
 ) -> None:
     svc = _get_apikey_service(request)
     await svc.revoke_key(key_id, tenant_id)

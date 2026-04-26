@@ -1,3 +1,5 @@
+'use client';
+
 interface HelpEntry {
   title: string;
   description: string;

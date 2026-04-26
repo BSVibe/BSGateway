@@ -88,6 +88,54 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.warning("classifier_cache_attach_failed", exc_info=True)
 
+    # Phase 0 P0.7 — attach BSupervisor client so the LiteLLM proxy hook
+    # can fire run.pre/run.post directly. We only attach when the
+    # operator opts in (``bsupervisor_audit_enabled``) and the
+    # service-account credential is provisioned.
+    app.state.bsupervisor_client = None
+    app.state.bsupervisor_token_minter = None
+    if (
+        settings.bsupervisor_audit_enabled
+        and settings.bsupervisor_url
+        and settings.bsvibe_service_account_token
+        and settings.bsvibe_service_account_tenant_id
+    ):
+        try:
+            from bsgateway.routing.hook import proxy_handler_instance
+            from bsgateway.supervisor import (
+                BSupervisorClient,
+                ServiceTokenMinter,
+            )
+
+            minter = ServiceTokenMinter(
+                auth_url=settings.bsvibe_auth_url,
+                service_account_token=settings.bsvibe_service_account_token,
+                service_account_tenant_id=settings.bsvibe_service_account_tenant_id,
+                audience="bsupervisor",
+                scope=["bsupervisor.events"],
+            )
+            client = BSupervisorClient(
+                base_url=settings.bsupervisor_url,
+                token_minter=minter,
+                timeout_ms=settings.bsupervisor_audit_timeout_ms,
+                fail_mode=settings.bsupervisor_audit_fail_mode,
+            )
+            proxy_handler_instance.attach_supervisor(client)
+            app.state.bsupervisor_client = client
+            app.state.bsupervisor_token_minter = minter
+            logger.info(
+                "bsupervisor_attached",
+                fail_mode=settings.bsupervisor_audit_fail_mode,
+                timeout_ms=settings.bsupervisor_audit_timeout_ms,
+            )
+        except Exception:
+            logger.warning("bsupervisor_attach_failed", exc_info=True)
+    else:
+        logger.info(
+            "bsupervisor_disabled",
+            reason="bsupervisor_audit_enabled=False or credentials missing",
+        )
+
     # Initialize schemas — routing_logs must exist first (tenant_schema ALTERs it)
     routing_sql = SqlLoader()
     await execute_schema(pool, routing_sql.schema())

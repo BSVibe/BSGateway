@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { rulesApi } from '../api/rules';

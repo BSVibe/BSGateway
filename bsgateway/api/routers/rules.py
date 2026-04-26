@@ -11,6 +11,7 @@ from bsgateway.api.deps import (
     get_audit_service,
     get_cache,
     get_pool,
+    require_permission,
     require_tenant_access,
 )
 from bsgateway.core.exceptions import DuplicateError
@@ -136,6 +137,7 @@ async def create_rule(
     # Intentionally uses require_tenant_access (not require_admin) so that
     # tenant members can manage their own rules without superadmin privilege.
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _allowed: None = Depends(require_permission("bsgateway.routes.create")),
 ) -> RuleResponse:
     await _validate_target_model(request, tenant_id, body.target_model)
     repo = _get_repo(request)
@@ -338,6 +340,7 @@ async def list_rules(
     tenant_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _allowed: None = Depends(require_permission("bsgateway.routes.read")),
 ) -> list[RuleResponse]:
     repo = _get_repo(request)
     rows = await repo.list_rules(tenant_id)

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, setOnUnauthorized, resetLogoutFlag } from '../api/client';
 
-const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.bsvibe.dev';
+const AUTH_URL =
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_AUTH_URL) ||
+  'https://auth.bsvibe.dev';
 const TENANT_NAME_KEY = 'bsvibe_tenant_name';
 const STORED_TOKEN_KEY = 'bsgateway_access_token';
 const STORED_REFRESH_KEY = 'bsgateway_refresh_token';

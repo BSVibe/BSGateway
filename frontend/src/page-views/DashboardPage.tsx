@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useEffect, useState } from 'react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { rulesApi } from '../api/rules';

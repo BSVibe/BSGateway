@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useCallback } from 'react';
 import { tenantsApi } from '../api/tenants';
 import { executorsApi } from '../api/executors';

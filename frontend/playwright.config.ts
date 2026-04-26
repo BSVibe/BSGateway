@@ -19,9 +19,10 @@ export default defineConfig({
     },
   ],
   webServer: {
+    // Was `vite --port 5173`; now `next dev -p 5173`. Test surface is unchanged.
     command: 'npm run dev',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    timeout: 60_000,
   },
 });

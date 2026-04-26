@@ -1,15 +1,64 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 import asyncpg
 import structlog
+from bsvibe_authz import (
+    CurrentUser as _AuthzCurrentUser,
+)
+from bsvibe_authz import (
+    ServiceKey as _AuthzServiceKey,
+)
+from bsvibe_authz import (
+    ServiceKeyAuth as _AuthzServiceKeyAuth,
+)
+from bsvibe_authz import (
+    get_active_tenant_id as _authz_get_active_tenant_id,
+)
+from bsvibe_authz import (
+    get_current_user as _authz_get_current_user,
+)
+from bsvibe_authz import (
+    require_permission as _authz_require_permission,
+)
 from fastapi import Depends, HTTPException, Request, status
 
 from bsgateway.apikey.service import API_KEY_PREFIX
 from bsgateway.core.cache import CacheManager
+
+# Re-exports so route modules import bsvibe-authz primitives from a
+# single place (Phase 0 P0.5 — see Lockin §3 #7).
+CurrentUser = _AuthzCurrentUser
+ServiceKey = _AuthzServiceKey
+ServiceKeyAuth = _AuthzServiceKeyAuth
+get_current_user = _authz_get_current_user
+get_active_tenant_id = _authz_get_active_tenant_id
+
+
+def require_permission(
+    permission: str,
+    *,
+    resource_type: str | None = None,
+    resource_id_param: str | None = None,
+) -> Callable[..., Awaitable[None]]:
+    """Wrap ``bsvibe_authz.require_permission`` and tag the closure.
+
+    The tag (``_bsvibe_permission``) lets the BSGateway authz route-matrix
+    test (`test_authz_route_matrix.py`) introspect which permission a
+    route enforces without depending on closure internals.
+    """
+    dep = _authz_require_permission(
+        permission,
+        resource_type=resource_type,
+        resource_id_param=resource_id_param,
+    )
+    dep._bsvibe_permission = permission  # type: ignore[attr-defined]
+    return dep
+
 
 if TYPE_CHECKING:
     from bsgateway.audit.service import AuditService

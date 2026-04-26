@@ -17,9 +17,9 @@ COPY pyproject.toml uv.lock* gateway.yaml ./
 COPY bsgateway/ ./bsgateway/
 RUN uv pip install --system --compile-bytecode --no-cache .
 
-# Build frontend
+# Build frontend (Next.js 15 static export → frontend/dist)
 COPY frontend/ ./frontend/
-RUN npm install -g pnpm && cd frontend && CI=true pnpm install --frozen-lockfile && pnpm build
+RUN cd frontend && CI=true npm ci && npm run build
 
 # Runtime stage
 FROM python:3.11-slim

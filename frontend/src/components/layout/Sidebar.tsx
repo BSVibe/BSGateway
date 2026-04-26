@@ -1,4 +1,7 @@
-import { Link, useLocation } from 'react-router-dom';
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: 'dashboard' },
@@ -19,7 +22,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: SidebarProps) {
-  const location = useLocation();
+  const pathname = usePathname() ?? '/';
 
   return (
     <>
@@ -55,12 +58,12 @@ export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: S
         {navItems.map((item) => {
           const isActive =
             item.path === '/'
-              ? location.pathname === '/'
-              : location.pathname.startsWith(item.path);
+              ? pathname === '/'
+              : pathname.startsWith(item.path);
           return (
             <Link
               key={item.path}
-              to={item.path}
+              href={item.path}
               onClick={onClose}
               className={`flex items-center gap-3 px-4 py-3 rounded text-sm transition-all duration-200 ${
                 isActive
