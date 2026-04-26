@@ -98,6 +98,11 @@ class ApiKeyService:
             expected = _b64decode(hash_b64)
         except (ValueError, base64.binascii.Error):
             return False
+        # Reject malformed entries with empty salt/hash bytes BEFORE calling
+        # pbkdf2_hmac (which raises ValueError on dklen=0). Empty components
+        # cannot represent a real key derivation under any policy.
+        if not salt or not expected:
+            return False
         derived = hashlib.pbkdf2_hmac(
             "sha256", raw_key.encode("utf-8"), salt, iterations, len(expected)
         )
