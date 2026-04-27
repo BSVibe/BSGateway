@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { rulesApi } from '../api/rules';
 import { auditApi } from '../api/audit';
@@ -49,14 +50,17 @@ const StatCard = ({ stat }: { stat: Stat }) => (
   </div>
 );
 
-function formatRelativeTime(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+function useFormatRelativeTime() {
+  const { t } = useTranslation();
+  return (isoStr: string): string => {
+    const diff = Date.now() - new Date(isoStr).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return t('dashboard.time.justNow');
+    if (m < 60) return t('dashboard.time.minutesAgo', { count: m });
+    const h = Math.floor(m / 60);
+    if (h < 24) return t('dashboard.time.hoursAgo', { count: h });
+    return t('dashboard.time.daysAgo', { count: Math.floor(h / 24) });
+  };
 }
 
 function formatModel(name: string): string {
@@ -66,6 +70,8 @@ function formatModel(name: string): string {
 const MODEL_COLORS = ['#f59e0b', '#d97706', '#b45309', '#8fd5ff', '#534434'];
 
 export function DashboardPage() {
+  const { t } = useTranslation();
+  const formatRelativeTime = useFormatRelativeTime();
   const { tenantId, tenantName } = useAuth();
   const tid = tenantId || '';
   const [stats, setStats] = useState<Stat[]>([]);
@@ -91,35 +97,35 @@ export function DashboardPage() {
 
       setStats([
         {
-          label: 'Total Requests',
+          label: t('dashboard.stats.totalRequests'),
           value: totalRequests.toLocaleString(),
-          subtext: totalRequests > 0 ? 'last 7 days' : undefined,
+          subtext: totalRequests > 0 ? t('dashboard.stats.last7Days') : undefined,
           accent: true,
           icon: 'trending_up',
           bgIcon: 'database',
         },
         {
-          label: 'Total Tokens',
+          label: t('dashboard.stats.totalTokens'),
           value: totalTokens > 1_000_000
             ? `${(totalTokens / 1_000_000).toFixed(1)}M`
             : totalTokens > 1_000
             ? `${(totalTokens / 1_000).toFixed(1)}K`
             : totalTokens.toString(),
-          subtext: 'processed this week',
+          subtext: t('dashboard.stats.processedThisWeek'),
           icon: 'trending_up',
           bgIcon: 'payments',
         },
         {
-          label: 'Active Rules',
+          label: t('dashboard.stats.activeRules'),
           value: ruleCount,
-          subtext: 'routing policies',
+          subtext: t('dashboard.stats.routingPolicies'),
           icon: 'check_circle',
           bgIcon: 'speed',
         },
         {
-          label: 'Avg Latency',
+          label: t('dashboard.stats.avgLatency'),
           value: '\u2014',
-          subtext: 'not yet tracked',
+          subtext: t('dashboard.stats.notTracked'),
           dim: true,
           icon: 'bolt',
           bgIcon: 'memory',
@@ -143,10 +149,15 @@ export function DashboardPage() {
 
       setRecentLogs(Array.isArray(logs) ? logs : []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+      setError(err instanceof Error ? err.message : t('dashboard.loadFailed'));
     } finally {
       setLoading(false);
     }
+    // `t` is intentionally not in deps: react-i18next may rebuild the
+    // function on locale change, which would otherwise re-fire data fetch
+    // on every render and race the e2e mocks. Locale changes don't need to
+    // refetch the dashboard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid]);
 
   useEffect(() => {
@@ -161,16 +172,16 @@ export function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-on-surface">
-            {tenantName ? `${tenantName} Overview` : 'System Overview'}
+            {tenantName ? t('dashboard.tenantOverview', { tenant: tenantName }) : t('dashboard.systemOverview')}
           </h2>
-          <p className="text-on-surface-variant text-sm mt-1">Routing overview and metrics</p>
+          <p className="text-on-surface-variant text-sm mt-1">{t('dashboard.subtitle')}</p>
         </div>
         <button
           onClick={loadDashboard}
           className="flex items-center gap-2 px-4 py-2 rounded-lg border border-outline-variant/20 text-xs font-bold text-on-surface-variant hover:bg-surface-container transition-all"
         >
           <span className="material-symbols-outlined text-sm">refresh</span>
-          Refresh
+          {t('common.refresh')}
         </button>
       </div>
 
@@ -189,8 +200,8 @@ export function DashboardPage() {
         <div className="lg:col-span-8 bg-surface-container-low p-8 rounded-xl relative overflow-hidden">
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h4 className="text-lg font-bold text-on-surface">Request Volume</h4>
-              <p className="text-xs text-on-surface-variant">Live gateway traffic - last 7 days</p>
+              <h4 className="text-lg font-bold text-on-surface">{t('dashboard.requestVolume')}</h4>
+              <p className="text-xs text-on-surface-variant">{t('dashboard.requestVolumeSubtitle')}</p>
             </div>
           </div>
           {chartData.length > 0 ? (
@@ -225,7 +236,7 @@ export function DashboardPage() {
           ) : (
             <div className="h-[256px] flex flex-col items-center justify-center">
               <span className="material-symbols-outlined text-4xl text-on-surface-variant/30 mb-3">show_chart</span>
-              <p className="text-sm text-on-surface-variant">No usage data yet</p>
+              <p className="text-sm text-on-surface-variant">{t('dashboard.noUsageData')}</p>
             </div>
           )}
         </div>
@@ -233,8 +244,8 @@ export function DashboardPage() {
         {/* Model Distribution */}
         <div className="lg:col-span-4 bg-surface-container-low p-8 rounded-xl flex flex-col">
           <div className="mb-8">
-            <h4 className="text-lg font-bold text-on-surface">Model Distribution</h4>
-            <p className="text-xs text-on-surface-variant">Token usage by model</p>
+            <h4 className="text-lg font-bold text-on-surface">{t('dashboard.modelDistribution')}</h4>
+            <p className="text-xs text-on-surface-variant">{t('dashboard.modelDistributionSubtitle')}</p>
           </div>
           {modelBars.length > 0 ? (
             <div className="space-y-6 flex-1">
@@ -260,7 +271,7 @@ export function DashboardPage() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center">
               <span className="material-symbols-outlined text-4xl text-on-surface-variant/30 mb-3">bar_chart</span>
-              <p className="text-sm text-on-surface-variant">No model data yet</p>
+              <p className="text-sm text-on-surface-variant">{t('dashboard.noModelData')}</p>
             </div>
           )}
         </div>
@@ -270,8 +281,8 @@ export function DashboardPage() {
       <section className="bg-surface-container-low rounded-xl overflow-hidden">
         <div className="p-8 flex justify-between items-center">
           <div>
-            <h4 className="text-lg font-bold text-on-surface">Recent Activity</h4>
-            <p className="text-xs text-on-surface-variant">Latest audit events</p>
+            <h4 className="text-lg font-bold text-on-surface">{t('dashboard.recentActivity')}</h4>
+            <p className="text-xs text-on-surface-variant">{t('dashboard.recentActivitySubtitle')}</p>
           </div>
         </div>
         {recentLogs.length > 0 ? (
@@ -279,10 +290,10 @@ export function DashboardPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-surface-container text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
-                  <th className="px-8 py-4">Actor</th>
-                  <th className="px-8 py-4">Action</th>
-                  <th className="px-8 py-4">Resource</th>
-                  <th className="px-8 py-4 text-right">When</th>
+                  <th className="px-8 py-4">{t('dashboard.table.actor')}</th>
+                  <th className="px-8 py-4">{t('dashboard.table.action')}</th>
+                  <th className="px-8 py-4">{t('dashboard.table.resource')}</th>
+                  <th className="px-8 py-4 text-right">{t('dashboard.table.when')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
@@ -312,8 +323,8 @@ export function DashboardPage() {
         ) : (
           <div className="flex flex-col items-center justify-center py-12">
             <span className="material-symbols-outlined text-4xl text-on-surface-variant/30 mb-3">list_alt</span>
-            <p className="text-sm text-on-surface-variant">No recent activity</p>
-            <p className="text-xs text-on-surface-variant/60 mt-1">Events will appear here as you use BSGateway</p>
+            <p className="text-sm text-on-surface-variant">{t('dashboard.noActivity')}</p>
+            <p className="text-xs text-on-surface-variant/60 mt-1">{t('dashboard.noActivityHint')}</p>
           </div>
         )}
       </section>

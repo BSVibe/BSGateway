@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { routesApi } from '../../api/routes';
 import type { RouteCard as RouteCardType } from '../../api/routes';
 import type { TenantModel } from '../../types/api';
@@ -20,6 +21,7 @@ interface Props {
  * without it, every unmatched chat request returns 400.
  */
 export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState(card?.targetModel || '');
@@ -35,7 +37,7 @@ export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props)
       setSelectedModel(model);
       onChange();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save default model');
+      setError(err instanceof Error ? err.message : t('routes.default.saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -49,7 +51,7 @@ export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props)
       setSelectedModel('');
       onChange();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear default');
+      setError(err instanceof Error ? err.message : t('routes.default.clearFailed'));
     } finally {
       setBusy(false);
     }
@@ -61,21 +63,21 @@ export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props)
         <span className="material-symbols-outlined text-primary">flag</span>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-on-surface">Default fallback</span>
+            <span className="font-semibold text-on-surface">{t('routes.default.title')}</span>
             {isConfigured ? (
               <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded border border-primary/20 uppercase">
-                active
+                {t('routes.default.active')}
               </span>
             ) : (
               <span className="px-2 py-0.5 bg-error/10 text-error text-[10px] font-bold rounded border border-error/20 uppercase">
-                missing
+                {t('routes.default.missing')}
               </span>
             )}
           </div>
           <p className="text-xs text-on-surface-variant mt-1">
             {isConfigured
-              ? 'Used when no other rule matches.'
-              : 'Without a default, unmatched requests return 400. Pick a fallback model below.'}
+              ? t('routes.default.configured')
+              : t('routes.default.missingHint')}
           </p>
         </div>
       </div>
@@ -98,9 +100,9 @@ export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props)
             onClick={handleClear}
             disabled={busy}
             className="text-xs font-bold text-on-surface-variant hover:text-error transition-colors px-2"
-            title="Clear default fallback"
+            title={t('routes.default.clearTitle')}
           >
-            Clear
+            {t('routes.default.clear')}
           </button>
         )}
       </div>

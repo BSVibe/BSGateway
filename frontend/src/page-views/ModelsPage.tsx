@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { tenantsApi } from '../api/tenants';
 import { executorsApi } from '../api/executors';
 import { useAuth } from '../hooks/useAuth';
@@ -38,6 +39,7 @@ function formatTime(iso: string): string {
 }
 
 export function ModelsPage() {
+  const { t } = useTranslation();
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const { data: models, loading, error, refetch } = useApi(
@@ -58,7 +60,7 @@ export function ModelsPage() {
     submitting, createError, setCreateError, handleCreate,
   } = useForm<TenantModelCreate>({
     initialValues: INITIAL_MODEL,
-    validate: (v) => (!v.model_name.trim() || !v.litellm_model.trim()) ? 'Alias and model name are required' : null,
+    validate: (v) => (!v.model_name.trim() || !v.litellm_model.trim()) ? t('models.validation.aliasRequired') : null,
     onSubmit: async (v) => { await tenantsApi.createModel(tid, v); refetch(); },
   });
 
@@ -162,14 +164,18 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Model Registry</h2>
+          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">{t('models.title')}</h2>
           <p className="text-on-surface-variant max-w-2xl">
-            Manage and monitor deployment-ready LLMs across your distributed infrastructure.
+            {t('models.subtitle')}
             {(modelCount > 0 || workerCount > 0) && (
               <>
                 <br />
-                {modelCount} model{modelCount !== 1 ? 's' : ''} · {workerCount} worker
-                {workerCount !== 1 ? 's' : ''} registered.
+                {t('models.summary', {
+                  models: modelCount,
+                  ms: modelCount !== 1 ? 's' : '',
+                  workers: workerCount,
+                  ws: workerCount !== 1 ? 's' : '',
+                })}
               </>
             )}
           </p>
@@ -186,7 +192,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
             <span className="material-symbols-outlined text-sm">
               {showInstall ? 'close' : 'terminal'}
             </span>
-            {showInstall ? 'Hide' : 'Install Worker'}
+            {showInstall ? t('models.hide') : t('models.installWorker')}
           </button>
           <button
             onClick={() => setShowForm(!showForm)}
@@ -197,7 +203,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
             }`}
           >
             <span className="material-symbols-outlined text-sm">{showForm ? 'close' : 'add_circle'}</span>
-            {showForm ? 'Cancel' : 'Register Model'}
+            {showForm ? t('common.cancel') : t('models.registerModel')}
           </button>
         </div>
       </div>
@@ -209,11 +215,10 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
         <div className="bg-surface-container-low rounded-2xl border border-primary/20 p-8 space-y-6">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">
-              Register a Worker
+              {t('models.install.registerWorker')}
             </h3>
             <p className="text-sm text-on-surface-variant max-w-2xl">
-              Workers run Claude Code or Codex CLI on any machine, poll this gateway for tasks,
-              and report results back.
+              {t('models.install.intro')}
             </p>
           </div>
 
@@ -221,7 +226,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                Step 1 — Install Token
+                {t('models.install.step1')}
               </h4>
               {tokenStatus?.has_token && !mintedToken && (
                 <button
@@ -229,7 +234,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                   disabled={tokenBusy}
                   className="text-[10px] text-on-surface-variant/60 hover:text-red-400 disabled:opacity-50"
                 >
-                  Revoke
+                  {t('models.install.revoke')}
                 </button>
               )}
             </div>
@@ -241,11 +246,11 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                     onClick={copyToken}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary-container text-on-primary hover:brightness-110 whitespace-nowrap"
                   >
-                    {tokenCopied ? 'Copied!' : 'Copy'}
+                    {tokenCopied ? t('common.copied') : t('common.copy')}
                   </button>
                 </div>
                 <p className="text-[10px] text-yellow-400/80">
-                  ⚠ Copy this token now — it won't be shown again. Store it securely.
+                  {t('models.install.warningCopyNow')}
                 </p>
               </div>
             ) : (
@@ -256,15 +261,15 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                   className="bg-primary-container text-on-primary px-5 py-2.5 rounded-xl font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 text-sm"
                 >
                   {tokenBusy
-                    ? 'Working...'
+                    ? t('models.install.working')
                     : tokenStatus?.has_token
-                      ? 'Regenerate Token'
-                      : 'Generate Token'}
+                      ? t('models.install.regenerateToken')
+                      : t('models.install.generateToken')}
                 </button>
                 <p className="text-xs text-on-surface-variant/60">
                   {tokenStatus?.has_token
-                    ? 'A token is already minted (hidden). Regenerate to get a new one — the old one stops working.'
-                    : 'Mint a token, then paste it on the worker machine.'}
+                    ? t('models.install.tokenExists')
+                    : t('models.install.tokenMissing')}
                 </p>
               </div>
             )}
@@ -274,13 +279,13 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                Step 2 — Install &amp; Run on the Worker Machine
+                {t('models.install.step2')}
               </h4>
               <button
                 onClick={copyInstall}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant whitespace-nowrap"
               >
-                {copied ? 'Copied!' : 'Copy Snippet'}
+                {copied ? t('common.copied') : t('models.install.copySnippet')}
               </button>
             </div>
             <pre className="text-xs text-on-surface whitespace-pre-wrap font-mono bg-surface-container-highest rounded-xl p-4 overflow-x-auto">
@@ -290,9 +295,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
           <div className="flex items-start gap-2 text-xs text-on-surface-variant/80">
             <span className="material-symbols-outlined text-sm mt-0.5">info</span>
             <span>
-              The worker auto-detects available CLIs via <span className="font-mono">shutil.which</span>{' '}
-              and reports them as capabilities. First run saves a persistent token to{' '}
-              <span className="font-mono">worker/.env</span>.
+              {t('models.install.footnote')}
             </span>
           </div>
         </div>
@@ -301,15 +304,13 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
       {/* Create Form */}
       {showForm && (
         <div className="bg-surface-container-low rounded-2xl border border-primary/20 p-8 space-y-6">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Register New Model</h3>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('models.registerNewModel')}</h3>
           <p className="text-xs text-on-surface-variant/80 -mt-2">
-            This form is for LLM providers (OpenAI, Anthropic, Ollama, …). Executor
-            workers (Claude Code / Codex) auto-register as models when you run their
-            install script — use the <span className="font-bold">Install Worker</span> button above.
+            {t('models.providerNote')}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Alias</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('models.fields.alias')}</label>
               <input
                 type="text"
                 value={formData.model_name}
@@ -317,10 +318,10 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                 placeholder="gpt-4o"
                 className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20"
               />
-              <p className="text-[10px] text-on-surface-variant/60">Internal alias for routing</p>
+              <p className="text-[10px] text-on-surface-variant/60">{t('models.fields.aliasHint')}</p>
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">LiteLLM Model ID</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('models.fields.litellmModel')}</label>
               <input
                 type="text"
                 value={formData.litellm_model}
@@ -328,11 +329,11 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                 placeholder="openai/gpt-4o"
                 className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm font-mono focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20"
               />
-              <p className="text-[10px] text-on-surface-variant/60">provider/model format</p>
+              <p className="text-[10px] text-on-surface-variant/60">{t('models.fields.litellmHint')}</p>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                API Base <span className="text-on-surface-variant/40 font-normal normal-case">(optional)</span>
+                {t('models.fields.apiBase')} <span className="text-on-surface-variant/40 font-normal normal-case">{t('common.optional')}</span>
               </label>
               <input
                 type="text"
@@ -344,7 +345,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                API Key <span className="text-on-surface-variant/40 font-normal normal-case">(optional)</span>
+                {t('models.fields.apiKey')} <span className="text-on-surface-variant/40 font-normal normal-case">{t('common.optional')}</span>
               </label>
               <input
                 type="password"
@@ -360,7 +361,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
             disabled={submitting || !formData.model_name.trim() || !formData.litellm_model.trim()}
             className="bg-primary-container text-on-primary px-6 py-3 rounded-xl font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
           >
-            {submitting ? 'Registering...' : 'Register Model'}
+            {submitting ? t('models.registering') : t('models.registerModel')}
           </button>
         </div>
       )}
@@ -406,7 +407,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                   </button>
                 </div>
                 <div className="mb-6">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">Model ID</p>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t('models.card.modelId')}</p>
                   <p className="text-on-surface font-mono text-sm">{modelId || model.litellm_model}</p>
                 </div>
                 {model.api_base && (
@@ -417,7 +418,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                 {/* Sparkline — daily request counts over the last 7 days */}
                 <div
                   className="h-16 w-full flex items-end gap-1 mt-4"
-                  title="Requests per day (last 7 days)"
+                  title={t('models.workers.requestsTitle')}
                 >
                   {sparkBarsFor(model.model_name).map(({ h, active }, i) => (
                     <div
@@ -440,13 +441,13 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
       ) : (
         <div className="bg-surface-container-low rounded-2xl border border-outline-variant/5 flex flex-col items-center justify-center py-16">
           <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-4">category</span>
-          <p className="text-sm text-on-surface-variant font-medium">No models registered</p>
-          <p className="text-xs text-on-surface-variant/60 mt-1">Add a model to start routing</p>
+          <p className="text-sm text-on-surface-variant font-medium">{t('models.empty.noModels')}</p>
+          <p className="text-xs text-on-surface-variant/60 mt-1">{t('models.empty.addToStart')}</p>
           <button
             onClick={() => setShowForm(true)}
             className="mt-4 bg-primary-container text-on-primary px-6 py-3 rounded-xl font-bold hover:brightness-110 transition-all"
           >
-            Register First Model
+            {t('models.registerFirst')}
           </button>
         </div>
       )}
@@ -456,14 +457,14 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
         <div className="space-y-4 pt-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-              Executor Workers
+              {t('models.workers.header')}
             </h3>
             <button
               onClick={refetchWorkers}
               className="text-[10px] text-on-surface-variant/60 hover:text-on-surface-variant flex items-center gap-1"
             >
               <span className="material-symbols-outlined text-xs">refresh</span>
-              Refresh
+              {t('common.refresh')}
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -504,13 +505,13 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                   )}
                   {w.last_heartbeat && (
                     <p className="text-[10px] text-on-surface-variant/60 mt-3">
-                      Last heartbeat: {formatTime(w.last_heartbeat)}
+                      {t('models.workers.lastHeartbeat', { time: formatTime(w.last_heartbeat) })}
                     </p>
                   )}
                   {/* Sparkline — tasks dispatched per day (last 7 days) */}
                   <div
                     className="h-12 w-full flex items-end gap-1 mt-3"
-                    title="Tasks per day (last 7 days)"
+                    title={t('models.workers.tasksTitle')}
                   >
                     {sparkBarsFor(w.name).map(({ h, active }, i) => (
                       <div

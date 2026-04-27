@@ -1,6 +1,7 @@
 'use client';
 
 import { Component, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Layout } from './Layout';
 import { useAuth } from '../../hooks/useAuth';
 import { LoginPage } from '../../page-views/LoginPage';
@@ -21,28 +22,47 @@ class ErrorBoundary extends Component<
     if (this.state.hasError) {
       const isPage = this.props.fallback === 'page';
       return (
-        <div className={`flex items-center justify-center ${isPage ? 'min-h-[50vh]' : 'min-h-screen'} bg-surface`}>
-          <div className="text-center p-8">
-            <h1 className="text-2xl font-bold text-on-surface mb-2">Something went wrong</h1>
-            <p className="text-on-surface-variant mb-4">{this.state.message}</p>
-            <button
-              onClick={() => {
-                if (isPage) {
-                  this.setState({ hasError: false, message: '' });
-                } else if (typeof window !== 'undefined') {
-                  window.location.reload();
-                }
-              }}
-              className="bg-primary-container text-on-primary px-4 py-2 rounded-xl hover:brightness-110 font-bold"
-            >
-              {isPage ? 'Try Again' : 'Reload Page'}
-            </button>
-          </div>
-        </div>
+        <ErrorBoundaryFallback
+          isPage={isPage}
+          message={this.state.message}
+          onReset={() => this.setState({ hasError: false, message: '' })}
+        />
       );
     }
     return this.props.children;
   }
+}
+
+function ErrorBoundaryFallback({
+  isPage,
+  message,
+  onReset,
+}: {
+  isPage: boolean;
+  message: string;
+  onReset: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={`flex items-center justify-center ${isPage ? 'min-h-[50vh]' : 'min-h-screen'} bg-surface`}>
+      <div className="text-center p-8">
+        <h1 className="text-2xl font-bold text-on-surface mb-2">{t('common.somethingWrong')}</h1>
+        <p className="text-on-surface-variant mb-4">{message}</p>
+        <button
+          onClick={() => {
+            if (isPage) {
+              onReset();
+            } else if (typeof window !== 'undefined') {
+              window.location.reload();
+            }
+          }}
+          className="bg-primary-container text-on-primary px-4 py-2 rounded-xl hover:brightness-110 font-bold"
+        >
+          {isPage ? t('common.tryAgain') : t('common.reloadPage')}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function ShellInner({ children }: { children: ReactNode }) {

@@ -59,14 +59,14 @@ test.describe('Routes Page (Notion Mail-style)', () => {
   test('create modal has natural-language description textarea', async ({ page }) => {
     await page.goto('/rules');
     await page.getByRole('button', { name: /add rule/i }).first().click();
-    await expect(page.getByText(/어떤 요청을 라우팅할까요/)).toBeVisible();
-    await expect(page.getByPlaceholder(/코드 리뷰나 디버깅/)).toBeVisible();
+    await expect(page.getByText(/what requests should be routed/i)).toBeVisible();
+    await expect(page.getByPlaceholder(/code review or debugging/i)).toBeVisible();
   });
 
   test('create modal has model selector dropdown populated from models', async ({ page }) => {
     await page.goto('/rules');
     await page.getByRole('button', { name: /add rule/i }).first().click();
-    await expect(page.getByText(/어떤 모델로 보낼까요/)).toBeVisible();
+    await expect(page.getByText(/which model should they go to/i)).toBeVisible();
     const select = page.locator('select').first();
     await expect(select).toBeVisible();
     // Should contain registered model options
@@ -79,7 +79,7 @@ test.describe('Routes Page (Notion Mail-style)', () => {
     const createBtn = page.getByRole('button', { name: /^create$/i });
     await expect(createBtn).toBeDisabled();
 
-    await page.getByPlaceholder(/코드 리뷰나 디버깅/).fill('Translation requests');
+    await page.getByPlaceholder(/code review or debugging/i).fill('Translation requests');
     // First model auto-selected from MOCK_MODELS, so button should now be enabled
     await expect(createBtn).toBeEnabled();
   });
@@ -87,11 +87,11 @@ test.describe('Routes Page (Notion Mail-style)', () => {
   test('create modal has collapsible examples section', async ({ page }) => {
     await page.goto('/rules');
     await page.getByRole('button', { name: /add rule/i }).first().click();
-    await expect(page.getByText(/예시 문장 추가/)).toBeVisible();
+    await expect(page.getByText(/add example phrases/i)).toBeVisible();
     // Examples input should not be visible until expanded
-    await expect(page.getByPlaceholder(/이 코드 리뷰해줘/)).not.toBeVisible();
-    await page.getByText(/예시 문장 추가/).click();
-    await expect(page.getByPlaceholder(/이 코드 리뷰해줘/)).toBeVisible();
+    await expect(page.getByPlaceholder(/please review this code/i)).not.toBeVisible();
+    await page.getByText(/add example phrases/i).click();
+    await expect(page.getByPlaceholder(/please review this code/i)).toBeVisible();
   });
 
   test('create modal Cancel button closes the modal', async ({ page }) => {

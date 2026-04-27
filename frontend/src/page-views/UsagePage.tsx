@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
@@ -13,13 +14,13 @@ import type { UsageResponse } from '../types/api';
 
 const COLORS = ['#f59e0b', '#8fd5ff', '#d8c3ad', '#d97706', '#10b981', '#ec4899'];
 
-const PERIOD_LABELS = {
-  day: 'Today',
-  week: 'Last 7 days',
-  month: 'Last 30 days',
-};
-
 export function UsagePage() {
+  const { t } = useTranslation();
+  const PERIOD_LABELS: Record<'day' | 'week' | 'month', string> = {
+    day: t('usage.period.day'),
+    week: t('usage.period.week'),
+    month: t('usage.period.month'),
+  };
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
@@ -36,10 +37,12 @@ export function UsagePage() {
       );
       setData(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load usage data');
+      setError(err instanceof Error ? err.message : t('usage.loadFailed'));
     } finally {
       setLoading(false);
     }
+    // `t` intentionally omitted — see DashboardPage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid, period]);
 
   useEffect(() => {
@@ -78,8 +81,8 @@ export function UsagePage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
         <div>
-          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Analytics Dashboard</h2>
-          <p className="text-on-surface-variant opacity-70">Monitor performance metrics and operational costs across all active gateways.</p>
+          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">{t('usage.title')}</h2>
+          <p className="text-on-surface-variant opacity-70">{t('usage.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/15">
@@ -110,12 +113,12 @@ export function UsagePage() {
             <div className="lg:col-span-2 bg-surface-container-low rounded-[2rem] p-8 border border-outline-variant/15 relative overflow-hidden">
               <div className="flex justify-between items-start mb-12">
                 <div>
-                  <h3 className="text-lg font-bold text-on-surface mb-1">Daily Request Trend</h3>
+                  <h3 className="text-lg font-bold text-on-surface mb-1">{t('usage.cards.dailyTrend')}</h3>
                   <p className="text-sm text-on-surface-variant opacity-60">{PERIOD_LABELS[period]}</p>
                 </div>
                 <div className="text-right">
                   <div className="text-3xl font-black text-primary tracking-tighter">{totalRequests.toLocaleString()}</div>
-                  <div className="text-xs text-on-surface-variant">total requests</div>
+                  <div className="text-xs text-on-surface-variant">{t('usage.cards.totalRequests')}</div>
                 </div>
               </div>
               {dailyData.length > 0 ? (
@@ -150,7 +153,7 @@ export function UsagePage() {
               ) : (
                 <div className="h-[256px] flex flex-col items-center justify-center">
                   <span className="material-symbols-outlined text-4xl text-on-surface-variant/30 mb-3">show_chart</span>
-                  <p className="text-sm text-on-surface-variant">No daily data available</p>
+                  <p className="text-sm text-on-surface-variant">{t('usage.empty.noDailyData')}</p>
                 </div>
               )}
             </div>
@@ -158,8 +161,8 @@ export function UsagePage() {
             {/* Donut Chart: Model Distribution */}
             <div className="bg-surface-container-low rounded-[2rem] p-8 border border-outline-variant/15 flex flex-col justify-between">
               <div>
-                <h3 className="text-lg font-bold text-on-surface mb-1">Traffic by Model</h3>
-                <p className="text-sm text-on-surface-variant opacity-60">Request distribution</p>
+                <h3 className="text-lg font-bold text-on-surface mb-1">{t('usage.cards.trafficByModel')}</h3>
+                <p className="text-sm text-on-surface-variant opacity-60">{t('usage.cards.trafficByModelSubtitle')}</p>
               </div>
               {modelData.length > 0 ? (
                 <>
@@ -200,7 +203,7 @@ export function UsagePage() {
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center">
                   <span className="material-symbols-outlined text-4xl text-on-surface-variant/30 mb-3">donut_large</span>
-                  <p className="text-sm text-on-surface-variant">No model data</p>
+                  <p className="text-sm text-on-surface-variant">{t('usage.empty.noModelData')}</p>
                 </div>
               )}
             </div>
@@ -212,14 +215,14 @@ export function UsagePage() {
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <span className="material-symbols-outlined text-5xl">database</span>
               </div>
-              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">Total Requests</p>
+              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">{t('usage.cards.totalRequestsLabel')}</p>
               <h3 className="text-3xl font-extrabold tracking-tighter text-primary">{totalRequests.toLocaleString()}</h3>
             </div>
             <div className="bg-surface-container-low p-6 rounded-xl border border-outline-variant/15 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <span className="material-symbols-outlined text-5xl">token</span>
               </div>
-              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">Total Tokens</p>
+              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">{t('usage.cards.totalTokens')}</p>
               <h3 className="text-3xl font-extrabold tracking-tighter text-primary">
                 {totalTokens > 1_000_000
                   ? `${(totalTokens / 1_000_000).toFixed(2)}M`
@@ -232,7 +235,7 @@ export function UsagePage() {
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <span className="material-symbols-outlined text-5xl">model_training</span>
               </div>
-              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">Active Models</p>
+              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">{t('usage.cards.activeModels')}</p>
               <h3 className="text-3xl font-extrabold tracking-tighter text-primary">{modelCount}</h3>
             </div>
           </div>
@@ -242,8 +245,8 @@ export function UsagePage() {
             <div className="bg-surface-container-low rounded-[2rem] p-8 border border-outline-variant/15">
               <div className="flex justify-between items-center mb-10">
                 <div>
-                  <h3 className="text-lg font-bold text-on-surface mb-1">Traffic by Rule</h3>
-                  <p className="text-sm text-on-surface-variant opacity-60">Routing rule hits</p>
+                  <h3 className="text-lg font-bold text-on-surface mb-1">{t('usage.cards.trafficByRule')}</h3>
+                  <p className="text-sm text-on-surface-variant opacity-60">{t('usage.cards.trafficByRuleSubtitle')}</p>
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={240}>
@@ -266,8 +269,8 @@ export function UsagePage() {
       {!data && !loading && (
         <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/15 flex flex-col items-center justify-center py-16">
           <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-4">analytics</span>
-          <p className="text-sm text-on-surface-variant font-medium">No usage data available</p>
-          <p className="text-xs text-on-surface-variant/60 mt-1">Start routing requests to see analytics</p>
+          <p className="text-sm text-on-surface-variant font-medium">{t('usage.empty.noUsageData')}</p>
+          <p className="text-xs text-on-surface-variant/60 mt-1">{t('usage.empty.startRouting')}</p>
         </div>
       )}
     </div>

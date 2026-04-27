@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -13,6 +14,7 @@ interface AuditLogListResponse {
 }
 
 export function AuditPage() {
+  const { t } = useTranslation();
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -32,10 +34,12 @@ export function AuditPage() {
       setLogs(res.items);
       setTotal(res.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load audit logs');
+      setError(err instanceof Error ? err.message : t('audit.loadFailed'));
     } finally {
       setLoading(false);
     }
+    // `t` intentionally omitted — see DashboardPage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid, offset]);
 
   useEffect(() => {
@@ -64,8 +68,8 @@ export function AuditPage() {
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <div>
-        <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Audit Log</h2>
-        <p className="text-on-surface-variant">All admin operations and changes</p>
+        <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">{t('audit.title')}</h2>
+        <p className="text-on-surface-variant">{t('audit.subtitle')}</p>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={loadAuditLogs} />}
@@ -76,10 +80,10 @@ export function AuditPage() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-surface-container/50">
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Timestamp</th>
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Actor</th>
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Action</th>
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Resource</th>
+                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.timestamp')}</th>
+                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.actor')}</th>
+                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.action')}</th>
+                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.resource')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/5">
@@ -110,7 +114,7 @@ export function AuditPage() {
         ) : (
           <div className="flex flex-col items-center justify-center py-16">
             <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-4">receipt_long</span>
-            <p className="text-sm text-on-surface-variant">No audit logs</p>
+            <p className="text-sm text-on-surface-variant">{t('audit.empty.noLogs')}</p>
           </div>
         )}
       </div>
@@ -126,7 +130,7 @@ export function AuditPage() {
             <span className="material-symbols-outlined text-sm">chevron_left</span>
           </button>
           <span className="text-on-surface-variant text-xs font-medium">
-            {offset + 1}--{Math.min(offset + limit, total)} of {total}
+            {t('audit.pagination.range', { from: offset + 1, to: Math.min(offset + limit, total), total })}
           </span>
           <button
             onClick={() => setOffset(offset + limit)}

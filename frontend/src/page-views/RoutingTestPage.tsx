@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { rulesApi } from '../api/rules';
 import { ErrorBanner } from '../components/common/ErrorBanner';
@@ -24,6 +25,7 @@ interface TestResult {
 }
 
 export function RoutingTestPage() {
+  const { t } = useTranslation();
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const [messages, setMessages] = useState<TestMessage[]>([{ role: 'user', content: '' }]);
@@ -33,7 +35,7 @@ export function RoutingTestPage() {
 
   const handleTest = async () => {
     if (!messages[0]?.content) {
-      setError('At least one message is required');
+      setError(t('test.validation'));
       return;
     }
 
@@ -49,7 +51,7 @@ export function RoutingTestPage() {
       });
       setResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Test failed');
+      setError(err instanceof Error ? err.message : t('test.failed'));
     } finally {
       setTesting(false);
     }
@@ -59,8 +61,8 @@ export function RoutingTestPage() {
     <div className="p-8 space-y-8">
       {/* Header */}
       <div>
-        <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Routing Simulator</h2>
-        <p className="text-on-surface-variant">Test routing logic before deployment</p>
+        <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">{t('test.title')}</h2>
+        <p className="text-on-surface-variant">{t('test.subtitle')}</p>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={() => setError(null)} />}
@@ -72,15 +74,15 @@ export function RoutingTestPage() {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-on-surface flex items-center gap-2">
                 <span className="material-symbols-outlined text-amber-500">input</span>
-                Test Input
+                {t('test.input')}
               </h3>
-              <span className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">Request Context</span>
+              <span className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">{t('test.requestContext')}</span>
             </div>
 
             <div className="space-y-6 flex-1 flex flex-col">
               {/* Messages */}
               <div className="space-y-2 flex-1 flex flex-col">
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Prompt Content</label>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">{t('test.promptContent')}</label>
                 {messages.map((msg, i) => (
                   <div key={i} className="flex-1 flex flex-col">
                     <div className="flex items-center gap-2 mb-2">
@@ -113,7 +115,7 @@ export function RoutingTestPage() {
                         newMsgs[i].content = e.target.value;
                         setMessages(newMsgs);
                       }}
-                      placeholder="Paste your LLM prompt here for routing analysis..."
+                      placeholder={t('test.rolePlaceholder')}
                       className="flex-1 w-full bg-surface-container-low border-none rounded-lg p-4 text-sm font-mono text-amber-200/80 focus:ring-1 focus:ring-amber-500 min-h-[200px] border border-outline-variant/15"
                     />
                   </div>
@@ -124,7 +126,7 @@ export function RoutingTestPage() {
                   className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
                 >
                   <span className="material-symbols-outlined text-sm">add</span>
-                  Add Message
+                  {t('test.addMessage')}
                 </button>
               </div>
 
@@ -136,12 +138,12 @@ export function RoutingTestPage() {
                 {testing ? (
                   <>
                     <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
-                    Testing...
+                    {t('test.testing')}
                   </>
                 ) : (
                   <>
                     <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
-                    Run Simulation
+                    {t('test.runSimulation')}
                   </>
                 )}
               </button>
@@ -157,7 +159,7 @@ export function RoutingTestPage() {
               <div className="flex items-center justify-between mb-8 relative z-10">
                 <h3 className="text-lg font-bold text-on-surface flex items-center gap-2">
                   <span className="material-symbols-outlined text-amber-500">analytics</span>
-                  Simulation Result
+                  {t('test.result.title')}
                 </h3>
               </div>
 
@@ -165,62 +167,62 @@ export function RoutingTestPage() {
                 {/* Primary result */}
                 <div className="bg-surface-container-lowest p-6 rounded-lg border border-outline-variant/15">
                   <div className="flex justify-between items-start mb-3">
-                    <span className="text-xs text-slate-500">Routed to</span>
+                    <span className="text-xs text-slate-500">{t('test.result.routedTo')}</span>
                     {result.matched_rule ? (
                       <span className="bg-amber-500/10 text-amber-500 text-[10px] px-2 py-0.5 rounded font-bold border border-amber-500/20">
-                        MATCHED
+                        {t('test.result.matched')}
                       </span>
                     ) : (
                       <span className="bg-error/10 text-error text-[10px] px-2 py-0.5 rounded font-bold border border-error/20">
-                        NO MATCH
+                        {t('test.result.noMatch')}
                       </span>
                     )}
                   </div>
                   <div className="text-2xl font-bold text-on-surface tracking-tight font-mono">
-                    {result.target_model || '(no model selected)'}
+                    {result.target_model || t('test.result.noModelSelected')}
                   </div>
                   {result.matched_rule && (
                     <p className="mt-3 text-sm text-on-surface-variant">
-                      Matched rule: <span className="text-on-surface font-medium">{result.matched_rule.name}</span>
+                      {t('test.result.matchedRule')} <span className="text-on-surface font-medium">{result.matched_rule.name}</span>
                     </p>
                   )}
                   {typeof result.context?.classified_intent === 'string' && result.context.classified_intent && (
                     <p className="mt-1 text-sm text-on-surface-variant">
-                      Detected intent: <span className="text-amber-500 font-medium">{result.context.classified_intent}</span>
+                      {t('test.result.detectedIntent')} <span className="text-amber-500 font-medium">{result.context.classified_intent}</span>
                     </p>
                   )}
                 </div>
 
                 {/* Routing path */}
                 <div className="space-y-4">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Routing Path</h4>
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('test.result.routingPath')}</h4>
                   <div className="flex items-center justify-between px-2">
                     <div className="flex flex-col items-center gap-1">
                       <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
                         <span className="material-symbols-outlined text-xs">input</span>
                       </div>
-                      <span className="text-[9px] text-slate-500">Input</span>
+                      <span className="text-[9px] text-slate-500">{t('test.result.stepInput')}</span>
                     </div>
                     <div className="h-px flex-1 bg-gradient-to-r from-slate-700 to-amber-500/50 mx-1" />
                     <div className="flex flex-col items-center gap-1">
                       <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
                         <span className="material-symbols-outlined text-xs text-amber-500">psychology</span>
                       </div>
-                      <span className="text-[9px] text-amber-500">Classifier</span>
+                      <span className="text-[9px] text-amber-500">{t('test.result.stepClassifier')}</span>
                     </div>
                     <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-amber-500/50 mx-1" />
                     <div className="flex flex-col items-center gap-1">
                       <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
                         <span className="material-symbols-outlined text-xs text-amber-500">gavel</span>
                       </div>
-                      <span className="text-[9px] text-amber-500">Rules</span>
+                      <span className="text-[9px] text-amber-500">{t('test.result.stepRules')}</span>
                     </div>
                     <div className="h-px flex-1 bg-gradient-to-r from-amber-500/50 to-slate-700 mx-1" />
                     <div className="flex flex-col items-center gap-1">
                       <div className="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center border border-slate-700">
                         <span className="material-symbols-outlined text-xs">memory</span>
                       </div>
-                      <span className="text-[9px] text-slate-500 truncate max-w-[60px]">{result.target_model || 'None'}</span>
+                      <span className="text-[9px] text-slate-500 truncate max-w-[60px]">{result.target_model || t('test.result.stepNone')}</span>
                     </div>
                   </div>
                 </div>
@@ -229,8 +231,8 @@ export function RoutingTestPage() {
           ) : (
             <div className="bg-surface-container-high rounded-xl border border-outline-variant/15 flex flex-col items-center justify-center h-full min-h-[400px]">
               <span className="material-symbols-outlined text-5xl text-on-surface-variant/20 mb-4">terminal</span>
-              <p className="text-sm text-on-surface-variant font-medium">No test run yet</p>
-              <p className="text-xs text-on-surface-variant/60 mt-1">Configure a request and run the simulation</p>
+              <p className="text-sm text-on-surface-variant font-medium">{t('test.empty.noRun')}</p>
+              <p className="text-xs text-on-surface-variant/60 mt-1">{t('test.empty.configureRequest')}</p>
             </div>
           )}
         </section>

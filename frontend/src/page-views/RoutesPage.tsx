@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { useApi } from '../hooks/useApi';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -35,6 +36,7 @@ function CreateModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState<CreateFormData>({
     ...INITIAL_FORM,
     targetModel: models[0]?.model_name || '',
@@ -45,11 +47,11 @@ function CreateModal({
 
   const handleCreate = async () => {
     if (!formData.description.trim()) {
-      setError('Description is required');
+      setError(t('routes.modal.descriptionRequired'));
       return;
     }
     if (!formData.targetModel.trim()) {
-      setError('Target model is required');
+      setError(t('routes.modal.modelRequired'));
       return;
     }
     setSubmitting(true);
@@ -63,7 +65,7 @@ function CreateModal({
       onCreated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create rule');
+      setError(err instanceof Error ? err.message : t('routes.modal.createFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -74,9 +76,9 @@ function CreateModal({
       <div className="bg-surface-container-low w-full max-w-2xl rounded-3xl border border-outline-variant/10 shadow-2xl overflow-hidden">
         <div className="px-8 py-6 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container/30">
           <div>
-            <h3 className="text-2xl font-bold text-on-surface">Add Routing Rule</h3>
+            <h3 className="text-2xl font-bold text-on-surface">{t('routes.modal.title')}</h3>
             <p className="text-xs text-on-surface-variant uppercase tracking-widest font-bold mt-1">
-              New Rule
+              {t('routes.modal.newRule')}
             </p>
           </div>
           <button
@@ -96,12 +98,12 @@ function CreateModal({
 
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-              어떤 요청을 라우팅할까요?
+              {t('routes.modal.whichRequests')}
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="e.g. 코드 리뷰나 디버깅 관련 요청"
+              placeholder={t('routes.modal.whichRequestsPlaceholder')}
               rows={3}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/30 resize-none"
             />
@@ -109,7 +111,7 @@ function CreateModal({
 
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-              어떤 모델로 보낼까요?
+              {t('routes.modal.whichModel')}
             </label>
             {models.length > 0 ? (
               <select
@@ -125,9 +127,9 @@ function CreateModal({
               </select>
             ) : (
               <div className="bg-surface-container-highest rounded-xl p-4 text-sm text-on-surface-variant">
-                No models registered yet.{' '}
+                {t('routes.modal.noModels')}{' '}
                 <a href="/models" className="text-primary font-bold hover:underline">
-                  Register a model first
+                  {t('routes.modal.registerFirst')}
                 </a>
                 .
               </div>
@@ -143,7 +145,7 @@ function CreateModal({
               <span className="material-symbols-outlined text-sm">
                 {showExamples ? 'expand_less' : 'expand_more'}
               </span>
-              예시 문장 추가 (선택)
+              {t('routes.modal.addExamples')}
             </button>
             {showExamples && (
               <div className="space-y-2 pt-2">
@@ -157,7 +159,7 @@ function CreateModal({
                         newExamples[i] = e.target.value;
                         setFormData({ ...formData, examples: newExamples });
                       }}
-                      placeholder="e.g. '이 코드 리뷰해줘'"
+                      placeholder={t('routes.modal.examplePlaceholder')}
                       className="flex-1 bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/30"
                     />
                     {formData.examples.length > 1 && (
@@ -181,7 +183,7 @@ function CreateModal({
                   }
                   className="text-primary text-xs font-bold flex items-center gap-1 hover:text-primary/80"
                 >
-                  <span className="material-symbols-outlined text-sm">add</span> Add Example
+                  <span className="material-symbols-outlined text-sm">add</span> {t('common.addExample')}
                 </button>
               </div>
             )}
@@ -193,7 +195,7 @@ function CreateModal({
             onClick={onClose}
             className="px-6 py-3 text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleCreate}
@@ -204,7 +206,7 @@ function CreateModal({
             }
             className="px-8 py-3 bg-primary-container text-on-primary rounded-xl font-bold shadow-lg shadow-primary-container/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
           >
-            {submitting ? 'Creating...' : 'Create'}
+            {submitting ? t('common.creating') : t('common.create')}
           </button>
         </div>
       </div>
@@ -213,6 +215,7 @@ function CreateModal({
 }
 
 export function RoutesPage() {
+  const { t } = useTranslation();
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const {
@@ -268,12 +271,11 @@ export function RoutesPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">
-            Routing Rules
+            {t('routes.title')}
           </h2>
           <p className="text-on-surface-variant max-w-xl">
-            Describe what kind of requests should go to which model.
-            {allCards.length > 0 &&
-              ` ${allCards.length} rule${allCards.length !== 1 ? 's' : ''} configured.`}
+            {t('routes.subtitle')}
+            {allCards.length > 0 && ` ${t('routes.configured', { count: allCards.length })}`}
           </p>
         </div>
         <button
@@ -281,7 +283,7 @@ export function RoutesPage() {
           className="bg-primary-container text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:brightness-110 transition-all active:scale-95"
         >
           <span className="material-symbols-outlined">add_circle</span>
-          Add Rule
+          {t('routes.addRule')}
         </button>
       </div>
 
@@ -317,15 +319,15 @@ export function RoutesPage() {
               </div>
             </div>
           </div>
-          <h3 className="text-xl font-bold mb-2 text-on-surface">No routing rules yet</h3>
+          <h3 className="text-xl font-bold mb-2 text-on-surface">{t('routes.empty.title')}</h3>
           <p className="text-on-surface-variant text-center max-w-sm mb-6">
-            Describe a kind of request and pick a model — that's it.
+            {t('routes.empty.hint')}
           </p>
           <button
             onClick={() => setShowModal(true)}
             className="text-primary font-bold hover:underline"
           >
-            Create your first routing rule
+            {t('routes.empty.createFirst')}
           </button>
         </div>
       )}

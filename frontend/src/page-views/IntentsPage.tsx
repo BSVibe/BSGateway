@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from 'react-i18next';
 import { useApi } from '../hooks/useApi';
 import { useForm } from '../hooks/useForm';
 import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
@@ -19,6 +20,7 @@ interface IntentFormData {
 const INITIAL_INTENT: IntentFormData = { name: '', description: '', examples: [''], target_model: '' };
 
 export function IntentsPage() {
+  const { t } = useTranslation();
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const { data: intents, loading, error, refetch } = useApi(
@@ -31,7 +33,7 @@ export function IntentsPage() {
     submitting, createError, setCreateError, handleCreate,
   } = useForm<IntentFormData>({
     initialValues: INITIAL_INTENT,
-    validate: (v) => !v.name.trim() ? 'Name is required' : null,
+    validate: (v) => !v.name.trim() ? t('intents.form.validation') : null,
     onSubmit: async (v) => {
       await intentsApi.create(tid, { ...v, examples: v.examples.filter(e => e.trim()) });
       refetch();
@@ -46,8 +48,8 @@ export function IntentsPage() {
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Custom Intents</h2>
-          <p className="text-on-surface-variant">Define intent patterns for semantic routing.</p>
+          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">{t('intents.title')}</h2>
+          <p className="text-on-surface-variant">{t('intents.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
@@ -58,7 +60,7 @@ export function IntentsPage() {
           }`}
         >
           <span className="material-symbols-outlined text-sm">{showForm ? 'close' : 'add_circle'}</span>
-          {showForm ? 'Cancel' : 'New Intent'}
+          {showForm ? t('common.cancel') : t('intents.newIntent')}
         </button>
       </div>
 
@@ -68,27 +70,27 @@ export function IntentsPage() {
       {showForm && (
         <div className="bg-surface-container-low rounded-2xl border border-primary/20 p-8 space-y-6">
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Name</label>
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('intents.form.name')}</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="summarization"
+              placeholder={t('intents.form.namePlaceholder')}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20"
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Description</label>
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('intents.form.description')}</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Requests asking to summarize content"
+              placeholder={t('intents.form.descriptionPlaceholder')}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20 resize-none"
               rows={2}
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Examples</label>
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('intents.form.examples')}</label>
             {formData.examples.map((ex, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input
@@ -99,7 +101,7 @@ export function IntentsPage() {
                     newExamples[i] = e.target.value;
                     setFormData({ ...formData, examples: newExamples });
                   }}
-                  placeholder="e.g., 'Please summarize this...'"
+                  placeholder={t('intents.form.examplePlaceholder')}
                   className="flex-1 bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20"
                 />
                 {formData.examples.length > 1 && (
@@ -121,18 +123,18 @@ export function IntentsPage() {
               onClick={() => setFormData({ ...formData, examples: [...formData.examples, ''] })}
               className="text-primary text-xs font-bold flex items-center gap-1 hover:text-primary/80"
             >
-              <span className="material-symbols-outlined text-sm">add</span> Add Example
+              <span className="material-symbols-outlined text-sm">add</span> {t('common.addExample')}
             </button>
           </div>
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-              Target Model <span className="text-on-surface-variant/40 font-normal normal-case">(optional)</span>
+              {t('intents.form.targetModel')} <span className="text-on-surface-variant/40 font-normal normal-case">{t('common.optional')}</span>
             </label>
             <input
               type="text"
               value={formData.target_model}
               onChange={(e) => setFormData({ ...formData, target_model: e.target.value })}
-              placeholder="gpt-4o"
+              placeholder={t('intents.form.targetModelPlaceholder')}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm font-mono focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20"
             />
           </div>
@@ -141,7 +143,7 @@ export function IntentsPage() {
             disabled={submitting || !formData.name.trim() || formData.examples.every(e => !e.trim())}
             className="bg-primary-container text-on-primary px-6 py-3 rounded-xl font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
           >
-            {submitting ? 'Creating...' : 'Create Intent'}
+            {submitting ? t('common.creating') : t('intents.form.create')}
           </button>
         </div>
       )}
@@ -156,14 +158,14 @@ export function IntentsPage() {
                     <span className="font-semibold text-on-surface">{intent.name}</span>
                     {!intent.is_active && (
                       <span className="text-[10px] bg-error/15 text-error px-2 py-0.5 rounded-full font-bold">
-                        inactive
+                        {t('intents.list.inactive')}
                       </span>
                     )}
                   </div>
                   {intent.description && (
                     <p className="text-sm text-on-surface-variant mt-1">{intent.description}</p>
                   )}
-                  <p className="text-xs text-on-surface-variant/60 mt-1">threshold: {intent.threshold}</p>
+                  <p className="text-xs text-on-surface-variant/60 mt-1">{t('intents.list.threshold', { value: intent.threshold })}</p>
                 </div>
                 <button
                   onClick={() => onDelete(intent.id, () => intentsApi.delete(tid, intent.id), refetch)}
@@ -183,7 +185,7 @@ export function IntentsPage() {
         ) : (
           <div className="flex flex-col items-center justify-center py-16">
             <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-4">target</span>
-            <p className="text-sm text-on-surface-variant">No intents defined</p>
+            <p className="text-sm text-on-surface-variant">{t('intents.empty.noIntents')}</p>
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { rulesApi } from '../api/rules';
 import { useAuth } from '../hooks/useAuth';
 import { useApi } from '../hooks/useApi';
@@ -20,13 +21,14 @@ function CreateModal({
   onCreated: () => void;
   tenantId: string;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState<RuleCreate>(INITIAL_RULE);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     if (!formData.name.trim() || !formData.target_model.trim()) {
-      setError('Name and target model are required');
+      setError(t('rulesLegacy.modal.validationRequired'));
       return;
     }
     setSubmitting(true);
@@ -36,7 +38,7 @@ function CreateModal({
       onCreated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create rule');
+      setError(err instanceof Error ? err.message : t('rulesLegacy.modal.createFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -48,8 +50,8 @@ function CreateModal({
         {/* Header */}
         <div className="px-8 py-6 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container/30">
           <div>
-            <h3 className="text-2xl font-bold text-on-surface">Create Routing Rule</h3>
-            <p className="text-xs text-on-surface-variant uppercase tracking-widest font-bold mt-1">New Rule</p>
+            <h3 className="text-2xl font-bold text-on-surface">{t('rulesLegacy.modal.title')}</h3>
+            <p className="text-xs text-on-surface-variant uppercase tracking-widest font-bold mt-1">{t('rulesLegacy.modal.newRule')}</p>
           </div>
           <button
             onClick={onClose}
@@ -68,30 +70,30 @@ function CreateModal({
           )}
 
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Rule Name</label>
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('rulesLegacy.modal.ruleName')}</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. High Priority Customer Router"
+              placeholder={t('rulesLegacy.modal.ruleNamePlaceholder')}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Target Model</label>
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('rulesLegacy.modal.targetModel')}</label>
             <input
               type="text"
               value={formData.target_model}
               onChange={(e) => setFormData({ ...formData, target_model: e.target.value })}
-              placeholder="e.g. openai/gpt-4o"
+              placeholder={t('rulesLegacy.modal.targetModelPlaceholder')}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm font-mono focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/20"
             />
           </div>
 
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Execution Priority</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{t('rulesLegacy.modal.executionPriority')}</label>
               <span className="text-primary font-black px-2 py-0.5 bg-primary/10 rounded text-xs">P{formData.priority}</span>
             </div>
             <input
@@ -104,8 +106,8 @@ function CreateModal({
               className="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary"
             />
             <div className="flex justify-between text-[10px] text-on-surface-variant font-bold px-1">
-              <span>HIGHEST</span>
-              <span>LOWEST</span>
+              <span>{t('rulesLegacy.modal.highest')}</span>
+              <span>{t('rulesLegacy.modal.lowest')}</span>
             </div>
           </div>
 
@@ -120,7 +122,7 @@ function CreateModal({
                 formData.is_default ? 'right-1 bg-primary-container' : 'left-1 bg-on-surface-variant/40'
               }`} />
             </div>
-            <span className="text-sm text-on-surface">Default rule (fallback)</span>
+            <span className="text-sm text-on-surface">{t('rulesLegacy.modal.defaultRule')}</span>
           </label>
         </div>
 
@@ -130,14 +132,14 @@ function CreateModal({
             onClick={onClose}
             className="px-6 py-3 text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors"
           >
-            Discard
+            {t('common.discard')}
           </button>
           <button
             onClick={handleCreate}
             disabled={submitting || !formData.name.trim() || !formData.target_model.trim()}
             className="px-8 py-3 bg-primary-container text-on-primary rounded-xl font-bold shadow-lg shadow-primary-container/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
           >
-            {submitting ? 'Creating...' : 'Save & Deploy'}
+            {submitting ? t('common.creating') : t('rulesLegacy.modal.saveDeploy')}
           </button>
         </div>
       </div>
@@ -178,6 +180,7 @@ function StatusToggle({ rule, tenantId, onToggled }: { rule: Rule; tenantId: str
 }
 
 export function RulesPage() {
+  const { t } = useTranslation();
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const { data: rules, loading, error, refetch } = useApi(
@@ -206,10 +209,10 @@ export function RulesPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Routing Rules</h2>
+          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">{t('rulesLegacy.title')}</h2>
           <p className="text-on-surface-variant max-w-xl">
-            Configure intelligent traffic distribution based on prompt complexity, metadata, and token density.
-            {sortedRules.length > 0 && ` ${sortedRules.length} rule${sortedRules.length !== 1 ? 's' : ''} configured.`}
+            {t('rulesLegacy.subtitle')}
+            {sortedRules.length > 0 && ` ${t('rulesLegacy.configured', { count: sortedRules.length })}`}
           </p>
         </div>
         <button
@@ -217,7 +220,7 @@ export function RulesPage() {
           className="bg-primary-container text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:brightness-110 transition-all active:scale-95"
         >
           <span className="material-symbols-outlined">add_circle</span>
-          Create Rule
+          {t('rulesLegacy.createRule')}
         </button>
       </div>
 
@@ -229,11 +232,11 @@ export function RulesPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-surface-container/50">
-                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Name</th>
-                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Target Model</th>
-                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Priority</th>
-                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Status</th>
-                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold text-right">Actions</th>
+                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('rulesLegacy.table.name')}</th>
+                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('rulesLegacy.table.targetModel')}</th>
+                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('rulesLegacy.table.priority')}</th>
+                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('rulesLegacy.table.status')}</th>
+                <th className="px-6 py-4 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold text-right">{t('rulesLegacy.table.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/5">
@@ -244,13 +247,13 @@ export function RulesPage() {
                       <span className="font-semibold text-on-surface">{rule.name}</span>
                       {rule.is_default && (
                         <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded border border-primary/20 uppercase">
-                          default
+                          {t('rulesLegacy.table.defaultBadge')}
                         </span>
                       )}
                     </div>
                     {rule.conditions?.length > 0 && (
                       <p className="text-xs text-on-surface-variant mt-1 italic">
-                        {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''}
+                        {t('rulesLegacy.table.conditions', { count: rule.conditions.length })}
                       </p>
                     )}
                   </td>
@@ -303,15 +306,15 @@ export function RulesPage() {
                 </div>
               </div>
             </div>
-            <h3 className="text-xl font-bold mb-2 text-on-surface">No routing rules yet</h3>
+            <h3 className="text-xl font-bold mb-2 text-on-surface">{t('rulesLegacy.empty.title')}</h3>
             <p className="text-on-surface-variant text-center max-w-sm mb-6">
-              Create a rule to start intelligently routing your LLM requests.
+              {t('rulesLegacy.empty.hint')}
             </p>
             <button
               onClick={() => setShowModal(true)}
               className="text-primary font-bold hover:underline"
             >
-              Create First Rule
+              {t('rulesLegacy.empty.createFirst')}
             </button>
           </div>
         )}

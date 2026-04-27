@@ -2,15 +2,23 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '../common/LanguageSwitcher';
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: 'dashboard' },
-  { path: '/rules', label: 'Routing', icon: 'alt_route' },
-  { path: '/models', label: 'Models', icon: 'model_training' },
-  { path: '/test', label: 'Routing Test', icon: 'route' },
-  { path: '/usage', label: 'Analytics', icon: 'bar_chart' },
-  { path: '/api-keys', label: 'API Keys', icon: 'vpn_key' },
-  { path: '/audit', label: 'Audit Log', icon: 'receipt_long' },
+interface NavItem {
+  path: string;
+  labelKey: string;
+  icon: string;
+}
+
+const navItems: readonly NavItem[] = [
+  { path: '/', labelKey: 'nav.dashboard', icon: 'dashboard' },
+  { path: '/rules', labelKey: 'nav.rules', icon: 'alt_route' },
+  { path: '/models', labelKey: 'nav.models', icon: 'model_training' },
+  { path: '/test', labelKey: 'nav.routingTest', icon: 'route' },
+  { path: '/usage', labelKey: 'nav.usage', icon: 'bar_chart' },
+  { path: '/api-keys', labelKey: 'nav.apiKeys', icon: 'vpn_key' },
+  { path: '/audit', labelKey: 'nav.audit', icon: 'receipt_long' },
 ];
 
 interface SidebarProps {
@@ -23,6 +31,7 @@ interface SidebarProps {
 
 export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname() ?? '/';
+  const { t } = useTranslation();
 
   return (
     <>
@@ -50,7 +59,7 @@ export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: S
               {tenantName}
             </p>
           ) : (
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 mt-1">LLM Routing</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 mt-1">{t('nav.tagline')}</p>
           )}
         </div>
       </div>
@@ -74,24 +83,25 @@ export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: S
               }`}
             >
               <span className="material-symbols-outlined">{item.icon}</span>
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </Link>
           );
         })}
       </nav>
 
       {/* Footer */}
-      {onLogout && (
-        <div className="p-4 border-t border-amber-900/10">
+      <div className="p-4 border-t border-amber-900/10 space-y-3">
+        <LanguageSwitcher />
+        {onLogout && (
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded text-sm text-slate-400 hover:text-slate-200 hover:bg-[#1f1f24] transition-colors"
           >
             <span className="material-symbols-outlined">logout</span>
-            <span>Logout</span>
+            <span>{t('nav.logout')}</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </aside>
     </>
   );
