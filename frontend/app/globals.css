@@ -174,3 +174,28 @@
     outline: 1px solid rgba(83, 68, 52, 0.15);
   }
 }
+
+/* ----------------------------------------------------------------------
+ * Phase B Batch 2 — mobile-friendly responsive utilities.
+ *
+ * BSGateway already has a md:translate-x-0 / -translate-x-full sidebar
+ * pattern + md:hidden hamburger. This block adds:
+ *   - 44px tap targets (Material 3 / iOS HIG) on hamburger and aside nav
+ *   - DataTables (rules / api keys / models) wrap in `overflow-x-auto`
+ *     so horizontal scroll on narrow viewports already works structurally
+ *   - Preserves output: 'export' + FastAPI mount path (unchanged)
+ * ---------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  aside nav a {
+    min-height: 44px;
+  }
+  button[aria-label="Open navigation"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Tighter container padding so DataTable / cards have breathing room. */
+  main > div {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}

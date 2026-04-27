@@ -29,8 +29,10 @@ export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: S
       {/* Backdrop - mobile only */}
       {isOpen && (
         <div
+          data-testid="bsgateway-sidebar-backdrop"
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={onClose}
+          role="presentation"
         />
       )}
     <aside className={`fixed left-0 top-0 h-screen w-64 bg-[#121317] flex flex-col z-50 transform transition-transform duration-200 ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
