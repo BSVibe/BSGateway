@@ -66,7 +66,9 @@ function ErrorBoundaryFallback({
 }
 
 function ShellInner({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading, tenantId, tenantName, logout } = useAuth();
+  const { isAuthenticated, isLoading, tenantId, tenantName, logout } = useAuth({
+    probeRemoteSession: false,
+  });
 
   if (isLoading) {
     return (

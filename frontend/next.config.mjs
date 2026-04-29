@@ -10,6 +10,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: ['bsserver'],
+  devIndicators: false,
   // Pin tracing root to the frontend directory so the parent repo is not
   // inferred as the workspace root during static export builds.
   outputFileTracingRoot: __dirname,

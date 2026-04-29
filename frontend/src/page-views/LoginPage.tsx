@@ -16,7 +16,7 @@ const features: readonly FeatureKey[] = [
 
 export function LoginPage() {
   const { t } = useTranslation();
-  const { login, signup } = useAuth();
+  const { login, signup } = useAuth({ probeRemoteSession: false });
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-surface px-4 relative overflow-hidden">
@@ -86,7 +86,7 @@ export function LoginPage() {
           {t('login.noAccount')}{' '}
           <button
             onClick={signup}
-            className="text-amber-500 hover:text-amber-400 font-medium transition-colors"
+            className="inline-flex min-h-11 items-center text-amber-500 hover:text-amber-400 font-medium transition-colors"
           >
             {t('login.signUp')}
           </button>

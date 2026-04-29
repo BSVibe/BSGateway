@@ -16,6 +16,10 @@ interface SessionResponse {
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
+interface AccessTokenOptions {
+  probeRemoteSession?: boolean;
+}
+
 function decodeJwt(token: string): Record<string, unknown> {
   const parts = token.split('.');
   let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -54,7 +58,9 @@ function consumeHashTokens(): string | null {
   return access;
 }
 
-export async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken({
+  probeRemoteSession = true,
+}: AccessTokenOptions = {}): Promise<string | null> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 30_000) {
     return cachedToken.value;
   }
@@ -69,6 +75,10 @@ export async function getAccessToken(): Promise<string | null> {
   const stored = typeof window !== 'undefined' ? localStorage.getItem(STORED_TOKEN_KEY) : null;
   if (stored && !isExpired(stored)) {
     return stored;
+  }
+
+  if (!probeRemoteSession) {
+    return null;
   }
 
   // 3. Cookie-based session (works only on *.bsvibe.dev origins)
@@ -138,13 +148,15 @@ function readInitialState(): AuthState {
   };
 }
 
-export function useAuth() {
+export function useAuth({
+  probeRemoteSession = true,
+}: AccessTokenOptions = {}) {
   const [state, setState] = useState<AuthState>(readInitialState);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const token = await getAccessToken();
+      const token = await getAccessToken({ probeRemoteSession });
       if (cancelled) return;
       if (!token) {
         setState((prev) => ({ ...prev, isLoading: false }));
@@ -162,7 +174,7 @@ export function useAuth() {
       });
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [probeRemoteSession]);
 
   // Fetch tenant name on first auth
   useEffect(() => {
