@@ -1,6 +1,6 @@
 'use client';
 
-import { Component, type ReactNode } from 'react';
+import { Component, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Layout } from './Layout';
 import { useAuth } from '../../hooks/useAuth';
@@ -66,11 +66,16 @@ function ErrorBoundaryFallback({
 }
 
 function ShellInner({ children }: { children: ReactNode }) {
+  const hasMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const { isAuthenticated, isLoading, tenantId, tenantName, logout } = useAuth({
     probeRemoteSession: false,
   });
 
-  if (isLoading) {
+  if (!hasMounted || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />

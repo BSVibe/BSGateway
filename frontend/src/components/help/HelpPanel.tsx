@@ -77,7 +77,7 @@ export function HelpPanel({ open, onClose }: HelpPanelProps) {
           <h2 className="text-lg font-semibold text-amber-500">{t('help.title')}</h2>
           <button
             onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-50"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:bg-gray-800 hover:text-gray-50"
             aria-label={t('help.close')}
           >
             <svg
@@ -135,7 +135,7 @@ export function HelpPanel({ open, onClose }: HelpPanelProps) {
               <li key={path}>
                 <a
                   href={path}
-                  className={`block rounded px-3 py-2 text-sm transition-colors ${
+                  className={`block min-h-11 rounded px-3 py-2.5 text-sm transition-colors ${
                     pathname.startsWith(path)
                       ? 'bg-amber-500/10 text-amber-500'
                       : 'text-gray-300 hover:bg-gray-800 hover:text-gray-50'

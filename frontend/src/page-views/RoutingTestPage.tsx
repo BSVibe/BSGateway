@@ -93,7 +93,7 @@ export function RoutingTestPage() {
                           newMsgs[i].role = e.target.value as 'user' | 'assistant' | 'system';
                           setMessages(newMsgs);
                         }}
-                        className="text-xs bg-surface-container-low border border-outline-variant/15 rounded px-2 py-1 font-medium text-on-surface"
+                        className="min-h-10 text-xs bg-surface-container-low border border-outline-variant/15 rounded px-3 py-1 font-medium text-on-surface"
                       >
                         <option value="user">user</option>
                         <option value="assistant">assistant</option>
@@ -102,7 +102,7 @@ export function RoutingTestPage() {
                       {messages.length > 1 && (
                         <button
                           onClick={() => setMessages(messages.filter((_, j) => j !== i))}
-                          className="text-on-surface-variant hover:text-error transition-colors"
+                          className="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-on-surface-variant hover:bg-surface-container-high hover:text-error transition-colors"
                         >
                           <span className="material-symbols-outlined text-sm">close</span>
                         </button>
@@ -123,7 +123,7 @@ export function RoutingTestPage() {
                 <button
                   type="button"
                   onClick={() => setMessages([...messages, { role: 'user', content: '' }])}
-                  className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+                  className="flex min-h-11 items-center justify-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
                 >
                   <span className="material-symbols-outlined text-sm">add</span>
                   {t('test.addMessage')}

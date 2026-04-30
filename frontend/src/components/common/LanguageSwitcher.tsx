@@ -17,7 +17,7 @@ export function LanguageSwitcher() {
 
   return (
     <div
-      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-surface-container/50"
+      className="flex items-center gap-1 px-1.5 py-1.5 rounded-lg bg-surface-container/50"
       role="group"
       aria-label={t('language.label')}
     >
@@ -29,7 +29,7 @@ export function LanguageSwitcher() {
             type="button"
             onClick={() => setLocale(locale)}
             aria-pressed={active}
-            className={`px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded transition-colors ${
+            className={`min-h-10 min-w-10 px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded transition-colors ${
               active
                 ? 'bg-primary-container/30 text-on-primary-container'
                 : 'text-on-surface-variant hover:text-on-surface'

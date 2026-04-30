@@ -76,7 +76,7 @@ export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: S
               key={item.path}
               href={item.path}
               onClick={onClose}
-              className={`flex items-center gap-3 px-4 py-3 rounded text-sm transition-all duration-200 ${
+              className={`flex min-h-11 items-center gap-3 px-4 py-3 rounded text-sm transition-all duration-200 ${
                 isActive
                   ? 'text-amber-500 bg-amber-500/10 border-r-2 border-amber-500 font-semibold'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-[#1f1f24] active:scale-95'
@@ -95,7 +95,7 @@ export function Sidebar({ onLogout, tenantSlug, tenantName, isOpen, onClose }: S
         {onLogout && (
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded text-sm text-slate-400 hover:text-slate-200 hover:bg-[#1f1f24] transition-colors"
+            className="w-full flex min-h-11 items-center gap-3 px-4 py-3 rounded text-sm text-slate-400 hover:text-slate-200 hover:bg-[#1f1f24] transition-colors"
           >
             <span className="material-symbols-outlined">logout</span>
             <span>{t('nav.logout')}</span>

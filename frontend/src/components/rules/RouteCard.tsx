@@ -116,7 +116,7 @@ export function RouteCard({
         <div className="flex-1 min-w-0">
           <p className="text-on-surface text-sm leading-relaxed">{card.description}</p>
           <div className="mt-3 flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-surface-container-highest rounded-xl px-3 py-1.5">
+            <div className="flex min-h-11 items-center gap-2 bg-surface-container-highest rounded-xl px-3 py-1.5">
               <span className="material-symbols-outlined text-on-surface-variant text-sm">
                 arrow_forward
               </span>
@@ -124,7 +124,7 @@ export function RouteCard({
                 value={card.targetModel}
                 onChange={(e) => handleModelChange(e.target.value)}
                 disabled={updatingModel}
-                className="bg-transparent border-none text-xs font-mono text-on-surface focus:outline-none disabled:opacity-50 cursor-pointer"
+                className="min-h-10 bg-transparent border-none text-xs font-mono text-on-surface focus:outline-none disabled:opacity-50 cursor-pointer"
               >
                 {!models.some((m) => m.model_name === card.targetModel) && (
                   <option value={card.targetModel}>{card.targetModel}</option>
@@ -142,7 +142,7 @@ export function RouteCard({
             {card.intentId && (
               <button
                 onClick={() => setExpanded(!expanded)}
-                className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
+                className="flex min-h-10 items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
               >
                 <span className="material-symbols-outlined text-sm">
                   {expanded ? 'expand_less' : 'expand_more'}

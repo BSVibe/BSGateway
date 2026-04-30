@@ -93,7 +93,7 @@ export function UsagePage() {
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
-                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                className={`min-h-10 px-4 py-1.5 text-xs font-bold rounded-lg transition-colors ${
                   period === p
                     ? 'bg-surface-container-highest text-primary'
                     : 'text-on-surface-variant hover:text-on-surface'

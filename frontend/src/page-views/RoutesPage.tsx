@@ -327,7 +327,7 @@ export function RoutesPage() {
           </p>
           <button
             onClick={() => setShowModal(true)}
-            className="text-primary font-bold hover:underline"
+            className="inline-flex min-h-11 items-center justify-center px-4 text-primary font-bold hover:underline"
           >
             {t('routes.empty.createFirst')}
           </button>

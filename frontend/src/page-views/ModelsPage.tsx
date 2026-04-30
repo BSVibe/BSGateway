@@ -387,10 +387,10 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
                   </div>
                   <button
                     onClick={() => onDelete(model.id, () => tenantsApi.deleteModel(tid, model.id), refetch)}
-                    className={`transition-colors ${
+                    className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg transition-colors ${
                       deleting === model.id
                         ? 'text-error'
-                        : 'text-slate-500 group-hover:text-amber-500 opacity-0 group-hover:opacity-100'
+                        : 'text-slate-500 hover:bg-surface-container-highest hover:text-amber-500 md:opacity-0 md:group-hover:opacity-100'
                     }`}
                   >
                     <span className="material-symbols-outlined">
@@ -453,7 +453,7 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
             </h3>
             <button
               onClick={refetchWorkers}
-              className="text-[10px] text-on-surface-variant/60 hover:text-on-surface-variant flex items-center gap-1"
+              className="flex min-h-10 items-center gap-1 px-2 text-[10px] text-on-surface-variant/60 hover:text-on-surface-variant"
             >
               <span className="material-symbols-outlined text-xs">refresh</span>
               {t('common.refresh')}
