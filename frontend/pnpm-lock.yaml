@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@bsvibe/design-tokens':
+        specifier: ^0.2.0
+        version: 0.2.0(tailwindcss@4.2.4)
+      '@bsvibe/layout':
+        specifier: ^0.3.0
+        version: 0.3.0(next@15.5.15(@babel/core@7.29.0)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       i18next:
         specifier: ^26.0.3
         version: 26.0.8(typescript@5.9.3)
@@ -149,6 +155,27 @@ packages:
   '@babel/types@7.29.0':
     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
+
+  '@bsvibe/auth@1.0.0-alpha.0':
+    resolution: {integrity: sha512-rgh9FxidMwy6bzBU7F5gWGJlERaG/GxGHDaYOIMyg7u2t//DYxjymnXq8xSLW3EnZyWgfVlHZShJal/ftIFdDA==, tarball: https://npm.pkg.github.com/download/@bsvibe/auth/1.0.0-alpha.0/7e9b95a86dce416a6b1011c2a0ec2b38c8749844}
+    peerDependencies:
+      react: '>=19.0.0'
+      react-dom: '>=19.0.0'
+
+  '@bsvibe/design-tokens@0.2.0':
+    resolution: {integrity: sha512-R4166uzrtbIKqXVyFqc3lF759xb6lGLRmmfulswRMEI2lB1Pio1/pFaOU5RXtY4bxfap+A8PN0TQ7QsoCjXbvw==, tarball: https://npm.pkg.github.com/download/@bsvibe/design-tokens/0.2.0/711833c797b7f4202cde4d899b396512be0a6daf}
+    peerDependencies:
+      tailwindcss: '>=4.0.0'
+
+  '@bsvibe/layout@0.3.0':
+    resolution: {integrity: sha512-RelvSU+zClFZti4np4e7/znH+i+Jk5CbfPpw8BDgZE0Cl1sMmJayyAgyD4oQwYJpRd1kvMqD4Bm1phICfWdIoA==, tarball: https://npm.pkg.github.com/download/@bsvibe/layout/0.3.0/72fcc7064aa9f4735d233eb2cf7bf416cb445dc4}
+    peerDependencies:
+      next: '>=15.0.0'
+      react: '>=19.0.0'
+      react-dom: '>=19.0.0'
+
+  '@bsvibe/types@0.1.0':
+    resolution: {integrity: sha512-OQ00jWih4mDejs/XKBaWGKU5xfJnq67dPE4TZ2gE6cDZ66YPHB3DPdobPqJeh2i+J4tEt3eA83qGHmYViCaVcw==, tarball: https://npm.pkg.github.com/download/@bsvibe/types/0.1.0/5058a8504715aef5a24bf603843fc6fc20b3cf0f}
 
   '@emnapi/core@1.10.0':
     resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
@@ -2312,6 +2339,26 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
+
+  '@bsvibe/auth@1.0.0-alpha.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+    dependencies:
+      '@bsvibe/types': 0.1.0
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+
+  '@bsvibe/design-tokens@0.2.0(tailwindcss@4.2.4)':
+    dependencies:
+      tailwindcss: 4.2.4
+
+  '@bsvibe/layout@0.3.0(next@15.5.15(@babel/core@7.29.0)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+    dependencies:
+      '@bsvibe/auth': 1.0.0-alpha.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@bsvibe/types': 0.1.0
+      next: 15.5.15(@babel/core@7.29.0)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+
+  '@bsvibe/types@0.1.0': {}
 
   '@emnapi/core@1.10.0':
     dependencies:

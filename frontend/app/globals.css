@@ -116,6 +116,12 @@
 
 @layer base {
   :root {
+    /* BSGateway signature amber — overrides @bsvibe/design-tokens default
+       blue so <ResponsiveSidebar> active items pick up the product hue
+       via the unified `border-l-4 border-[var(--color-accent)]` pattern. */
+    --color-accent: #f59e0b;
+    --color-accent-hover: #d97706;
+    --color-accent-bg-soft: color-mix(in srgb, #f59e0b 10%, transparent);
     --color-accent-rgb: 245 158 11;
   }
 
@@ -172,6 +178,17 @@
 @layer utilities {
   .ghost-border {
     outline: 1px solid rgba(83, 68, 52, 0.15);
+  }
+
+  /* @bsvibe/layout v0.3.0 — closed mobile drawer is translated off-screen
+     but its `<aside>` element retains `pointer-events: auto` and sits at
+     `left: 0` with `inset-y-0`, so its translated subtree can still
+     intercept clicks on the hamburger trigger. Disable pointer events on
+     the closed drawer below the md breakpoint. */
+  @media (max-width: 767px) {
+    aside.bsvibe-sidebar--closed {
+      pointer-events: none;
+    }
   }
 }
 

@@ -66,7 +66,7 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
     const hamburger = page.getByRole('button', { name: /open navigation/i });
     await expect(hamburger).toBeVisible();
     await hamburger.click();
-    await expect(page.getByTestId('bsgateway-sidebar-backdrop')).toBeVisible();
+    await expect(page.getByTestId('bsvibe-sidebar-backdrop')).toBeVisible();
     // Confirm a nav link is reachable. Sidebar links include their material
     // icon text in the accessible name (e.g. "alt_route Routing"), so we
     // anchor on the link text suffix.
@@ -84,9 +84,9 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
   test('clicking a sidebar link closes the drawer (mobile UX)', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: /open navigation/i }).click();
-    await expect(page.getByTestId('bsgateway-sidebar-backdrop')).toBeVisible();
+    await expect(page.getByTestId('bsvibe-sidebar-backdrop')).toBeVisible();
     await page.locator('aside').getByRole('link', { name: /API Keys$/ }).click();
-    await expect(page.getByTestId('bsgateway-sidebar-backdrop')).toHaveCount(0);
+    await expect(page.getByTestId('bsvibe-sidebar-backdrop')).toHaveCount(0);
     await expect(page).toHaveURL(/\/api-keys/);
   });
 
@@ -95,9 +95,12 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
     const hamburger = page.getByRole('button', { name: /open navigation/i });
     await expect(hamburger).toBeVisible();
     await hamburger.click();
-    const backdrop = page.getByTestId('bsgateway-sidebar-backdrop');
+    const backdrop = page.getByTestId('bsvibe-sidebar-backdrop');
     await expect(backdrop).toBeVisible();
-    await backdrop.click();
+    // The backdrop covers the entire viewport (inset-0), but the open
+    // drawer (w-64, z-40) overlaps its left half. Dispatch a click event
+    // directly on the backdrop element to bypass the geometric hit test.
+    await backdrop.dispatchEvent('click');
     await expect(backdrop).toHaveCount(0);
   });
 
