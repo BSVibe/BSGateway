@@ -1,5 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { injectAuth, mockTenantInfo, mockGet, MOCK_RULES, MOCK_MODELS, MOCK_USAGE, MOCK_API_KEYS, MOCK_AUDIT_LOGS } from './helpers';
+import {
+  injectAuth,
+  mockTenantInfo,
+  mockGet,
+  MOCK_RULES,
+  MOCK_INTENTS,
+  MOCK_EXAMPLES,
+  MOCK_MODELS,
+  MOCK_USAGE,
+  MOCK_API_KEYS,
+  MOCK_AUDIT_LOGS,
+} from './helpers';
 
 /**
  * Phase B Batch 2 — mobile viewport smoke flow.
@@ -21,7 +32,10 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
     await injectAuth(page);
     await mockTenantInfo(page);
     await mockGet(page, '/rules', MOCK_RULES);
+    await mockGet(page, '/intents', MOCK_INTENTS);
+    await mockGet(page, '/intents/intent-1/examples', MOCK_EXAMPLES);
     await mockGet(page, '/models', MOCK_MODELS);
+    await mockGet(page, '/embedding-settings', null);
     await mockGet(page, '/api-keys', MOCK_API_KEYS);
     await page.route('**/api/v1/tenants/test-tenant-id/usage*', (route) => {
       if (route.request().method() === 'GET') {
@@ -71,14 +85,16 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
     await page.goto('/');
     await page.getByRole('button', { name: /open navigation/i }).click();
     await expect(page.getByTestId('bsgateway-sidebar-backdrop')).toBeVisible();
-    await page.getByRole('link', { name: /API Keys$/ }).click();
+    await page.locator('aside').getByRole('link', { name: /API Keys$/ }).click();
     await expect(page.getByTestId('bsgateway-sidebar-backdrop')).toHaveCount(0);
     await expect(page).toHaveURL(/\/api-keys/);
   });
 
   test('backdrop click closes the drawer', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: /open navigation/i }).click();
+    const hamburger = page.getByRole('button', { name: /open navigation/i });
+    await expect(hamburger).toBeVisible();
+    await hamburger.click();
     const backdrop = page.getByTestId('bsgateway-sidebar-backdrop');
     await expect(backdrop).toBeVisible();
     await backdrop.click();
@@ -96,5 +112,43 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
     );
     // Page-level overflow must be at most a few px (caused by scrollbar).
     expect(overflow).toBeLessThanOrEqual(2);
+  });
+
+  test('default fallback selector stays inside its card on mobile', async ({ page }) => {
+    const longModelName = 'basic-openai-1777462670211';
+    await mockGet(page, '/rules', MOCK_RULES.filter((rule) => !rule.is_default));
+    await mockGet(page, '/models', [
+      {
+        ...MOCK_MODELS[0],
+        id: 'long-model',
+        model_name: longModelName,
+        litellm_model: `openai/${longModelName}`,
+      },
+    ]);
+
+    await page.goto('/rules');
+    await page.waitForLoadState('networkidle');
+
+    const title = page.getByText('Default fallback');
+    await title.scrollIntoViewIfNeeded();
+    const card = title.locator('xpath=ancestor::div[contains(@class, "bg-surface-container-low")][1]');
+    const select = card.locator('select');
+    await expect(card).toBeVisible();
+    await expect(select).toBeVisible();
+
+    const geometry = await card.evaluate((element) => {
+      const cardRect = element.getBoundingClientRect();
+      const selectRect = element.querySelector('select')?.getBoundingClientRect();
+      if (!selectRect) throw new Error('Default fallback select not found');
+      return {
+        cardLeft: cardRect.left,
+        cardRight: cardRect.right,
+        selectLeft: selectRect.left,
+        selectRight: selectRect.right,
+      };
+    });
+
+    expect(geometry.selectLeft).toBeGreaterThanOrEqual(geometry.cardLeft);
+    expect(geometry.selectRight).toBeLessThanOrEqual(geometry.cardRight);
   });
 });

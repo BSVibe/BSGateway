@@ -30,6 +30,12 @@ const FAKE_JWT = buildFakeJwt({
  * protected-page e2e.
  */
 export async function injectAuth(page: Page) {
+  await page.addInitScript(({ token }) => {
+    localStorage.setItem('bsgateway_access_token', token);
+    localStorage.setItem('bsgateway_refresh_token', 'fake-refresh-token');
+    sessionStorage.setItem('bsvibe_tenant_name', 'Test Tenant');
+  }, { token: FAKE_JWT });
+
   await page.route('**/auth.bsvibe.dev/api/session', (route) => {
     const method = route.request().method();
     if (method === 'GET') {

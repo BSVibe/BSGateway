@@ -82,12 +82,12 @@ export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props)
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 w-full min-w-0 md:w-auto">
         <select
           value={selectedModel}
           onChange={(e) => handleSave(e.target.value)}
           disabled={busy || models.length === 0}
-          className="bg-surface-container-highest border-none rounded-xl py-2 px-3 text-sm font-mono focus:ring-1 focus:ring-primary/40 disabled:opacity-50"
+          className="bg-surface-container-highest border-none rounded-xl py-2 px-3 text-sm font-mono w-full min-w-0 max-w-full focus:ring-1 focus:ring-primary/40 disabled:opacity-50"
         >
           {models.map((m) => (
             <option key={m.id} value={m.model_name}>
@@ -99,7 +99,7 @@ export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props)
           <button
             onClick={handleClear}
             disabled={busy}
-            className="text-xs font-bold text-on-surface-variant hover:text-error transition-colors px-2"
+            className="text-xs font-bold text-on-surface-variant hover:text-error transition-colors px-2 shrink-0"
             title={t('routes.default.clearTitle')}
           >
             {t('routes.default.clear')}
