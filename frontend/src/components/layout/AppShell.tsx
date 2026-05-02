@@ -71,7 +71,7 @@ function ShellInner({ children }: { children: ReactNode }) {
     () => true,
     () => false,
   );
-  const { isAuthenticated, isLoading, tenantId, tenantName, email, role, logout } = useAuth({
+  const { isAuthenticated, isLoading, tenantId, tenantName, email, role, logout, tenants, switchTenant } = useAuth({
     probeRemoteSession: false,
   });
 
@@ -94,6 +94,8 @@ function ShellInner({ children }: { children: ReactNode }) {
       tenantName={tenantName}
       email={email}
       role={role}
+      tenants={tenants}
+      onSwitchTenant={switchTenant}
     >
       {children}
     </Layout>

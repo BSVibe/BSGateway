@@ -2,7 +2,14 @@
 
 import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LanguageToggle, ResponsiveSidebar, SidebarBrand, SidebarUserCard } from '@bsvibe/layout';
+import {
+  LanguageToggle,
+  ResponsiveSidebar,
+  SidebarBrand,
+  SidebarTenantSwitcher,
+  SidebarUserCard,
+} from '@bsvibe/layout';
+import type { SidebarTenant } from '@bsvibe/layout';
 import { SUPPORTED_LOCALES, setLocale, type Locale } from '../../i18n';
 import { HelpButton } from '../help/HelpButton';
 
@@ -12,6 +19,8 @@ interface LayoutProps {
   tenantName?: string | null;
   email?: string | null;
   role?: string | null;
+  tenants?: ReadonlyArray<SidebarTenant>;
+  onSwitchTenant?: (next: string) => void;
   children: ReactNode;
 }
 
@@ -39,7 +48,16 @@ function GatewayLogo() {
   );
 }
 
-export function Layout({ onLogout, tenantSlug, tenantName, email, role, children }: LayoutProps) {
+export function Layout({
+  onLogout,
+  tenantSlug,
+  tenantName,
+  email,
+  role,
+  tenants = [],
+  onSwitchTenant,
+  children,
+}: LayoutProps) {
   const { t, i18n } = useTranslation();
 
   const items = navItems.map((item) => ({
@@ -68,6 +86,12 @@ export function Layout({ onLogout, tenantSlug, tenantName, email, role, children
         }
         footer={
           <div className="flex flex-col gap-3" title={tenantSlug || ''}>
+            <SidebarTenantSwitcher
+              tenants={tenants}
+              activeTenantId={tenantSlug ?? null}
+              onSwitchTenant={(id) => onSwitchTenant?.(id)}
+              dataTestId="sidebar-tenant-switcher"
+            />
             <LanguageToggle
               value={(i18n.language as Locale) ?? 'en'}
               options={SUPPORTED_LOCALES.map((l) => ({ value: l, label: l.toUpperCase() }))}
