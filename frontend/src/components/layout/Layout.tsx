@@ -48,7 +48,10 @@ export function Layout({ onLogout, tenantSlug, tenantName, email, role, children
     icon: <span className="material-symbols-outlined" aria-hidden="true">{item.icon}</span>,
   }));
 
-  const tagline = tenantName ?? t('nav.tagline');
+  // Show only the tenant name in the tagline slot; collapse to no
+  // tagline when the tenant context isn't known yet (matches the other
+  // 3 products which also surface only the active workspace name).
+  const tagline = tenantName ?? undefined;
 
   return (
     <div className="min-h-screen bg-surface text-on-surface antialiased flex">
