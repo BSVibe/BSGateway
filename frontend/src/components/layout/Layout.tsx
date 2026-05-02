@@ -83,7 +83,10 @@ export function Layout({ onLogout, tenantSlug, tenantName, email, role, children
           </div>
         }
       />
-      <main className="flex-1 min-h-screen min-w-0">
+      {/* Mobile top padding (`pt-14`) makes room for the floating hamburger
+          shipped by @bsvibe/layout's ResponsiveSidebar (`fixed top-3 left-3`).
+          Disabled on md+ where the sidebar becomes an inline rail. */}
+      <main className="flex-1 min-h-screen min-w-0 pt-14 md:pt-0">
         {children}
       </main>
       <HelpButton />
