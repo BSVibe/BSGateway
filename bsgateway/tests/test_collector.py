@@ -3,12 +3,32 @@ from __future__ import annotations
 import struct
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
 from bsgateway.routing.classifiers.base import ClassificationResult
 from bsgateway.routing.collector import RoutingCollector, SqlLoader
 from bsgateway.routing.models import EmbeddingConfig, NexusMetadata, RoutingDecision
+
+# Column positions in the unified insert_routing_log query.
+# args[0] is the SQL string; the rest are query parameters in order.
+COL_TENANT_ID = 1
+COL_RULE_ID = 2
+COL_USER_TEXT = 3
+COL_SYSTEM_PROMPT = 4
+COL_TIER = 11
+COL_STRATEGY = 12
+COL_ORIGINAL_MODEL = 14
+COL_RESOLVED_MODEL = 15
+COL_EMBEDDING = 16
+COL_NEXUS_TASK_TYPE = 17
+COL_NEXUS_PRIORITY = 18
+COL_NEXUS_COMPLEXITY_HINT = 19
+COL_DECISION_SOURCE = 20
+
+# Default tenant_id used in single-tenant tests below.
+TENANT_ID = uuid4()
 
 
 class _MockPool:
@@ -153,7 +173,7 @@ class TestRecording:
         sample_result: ClassificationResult,
         sample_decision: RoutingDecision,
     ) -> None:
-        await collector.record(sample_data, sample_result, sample_decision)
+        await collector.record(sample_data, sample_result, sample_decision, tenant_id=TENANT_ID)
         mock_pool.conn.execute.assert_called_once()
 
     @pytest.mark.asyncio
@@ -165,18 +185,20 @@ class TestRecording:
         sample_result: ClassificationResult,
         sample_decision: RoutingDecision,
     ) -> None:
-        await collector.record(sample_data, sample_result, sample_decision)
+        await collector.record(sample_data, sample_result, sample_decision, tenant_id=TENANT_ID)
 
         call_args = mock_pool.conn.execute.call_args[0]
         # args[0] = query, args[1:] = parameters
         assert "INSERT INTO routing_logs" in call_args[0]
-        assert "microservices architecture" in call_args[1]  # user_text
-        assert "expert architect" in call_args[2]  # system_prompt
-        assert call_args[9] == "complex"  # tier
-        assert call_args[10] == "llm"  # strategy
-        assert call_args[12] == "auto"  # original_model
-        assert call_args[13] == "claude-opus"  # resolved_model
-        assert call_args[14] is None  # embedding (disabled)
+        assert call_args[COL_TENANT_ID] == TENANT_ID
+        assert call_args[COL_RULE_ID] is None
+        assert "microservices architecture" in call_args[COL_USER_TEXT]
+        assert "expert architect" in call_args[COL_SYSTEM_PROMPT]
+        assert call_args[COL_TIER] == "complex"
+        assert call_args[COL_STRATEGY] == "llm"
+        assert call_args[COL_ORIGINAL_MODEL] == "auto"
+        assert call_args[COL_RESOLVED_MODEL] == "claude-opus"
+        assert call_args[COL_EMBEDDING] is None  # embedding (disabled)
 
     @pytest.mark.asyncio
     async def test_no_embedding_when_disabled(
@@ -187,9 +209,9 @@ class TestRecording:
         sample_result: ClassificationResult,
         sample_decision: RoutingDecision,
     ) -> None:
-        await collector.record(sample_data, sample_result, sample_decision)
+        await collector.record(sample_data, sample_result, sample_decision, tenant_id=TENANT_ID)
         call_args = mock_pool.conn.execute.call_args[0]
-        assert call_args[14] is None  # embedding
+        assert call_args[COL_EMBEDDING] is None
 
     @pytest.mark.asyncio
     async def test_multiple_records(
@@ -200,10 +222,42 @@ class TestRecording:
         sample_result: ClassificationResult,
         sample_decision: RoutingDecision,
     ) -> None:
-        await collector.record(sample_data, sample_result, sample_decision)
-        await collector.record(sample_data, sample_result, sample_decision)
-        await collector.record(sample_data, sample_result, sample_decision)
+        for _ in range(3):
+            await collector.record(sample_data, sample_result, sample_decision, tenant_id=TENANT_ID)
         assert mock_pool.conn.execute.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_record_with_rule_id(
+        self,
+        collector: RoutingCollector,
+        mock_pool: _MockPool,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+        sample_decision: RoutingDecision,
+    ) -> None:
+        rule_id = uuid4()
+        await collector.record(
+            sample_data,
+            sample_result,
+            sample_decision,
+            tenant_id=TENANT_ID,
+            rule_id=rule_id,
+        )
+        call_args = mock_pool.conn.execute.call_args[0]
+        assert call_args[COL_RULE_ID] == rule_id
+
+    @pytest.mark.asyncio
+    async def test_no_record_without_tenant(
+        self,
+        collector: RoutingCollector,
+        mock_pool: _MockPool,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+        sample_decision: RoutingDecision,
+    ) -> None:
+        """Without a tenant_id we MUST NOT write to routing_logs (C2)."""
+        await collector.record(sample_data, sample_result, sample_decision, tenant_id=None)
+        mock_pool.conn.execute.assert_not_called()
 
 
 class TestEmbedding:
@@ -222,10 +276,12 @@ class TestEmbedding:
 
         with patch("bsgateway.routing.collector.litellm") as mock_litellm:
             mock_litellm.aembedding = AsyncMock(return_value=fake_response)
-            await collector_with_embedding.record(sample_data, sample_result, sample_decision)
+            await collector_with_embedding.record(
+                sample_data, sample_result, sample_decision, tenant_id=TENANT_ID
+            )
 
         call_args = mock_pool.conn.execute.call_args[0]
-        embedding_blob = call_args[14]
+        embedding_blob = call_args[COL_EMBEDDING]
         assert embedding_blob is not None
         values = struct.unpack(f"{len(fake_vector)}f", embedding_blob)
         assert len(values) == 3
@@ -242,11 +298,13 @@ class TestEmbedding:
     ) -> None:
         with patch("bsgateway.routing.collector.litellm") as mock_litellm:
             mock_litellm.aembedding = AsyncMock(side_effect=ConnectionError("cannot connect"))
-            await collector_with_embedding.record(sample_data, sample_result, sample_decision)
+            await collector_with_embedding.record(
+                sample_data, sample_result, sample_decision, tenant_id=TENANT_ID
+            )
 
         mock_pool.conn.execute.assert_called_once()
         call_args = mock_pool.conn.execute.call_args[0]
-        assert call_args[14] is None  # embedding should be None on failure
+        assert call_args[COL_EMBEDDING] is None  # embedding should be None on failure
 
     @pytest.mark.asyncio
     async def test_empty_text_skips_embedding(
@@ -259,11 +317,13 @@ class TestEmbedding:
         data = {"messages": [], "system": ""}
 
         with patch("bsgateway.routing.collector.litellm") as mock_litellm:
-            await collector_with_embedding.record(data, sample_result, sample_decision)
+            await collector_with_embedding.record(
+                data, sample_result, sample_decision, tenant_id=TENANT_ID
+            )
             mock_litellm.aembedding.assert_not_called()
 
         call_args = mock_pool.conn.execute.call_args[0]
-        assert call_args[14] is None
+        assert call_args[COL_EMBEDDING] is None
 
 
 class TestFeatureExtraction:
@@ -307,13 +367,13 @@ class TestNexusMetadataRecording:
             ),
             decision_source="blend",
         )
-        await collector.record(sample_data, sample_result, decision)
+        await collector.record(sample_data, sample_result, decision, tenant_id=TENANT_ID)
 
         call_args = mock_pool.conn.execute.call_args[0]
-        assert call_args[15] == "code-review"  # nexus_task_type
-        assert call_args[16] == "high"  # nexus_priority
-        assert call_args[17] == 75  # nexus_complexity_hint
-        assert call_args[18] == "blend"  # decision_source
+        assert call_args[COL_NEXUS_TASK_TYPE] == "code-review"
+        assert call_args[COL_NEXUS_PRIORITY] == "high"
+        assert call_args[COL_NEXUS_COMPLEXITY_HINT] == 75
+        assert call_args[COL_DECISION_SOURCE] == "blend"
 
     @pytest.mark.asyncio
     async def test_nexus_metadata_none_when_absent(
@@ -324,13 +384,13 @@ class TestNexusMetadataRecording:
         sample_result: ClassificationResult,
         sample_decision: RoutingDecision,
     ) -> None:
-        await collector.record(sample_data, sample_result, sample_decision)
+        await collector.record(sample_data, sample_result, sample_decision, tenant_id=TENANT_ID)
 
         call_args = mock_pool.conn.execute.call_args[0]
-        assert call_args[15] is None  # nexus_task_type
-        assert call_args[16] is None  # nexus_priority
-        assert call_args[17] is None  # nexus_complexity_hint
-        assert call_args[18] is None  # decision_source
+        assert call_args[COL_NEXUS_TASK_TYPE] is None
+        assert call_args[COL_NEXUS_PRIORITY] is None
+        assert call_args[COL_NEXUS_COMPLEXITY_HINT] is None
+        assert call_args[COL_DECISION_SOURCE] is None
 
     @pytest.mark.asyncio
     async def test_partial_nexus_metadata_saved(
@@ -347,13 +407,13 @@ class TestNexusMetadataRecording:
             nexus_metadata=NexusMetadata(priority="critical"),
             decision_source="priority_override",
         )
-        await collector.record(sample_data, sample_result, decision)
+        await collector.record(sample_data, sample_result, decision, tenant_id=TENANT_ID)
 
         call_args = mock_pool.conn.execute.call_args[0]
-        assert call_args[15] is None  # nexus_task_type (not set)
-        assert call_args[16] == "critical"  # nexus_priority
-        assert call_args[17] is None  # nexus_complexity_hint (not set)
-        assert call_args[18] == "priority_override"  # decision_source
+        assert call_args[COL_NEXUS_TASK_TYPE] is None
+        assert call_args[COL_NEXUS_PRIORITY] == "critical"
+        assert call_args[COL_NEXUS_COMPLEXITY_HINT] is None
+        assert call_args[COL_DECISION_SOURCE] == "priority_override"
 
     @pytest.mark.asyncio
     async def test_decision_source_without_nexus_metadata(
@@ -369,13 +429,13 @@ class TestNexusMetadataRecording:
             resolved_model="claude-opus",
             decision_source="classifier",
         )
-        await collector.record(sample_data, sample_result, decision)
+        await collector.record(sample_data, sample_result, decision, tenant_id=TENANT_ID)
 
         call_args = mock_pool.conn.execute.call_args[0]
-        assert call_args[15] is None  # nexus_task_type
-        assert call_args[16] is None  # nexus_priority
-        assert call_args[17] is None  # nexus_complexity_hint
-        assert call_args[18] == "classifier"  # decision_source
+        assert call_args[COL_NEXUS_TASK_TYPE] is None
+        assert call_args[COL_NEXUS_PRIORITY] is None
+        assert call_args[COL_NEXUS_COMPLEXITY_HINT] is None
+        assert call_args[COL_DECISION_SOURCE] == "classifier"
 
 
 class TestClose:
@@ -388,3 +448,33 @@ class TestClose:
     async def test_close_no_pool(self) -> None:
         collector = RoutingCollector(database_url="postgresql://test:test@localhost/test")
         await collector.close()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_close_is_idempotent(
+        self, collector: RoutingCollector, mock_pool: _MockPool
+    ) -> None:
+        await collector.close()
+        await collector.close()  # second call must not raise nor double-close
+        mock_pool.close.assert_called_once()
+        assert collector._pool is None
+        assert collector._closed is True
+
+    @pytest.mark.asyncio
+    async def test_record_after_close_drops_silently(
+        self,
+        collector: RoutingCollector,
+        sample_data: dict,
+        sample_result: ClassificationResult,
+        sample_decision: RoutingDecision,
+        mock_pool: _MockPool,
+    ) -> None:
+        """Late record() after shutdown must not resurrect the closed pool."""
+        await collector.close()
+        # Should not raise nor try to acquire on the closed pool
+        await collector.record(
+            sample_data,
+            sample_result,
+            sample_decision,
+            tenant_id=TENANT_ID,
+        )
+        mock_pool.conn.execute.assert_not_called()

@@ -1,7 +1,20 @@
 """Run all schema migrations against the database.
 
+.. deprecated:: Sprint 3 / S3-5
+
+    Schema management has moved to Alembic. New deployments should run::
+
+        uv run alembic upgrade head
+
+    instead of ``python -m bsgateway.core.migrate``. The raw-SQL bootstrap
+    here is kept as a fallback so existing CI / docker-compose flows that
+    invoke it directly do not break in the same PR. Lockin decision #3
+    governs the prod transition: stamp head once on the live DB, then use
+    ``alembic upgrade head`` thereafter.
+
 Usage:
-    python -m bsgateway.core.migrate
+    python -m bsgateway.core.migrate         # legacy path (still works)
+    uv run alembic upgrade head              # canonical going forward
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 {
   "nav": {
     "dashboard": "대시보드",
-    "rules": "라우팅 규칙",
+    "rules": "라우팅",
     "models": "모델",
     "routingTest": "라우팅 테스트",
     "usage": "사용량",
@@ -9,7 +9,9 @@
     "audit": "감사 로그",
     "intents": "인텐트",
     "settings": "설정",
-    "logout": "로그아웃"
+    "logout": "로그아웃",
+    "tagline": "LLM 라우팅",
+    "openNav": "메뉴 열기"
   },
   "common": {
     "save": "저장",
@@ -21,46 +23,433 @@
     "loading": "로딩 중...",
     "error": "오류가 발생했습니다",
     "noData": "데이터가 없습니다",
-    "confirm": "확인"
+    "confirm": "확인",
+    "retry": "다시 시도",
+    "refresh": "새로고침",
+    "close": "닫기",
+    "copy": "복사",
+    "copied": "복사됨!",
+    "creating": "생성 중...",
+    "saving": "저장 중...",
+    "tryAgain": "다시 시도",
+    "reloadPage": "페이지 새로고침",
+    "somethingWrong": "문제가 발생했습니다",
+    "discard": "취소",
+    "addExample": "예시 추가",
+    "optional": "(선택)"
+  },
+  "language": {
+    "label": "언어",
+    "ko": "한국어",
+    "en": "English"
   },
   "dashboard": {
-    "title": "대시보드",
-    "totalRequests": "총 요청 수",
-    "totalTokens": "총 토큰 수",
-    "totalCost": "총 비용",
-    "avgLatency": "평균 응답 시간"
+    "tenantOverview": "{{tenant}} 개요",
+    "systemOverview": "시스템 개요",
+    "subtitle": "라우팅 개요와 메트릭",
+    "stats": {
+      "totalRequests": "총 요청 수",
+      "totalTokens": "총 토큰 수",
+      "activeRules": "활성 규칙",
+      "avgLatency": "평균 응답 시간",
+      "last7Days": "지난 7일",
+      "processedThisWeek": "이번 주 처리됨",
+      "routingPolicies": "라우팅 정책",
+      "notTracked": "아직 추적되지 않음"
+    },
+    "requestVolume": "요청량",
+    "requestVolumeSubtitle": "실시간 게이트웨이 트래픽 - 지난 7일",
+    "modelDistribution": "모델 분포",
+    "modelDistributionSubtitle": "모델별 토큰 사용량",
+    "noUsageData": "아직 사용량 데이터가 없습니다",
+    "noModelData": "아직 모델 데이터가 없습니다",
+    "recentActivity": "최근 활동",
+    "recentActivitySubtitle": "최신 감사 이벤트",
+    "table": {
+      "actor": "주체",
+      "action": "작업",
+      "resource": "리소스",
+      "when": "시각"
+    },
+    "noActivity": "최근 활동 없음",
+    "noActivityHint": "BSGateway를 사용하면 이벤트가 여기에 표시됩니다",
+    "loadFailed": "대시보드를 불러오지 못했습니다",
+    "time": {
+      "justNow": "방금 전",
+      "minutesAgo": "{{count}}분 전",
+      "hoursAgo": "{{count}}시간 전",
+      "daysAgo": "{{count}}일 전"
+    }
   },
-  "rules": {
+  "routes": {
     "title": "라우팅 규칙",
+    "subtitle": "어떤 요청이 어떤 모델로 갈지 설명하세요.",
+    "configured_one": "{{count}}개 규칙이 설정되었습니다.",
+    "configured_other": "{{count}}개 규칙이 설정되었습니다.",
     "addRule": "규칙 추가",
-    "editRule": "규칙 수정",
-    "deleteRule": "규칙 삭제",
-    "pattern": "패턴",
-    "model": "모델",
-    "priority": "우선순위"
+    "createRule": "규칙 생성",
+    "modal": {
+      "title": "라우팅 규칙 추가",
+      "newRule": "새 규칙",
+      "whichRequests": "어떤 요청을 라우팅할까요?",
+      "whichRequestsPlaceholder": "예: 코드 리뷰나 디버깅 관련 요청",
+      "whichModel": "어떤 모델로 보낼까요?",
+      "noModels": "등록된 모델이 없습니다.",
+      "registerFirst": "먼저 모델을 등록하세요",
+      "addExamples": "예시 문장 추가 (선택)",
+      "examplePlaceholder": "예: '이 코드 리뷰해줘'",
+      "descriptionRequired": "설명이 필요합니다",
+      "modelRequired": "대상 모델이 필요합니다",
+      "createFailed": "규칙 생성에 실패했습니다"
+    },
+    "card": {
+      "exampleCount_one": "{{count}}개 예시",
+      "exampleCount_other": "{{count}}개 예시",
+      "examplesHeader": "예시 문장",
+      "noExamples": "예시가 없습니다 — 인텐트 매칭 향상을 위해 아래에 추가하세요.",
+      "addExamplePlaceholder": "예시 문장 추가...",
+      "add": "추가",
+      "adding": "추가 중...",
+      "active": "활성 — 클릭하면 비활성화",
+      "inactive": "비활성 — 클릭하면 활성화",
+      "moveUp": "위로 (우선순위 상승)",
+      "moveDown": "아래로 (우선순위 하락)",
+      "deleteRule": "규칙 삭제",
+      "removeExample": "예시 제거",
+      "toggleFailed": "토글에 실패했습니다",
+      "modelUpdateFailed": "모델 업데이트에 실패했습니다",
+      "addExampleFailed": "예시 추가에 실패했습니다",
+      "removeExampleFailed": "예시 제거에 실패했습니다"
+    },
+    "default": {
+      "title": "기본 폴백",
+      "active": "활성",
+      "missing": "누락",
+      "configured": "다른 규칙이 매칭되지 않을 때 사용됩니다.",
+      "missingHint": "기본값이 없으면 매칭되지 않은 요청은 400을 반환합니다. 폴백 모델을 선택하세요.",
+      "clear": "지우기",
+      "clearTitle": "기본 폴백 지우기",
+      "saveFailed": "기본 모델 저장에 실패했습니다",
+      "clearFailed": "기본 모델 지우기에 실패했습니다"
+    },
+    "embedding": {
+      "header": "임베딩 모델",
+      "active": "활성",
+      "disabled": "비활성",
+      "activeHint": "{{model}} — 들어오는 채팅 요청의 인텐트 분류에 사용됨",
+      "disabledHint": "임베딩 모델이 설정되지 않았습니다. 인텐트 규칙은 실시간 트래픽과 매칭되지 않습니다.",
+      "modelLabel": "모델",
+      "modelPlaceholder": "text-embedding-3-small",
+      "apiBaseLabel": "API 베이스",
+      "apiBaseSelfHosted": "(선택, 자체 호스팅용)",
+      "apiBasePlaceholder": "http://host.docker.internal:11434",
+      "save": "저장",
+      "saving": "저장 중...",
+      "reembed": "예시 재임베딩",
+      "reembedding": "재임베딩 중...",
+      "reembedTitle": "현재 임베딩 모델로 모든 예시를 재처리합니다. 모델 변경 후 실행하세요.",
+      "disable": "비활성화",
+      "swapHint": "모델 변경 시 기존 예시 임베딩이 무효화됩니다 — 생성된 모델로 태그되어 분류 시점에 건너뜁니다. 모델 변경 후 예시 재임베딩을 클릭하면 단일 배치 호출로 새 모델로 갱신됩니다.",
+      "modelRequired": "모델이 필요합니다",
+      "savedRunReembed": "저장됨. 모델을 변경했다면 \"재임베딩\"을 실행하세요.",
+      "disabledMessage": "이 테넌트에 대한 임베딩이 비활성화되었습니다.",
+      "reembedComplete": "재임베딩 완료: {{refreshed}}개 갱신, {{failed}}개 실패 (모델: {{model}}).",
+      "loadFailed": "임베딩 설정을 불러오지 못했습니다",
+      "saveFailed": "설정 저장에 실패했습니다",
+      "clearFailed": "설정 지우기에 실패했습니다",
+      "reembedFailed": "재임베딩에 실패했습니다"
+    },
+    "empty": {
+      "title": "라우팅 규칙이 없습니다",
+      "hint": "요청 종류를 설명하고 모델을 선택하세요 — 그게 전부입니다.",
+      "createFirst": "첫 라우팅 규칙 만들기"
+    }
+  },
+  "models": {
+    "title": "모델 레지스트리",
+    "subtitle": "분산 인프라 전반의 배포 가능한 LLM을 관리하고 모니터링합니다.",
+    "summary": "{{models}}개 모델 · {{workers}}개 워커 등록됨.",
+    "installWorker": "워커 설치",
+    "hide": "숨기기",
+    "registerModel": "모델 등록",
+    "registerNewModel": "새 모델 등록",
+    "registering": "등록 중...",
+    "registerFirst": "첫 모델 등록",
+    "providerNote": "이 폼은 LLM 프로바이더(OpenAI, Anthropic, Ollama 등)용입니다. Executor 워커(Claude Code / Codex)는 설치 스크립트 실행 시 모델로 자동 등록됩니다 — 위의 워커 설치 버튼을 사용하세요.",
+    "fields": {
+      "alias": "별칭",
+      "aliasHint": "라우팅용 내부 별칭",
+      "litellmModel": "LiteLLM 모델 ID",
+      "litellmHint": "provider/model 형식",
+      "apiBase": "API 베이스",
+      "apiKey": "API 키"
+    },
+    "validation": {
+      "aliasRequired": "별칭과 모델 이름이 필요합니다"
+    },
+    "install": {
+      "registerWorker": "워커 등록",
+      "intro": "워커는 임의의 머신에서 Claude Code 또는 Codex CLI를 실행하고, 게이트웨이에서 작업을 폴링하고, 결과를 보고합니다.",
+      "step1": "1단계 — 설치 토큰",
+      "step2": "2단계 — 워커 머신에서 설치 및 실행",
+      "revoke": "폐기",
+      "warningCopyNow": "⚠ 지금 토큰을 복사하세요 — 다시 표시되지 않습니다. 안전하게 보관하세요.",
+      "generateToken": "토큰 생성",
+      "regenerateToken": "토큰 재생성",
+      "working": "처리 중...",
+      "tokenExists": "토큰이 이미 발급되어 있습니다 (숨김). 재생성하면 새 토큰을 받고 이전 토큰은 동작이 중단됩니다.",
+      "tokenMissing": "토큰을 발급한 후 워커 머신에 붙여넣으세요.",
+      "copySnippet": "스니펫 복사",
+      "footnote": "워커는 shutil.which로 사용 가능한 CLI를 자동 감지하여 capability로 보고합니다. 첫 실행 시 영구 토큰이 worker/.env에 저장됩니다."
+    },
+    "empty": {
+      "noModels": "등록된 모델이 없습니다",
+      "addToStart": "라우팅을 시작하려면 모델을 추가하세요"
+    },
+    "card": {
+      "modelId": "모델 ID"
+    },
+    "workers": {
+      "header": "Executor 워커",
+      "lastHeartbeat": "마지막 하트비트: {{time}}",
+      "tasksTitle": "일일 작업 수 (지난 7일)",
+      "requestsTitle": "일일 요청 수 (지난 7일)"
+    }
+  },
+  "rulesLegacy": {
+    "title": "라우팅 규칙",
+    "subtitle": "프롬프트 복잡도, 메타데이터, 토큰 밀도 기반으로 지능적인 트래픽 분배를 설정하세요.",
+    "configured_one": "{{count}}개 규칙이 설정되었습니다.",
+    "configured_other": "{{count}}개 규칙이 설정되었습니다.",
+    "createRule": "규칙 생성",
+    "modal": {
+      "title": "라우팅 규칙 생성",
+      "newRule": "새 규칙",
+      "ruleName": "규칙 이름",
+      "ruleNamePlaceholder": "예: 우선 고객 라우터",
+      "targetModel": "대상 모델",
+      "targetModelPlaceholder": "예: openai/gpt-4o",
+      "executionPriority": "실행 우선순위",
+      "highest": "최상",
+      "lowest": "최하",
+      "defaultRule": "기본 규칙 (폴백)",
+      "saveDeploy": "저장 및 배포",
+      "validationRequired": "이름과 대상 모델이 필요합니다",
+      "createFailed": "규칙 생성에 실패했습니다"
+    },
+    "table": {
+      "name": "이름",
+      "targetModel": "대상 모델",
+      "priority": "우선순위",
+      "status": "상태",
+      "actions": "작업",
+      "defaultBadge": "기본",
+      "conditions_one": "{{count}}개 조건",
+      "conditions_other": "{{count}}개 조건"
+    },
+    "empty": {
+      "title": "라우팅 규칙이 없습니다",
+      "hint": "지능적인 LLM 요청 라우팅을 시작하려면 규칙을 만드세요.",
+      "createFirst": "첫 규칙 만들기"
+    }
   },
   "apiKeys": {
-    "title": "API 키 관리",
-    "createKey": "키 생성",
-    "name": "이름",
-    "project": "프로젝트",
-    "rateLimit": "속도 제한",
-    "expiry": "만료일",
-    "revoke": "폐기"
+    "title": "API 키",
+    "subtitle": "애플리케이션의 액세스 키를 관리하세요.",
+    "generate": "새 키 생성",
+    "stats": {
+      "active": "활성 키",
+      "total": "전체 키",
+      "revoked": "폐기됨"
+    },
+    "form": {
+      "keyName": "키 이름",
+      "keyNamePlaceholder": "예: production, staging, ci-pipeline",
+      "keyNameHint": "이 키를 식별할 라벨",
+      "create": "키 생성",
+      "validation": "이름이 필요합니다"
+    },
+    "newKey": {
+      "banner": "API 키가 생성되었습니다. 지금 복사하세요 -- 다시 표시되지 않습니다.",
+      "usage": "사용:"
+    },
+    "table": {
+      "name": "이름",
+      "key": "키",
+      "created": "생성일",
+      "lastUsed": "마지막 사용",
+      "status": "상태",
+      "actions": "작업",
+      "never": "사용 안 함",
+      "revoked": "폐기됨",
+      "expired": "만료됨",
+      "active": "활성"
+    },
+    "empty": {
+      "noKeys": "생성된 API 키가 없습니다"
+    }
+  },
+  "audit": {
+    "title": "감사 로그",
+    "subtitle": "모든 관리 작업과 변경 사항",
+    "table": {
+      "timestamp": "타임스탬프",
+      "actor": "주체",
+      "action": "작업",
+      "resource": "리소스"
+    },
+    "empty": {
+      "noLogs": "감사 로그가 없습니다"
+    },
+    "pagination": {
+      "range": "{{from}}--{{to}} / {{total}}"
+    },
+    "loadFailed": "감사 로그를 불러오지 못했습니다"
   },
   "usage": {
-    "title": "사용량",
-    "period": "기간",
-    "today": "오늘",
-    "week": "이번 주",
-    "month": "이번 달",
-    "custom": "직접 설정",
-    "byModel": "모델별",
-    "byCost": "비용별"
+    "title": "분석 대시보드",
+    "subtitle": "활성 게이트웨이의 성능 메트릭과 운영 비용을 모니터링합니다.",
+    "period": {
+      "day": "오늘",
+      "week": "지난 7일",
+      "month": "지난 30일"
+    },
+    "cards": {
+      "dailyTrend": "일일 요청 추이",
+      "totalRequests": "총 요청 수",
+      "trafficByModel": "모델별 트래픽",
+      "trafficByModelSubtitle": "요청 분포",
+      "trafficByRule": "규칙별 트래픽",
+      "trafficByRuleSubtitle": "라우팅 규칙 매칭 수",
+      "totalRequestsLabel": "총 요청 수",
+      "totalTokens": "총 토큰 수",
+      "activeModels": "활성 모델"
+    },
+    "empty": {
+      "noDailyData": "일일 데이터가 없습니다",
+      "noModelData": "모델 데이터가 없습니다",
+      "noUsageData": "사용량 데이터가 없습니다",
+      "startRouting": "분석을 보려면 요청 라우팅을 시작하세요"
+    },
+    "loadFailed": "사용량 데이터를 불러오지 못했습니다"
+  },
+  "intents": {
+    "title": "사용자 정의 인텐트",
+    "subtitle": "시맨틱 라우팅을 위한 인텐트 패턴을 정의합니다.",
+    "newIntent": "새 인텐트",
+    "form": {
+      "name": "이름",
+      "namePlaceholder": "summarization",
+      "description": "설명",
+      "descriptionPlaceholder": "내용 요약을 요청하는 메시지",
+      "examples": "예시",
+      "examplePlaceholder": "예: '이걸 요약해줘...'",
+      "targetModel": "대상 모델",
+      "targetModelPlaceholder": "gpt-4o",
+      "create": "인텐트 생성",
+      "validation": "이름이 필요합니다"
+    },
+    "list": {
+      "inactive": "비활성",
+      "threshold": "임계값: {{value}}"
+    },
+    "empty": {
+      "noIntents": "정의된 인텐트가 없습니다"
+    }
+  },
+  "test": {
+    "title": "라우팅 시뮬레이터",
+    "subtitle": "배포 전 라우팅 로직을 테스트하세요",
+    "input": "테스트 입력",
+    "requestContext": "요청 컨텍스트",
+    "promptContent": "프롬프트 내용",
+    "rolePlaceholder": "라우팅 분석을 위해 LLM 프롬프트를 여기 붙여넣으세요...",
+    "addMessage": "메시지 추가",
+    "runSimulation": "시뮬레이션 실행",
+    "testing": "테스트 중...",
+    "validation": "최소 하나의 메시지가 필요합니다",
+    "failed": "테스트 실패",
+    "result": {
+      "title": "시뮬레이션 결과",
+      "routedTo": "라우팅 대상",
+      "matched": "매칭됨",
+      "noMatch": "매칭 안 됨",
+      "noModelSelected": "(선택된 모델 없음)",
+      "matchedRule": "매칭된 규칙:",
+      "detectedIntent": "감지된 인텐트:",
+      "routingPath": "라우팅 경로",
+      "stepInput": "입력",
+      "stepClassifier": "분류기",
+      "stepRules": "규칙",
+      "stepNone": "없음"
+    },
+    "empty": {
+      "noRun": "테스트가 실행되지 않았습니다",
+      "configureRequest": "요청을 설정하고 시뮬레이션을 실행하세요"
+    }
+  },
+  "login": {
+    "headlinePart1": "스마트 라우팅,",
+    "headlinePart2": "비용 절감",
+    "tagline": "복잡도 분석을 기반으로 가장 비용 효율적인 모델로 LLM 요청을 자동 라우팅합니다.",
+    "features": {
+      "costOptimization": {
+        "title": "비용 최적화",
+        "description": "가장 비용 효율적인 모델로 요청을 자동 라우팅합니다"
+      },
+      "complexityAnalysis": {
+        "title": "복잡도 분석",
+        "description": "프롬프트 복잡도를 분류해 적절한 모델 티어를 선택합니다"
+      },
+      "multiModel": {
+        "title": "멀티 모델 라우팅",
+        "description": "OpenAI, Anthropic 등을 자유롭게 전환합니다"
+      }
+    },
+    "signIn": "BSVibe로 로그인",
+    "noAccount": "계정이 없으신가요?",
+    "signUp": "회원가입",
+    "poweredBy": "Powered by"
   },
   "help": {
-    "button": "도움말",
+    "open": "도움말 열기",
     "close": "닫기",
-    "viewDocs": "문서 보기"
+    "title": "도움말",
+    "viewDocs": "문서 보기",
+    "allPages": "전체 페이지",
+    "pages": {
+      "dashboard": {
+        "title": "대시보드",
+        "description": "대시보드에서 전체 요약을 확인하세요"
+      },
+      "rules": {
+        "title": "라우팅 규칙",
+        "description": "라우팅 규칙을 생성/수정합니다"
+      },
+      "models": {
+        "title": "모델 관리",
+        "description": "등록된 LLM 모델을 관리합니다"
+      },
+      "routingTest": {
+        "title": "라우팅 시뮬레이터",
+        "description": "테스트 요청으로 라우팅 결과를 시뮬레이션합니다"
+      },
+      "usage": {
+        "title": "사용량",
+        "description": "사용량과 비용을 확인합니다"
+      },
+      "apiKeys": {
+        "title": "API 키",
+        "description": "API 키를 생성/관리합니다"
+      },
+      "audit": {
+        "title": "감사 로그",
+        "description": "감사 로그를 확인합니다"
+      },
+      "default": {
+        "title": "BSGateway",
+        "description": "BSGateway는 LLM 비용 최적화 라우팅 프록시입니다"
+      }
+    }
   }
 }

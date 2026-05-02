@@ -7,15 +7,12 @@ interface UseApiResult<T> {
   refetch: () => void;
 }
 
-export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): UseApiResult<T> {
+export function useApi<T>(fetcher: () => Promise<T>): UseApiResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const fetcherRef = useRef(fetcher);
-
-  // Keep fetcherRef current without triggering re-renders
-  fetcherRef.current = fetcher;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -39,12 +36,15 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): UseA
         setLoading(false);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, []);
 
   useEffect(() => {
-    fetch();
-  }, [fetch]);
+    fetcherRef.current = fetcher;
+    const id = window.setTimeout(() => {
+      fetch();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [fetcher, fetch]);
 
   return { data, loading, error, refetch: fetch };
 }

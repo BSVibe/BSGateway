@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import asyncpg
 import structlog
+from bsvibe_audit.events.base import AuditActor, AuditEventBase
+from bsvibe_audit.events.gateway import RateLimitViolated
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -17,7 +20,8 @@ from bsgateway.api.deps import (
     get_encryption_key,
     get_pool,
 )
-from bsgateway.chat.ratelimit import RateLimiter
+from bsgateway.audit_publisher import emit_event
+from bsgateway.chat.ratelimit import RateLimiter, RateLimitResult
 from bsgateway.chat.service import ChatError, ChatService
 from bsgateway.core.utils import safe_json_loads
 from bsgateway.tenant.repository import TenantRepository
@@ -62,6 +66,44 @@ def _error_response(
     )
 
 
+async def _maybe_emit_rate_limit_violation(
+    app_state: object,
+    *,
+    tenant_id: UUID,
+    actor_id: str,
+    actor_email: str | None,
+    result: RateLimitResult,
+    emit_fn: Callable[[object, AuditEventBase], Awaitable[None]] = emit_event,
+) -> None:
+    """Emit ``gateway.rate_limit.violated`` only on Sprint 1 H1 fail-closed.
+
+    Normal quota exhaustion (Redis up, count > rpm) is high-volume and
+    expected behaviour — emitting on every 429 would drown the audit
+    pipeline. Fail-closed is the rare-and-actionable case the audit
+    timeline exists to capture: Redis outage caused requests to be
+    denied that would otherwise have been allowed.
+
+    ``emit_fn`` is parameterised so unit tests can verify the
+    fail-closed-only contract without spinning up the full emitter.
+    """
+    if not result.degraded:
+        return
+    await emit_fn(
+        app_state,
+        RateLimitViolated(
+            actor=AuditActor(type="user", id=actor_id, email=actor_email),
+            tenant_id=str(tenant_id),
+            data={
+                "limit": result.limit,
+                "remaining": result.remaining,
+                "reset_at": result.reset_at,
+                "degraded": True,
+                "reason": "redis_unavailable_fail_closed",
+            },
+        ),
+    )
+
+
 async def _check_rate_limit(
     request: Request,
     auth: GatewayAuthContext,
@@ -94,14 +136,30 @@ async def _check_rate_limit(
     if result.allowed:
         return None
 
+    # Phase Audit Batch 2 — emit gateway.rate_limit.violated only on
+    # fail-closed (Sprint 1 H1) so audit timeline captures Redis-outage-
+    # induced denials but not normal quota exhaustion.
+    await _maybe_emit_rate_limit_violation(
+        request.app.state,
+        tenant_id=auth.tenant_id,
+        actor_id=str(auth.identity.id),
+        actor_email=auth.identity.email,
+        result=result,
+    )
+
+    # Distinguish actual quota exhaustion from fail-closed (Redis outage).
+    # Both surface as 429 to keep clients on the existing retry/back-off
+    # path, but operators get a separate code for alerting.
+    code = "rate_limit_unavailable" if result.degraded else "rate_limit_exceeded"
+    message = "Rate limiter temporarily unavailable" if result.degraded else "Rate limit exceeded"
     return JSONResponse(
         status_code=429,
         content={
             "error": {
-                "message": "Rate limit exceeded",
+                "message": message,
                 "type": "rate_limit_error",
                 "param": None,
-                "code": "rate_limit_exceeded",
+                "code": code,
             }
         },
         headers={
@@ -162,7 +220,13 @@ async def chat_completions(
         return rate_limit_resp
 
     bg_tasks: set = getattr(request.app.state, "background_tasks", set())
-    svc = ChatService(pool, encryption_key, redis, background_tasks=bg_tasks)
+    svc = ChatService(
+        pool,
+        encryption_key,
+        redis,
+        background_tasks=bg_tasks,
+        supervisor=getattr(request.app.state, "bsupervisor_client", None),
+    )
 
     try:
         response = await svc.complete(auth.tenant_id, body)

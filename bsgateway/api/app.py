@@ -9,12 +9,13 @@ if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 import structlog
+from bsvibe_fastapi import add_cors_middleware, make_health_router
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from bsgateway.audit.repository import AuditRepository
+from bsgateway.audit_publisher import build_audit_outbox
 from bsgateway.core.cache import CacheManager
 from bsgateway.core.config import settings
 from bsgateway.core.database import close_pool, execute_schema, get_pool
@@ -76,6 +77,104 @@ async def lifespan(app: FastAPI):
     # Initialize cache manager if Redis is available
     app.state.cache = CacheManager(app.state.redis) if app.state.redis else None
 
+    # Sprint 3 / S3-3: wire the Redis cache into the LiteLLM proxy router so
+    # the static classifier's deterministic keyword scan gets memoised. The
+    # router instance is created at module import (before lifespan), so we
+    # patch in the cache after CacheManager is constructed.
+    if app.state.cache is not None:
+        try:
+            from bsgateway.routing.cache_classifier import CachingClassifier
+            from bsgateway.routing.hook import proxy_handler_instance
+
+            proxy_handler_instance.attach_cache(app.state.cache)
+            # Phase Audit Batch 2 — once the cache wrapper is in place,
+            # plumb app.state through so sampled cache hits can emit
+            # ``gateway.classifier.cache_hit``. Idempotent if the wrapping
+            # was skipped (e.g. classifier strategy != static).
+            classifier = getattr(proxy_handler_instance, "classifier", None)
+            if isinstance(classifier, CachingClassifier):
+                classifier.attach_audit_state(app.state)
+        except Exception:
+            logger.warning("classifier_cache_attach_failed", exc_info=True)
+
+    # Phase 0 P0.7 — attach BSupervisor client so the LiteLLM proxy hook
+    # can fire run.pre/run.post directly. We only attach when the
+    # operator opts in (``bsupervisor_audit_enabled``) and the
+    # service-account credential is provisioned.
+    app.state.bsupervisor_client = None
+    app.state.bsupervisor_token_minter = None
+    if (
+        settings.bsupervisor_audit_enabled
+        and settings.bsupervisor_url
+        and settings.bsvibe_service_account_token
+        and settings.bsvibe_service_account_tenant_id
+    ):
+        try:
+            from bsgateway.routing.hook import proxy_handler_instance
+            from bsgateway.supervisor import (
+                BSupervisorClient,
+                ServiceTokenMinter,
+            )
+
+            minter = ServiceTokenMinter(
+                auth_url=settings.bsvibe_auth_url,
+                service_account_token=settings.bsvibe_service_account_token,
+                service_account_tenant_id=settings.bsvibe_service_account_tenant_id,
+                audience="bsupervisor",
+                scope=["bsupervisor.events"],
+            )
+            client = BSupervisorClient(
+                base_url=settings.bsupervisor_url,
+                token_minter=minter,
+                timeout_ms=settings.bsupervisor_audit_timeout_ms,
+                fail_mode=settings.bsupervisor_audit_fail_mode,
+            )
+            proxy_handler_instance.attach_supervisor(client)
+            app.state.bsupervisor_client = client
+            app.state.bsupervisor_token_minter = minter
+            logger.info(
+                "bsupervisor_attached",
+                fail_mode=settings.bsupervisor_audit_fail_mode,
+                timeout_ms=settings.bsupervisor_audit_timeout_ms,
+            )
+        except Exception:
+            logger.warning("bsupervisor_attach_failed", exc_info=True)
+    else:
+        logger.info(
+            "bsupervisor_disabled",
+            reason="bsupervisor_audit_enabled=False or credentials missing",
+        )
+
+    # Phase Audit Batch 2 — bsvibe-audit outbox emitter + (optional) relay.
+    # The emitter is the in-process contract: each gateway.* event goes
+    # into the audit_outbox via SQLAlchemy. The relay drains the outbox
+    # to BSVibe-Auth's `/api/audit/events`. Both default off — the
+    # operator opts in via BSVIBE_AUDIT_OUTBOX_ENABLED + BSVIBE_AUTH_AUDIT_URL.
+    emitter, audit_session_factory = build_audit_outbox(
+        enabled=settings.bsvibe_audit_outbox_enabled,
+        collector_database_url=settings.collector_database_url or "",
+    )
+    app.state.audit_emitter = emitter
+    app.state.audit_outbox_session_factory = audit_session_factory
+    app.state.audit_outbox_relay = None
+    if emitter is not None and audit_session_factory is not None:
+        try:
+            from bsvibe_audit import AuditSettings, OutboxRelay
+
+            audit_settings = AuditSettings()
+            relay = OutboxRelay.from_settings(
+                audit_settings,
+                session_factory=audit_session_factory,
+            )
+            await relay.start()
+            app.state.audit_outbox_relay = relay
+            logger.info(
+                "audit_outbox_relay_started",
+                relay_enabled=audit_settings.relay_enabled,
+            )
+        except Exception:
+            logger.warning("audit_outbox_relay_start_failed", exc_info=True)
+
     # Initialize schemas — routing_logs must exist first (tenant_schema ALTERs it)
     routing_sql = SqlLoader()
     await execute_schema(pool, routing_sql.schema())
@@ -128,6 +227,28 @@ async def lifespan(app: FastAPI):
             logger.warning("cancelling_background_task", task=t.get_name())
             t.cancel()
 
+    # Close the BSGateway router (drains its own background tasks +
+    # closes the RoutingCollector pool — audit issue H15). The router is
+    # constructed at module import time as a side effect of importing
+    # bsgateway.routing.hook so we resolve it lazily here.
+    try:
+        from bsgateway.routing.hook import proxy_handler_instance
+
+        await proxy_handler_instance.aclose()
+    except Exception:
+        logger.warning("router_aclose_failed", exc_info=True)
+
+    # Phase Audit Batch 2 — drain the OutboxRelay before tearing down the
+    # SQLAlchemy engine. Failures here are best-effort: shutdown is more
+    # important than draining the last few audit rows (the relay's own
+    # retry on next boot will pick them up).
+    relay = getattr(app.state, "audit_outbox_relay", None)
+    if relay is not None:
+        try:
+            await relay.stop()
+        except Exception:
+            logger.warning("audit_outbox_relay_stop_failed", exc_info=True)
+
     # Cleanup Redis
     if app.state.redis:
         await app.state.redis.aclose()
@@ -149,23 +270,24 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS — configurable via CORS_ALLOWED_ORIGINS env var
-    if settings.cors_allowed_origins:
-        cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
-    else:
-        cors_origins = [f"http://localhost:{settings.api_port}"]
+    # CORS — bsvibe_fastapi.add_cors_middleware honours
+    # FastApiSettings.cors_allowed_origins (Annotated[list[str], NoDecode]
+    # + parse_csv_list field_validator). When the deployer provides no
+    # value the field falls back to FastApiSettings's default
+    # (["http://localhost:3500"]); BSGateway prefers a port-aware
+    # localhost so we keep the local override here.
+    if settings.cors_allowed_origins == ["http://localhost:3500"]:
+        # Default-only branch: emit the legacy warning and use a
+        # port-aware origin so the dashboard still talks to the API.
+        local_origin = f"http://localhost:{settings.api_port}"
         logger.warning(
             "cors_fallback_to_localhost",
-            origins=cors_origins,
+            origins=[local_origin],
             hint="Set CORS_ALLOWED_ORIGINS for production",
         )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
-    )
+        add_cors_middleware(app, settings, allow_origins=[local_origin])
+    else:
+        add_cors_middleware(app, settings)
 
     from bsgateway.api.routers.apikeys import router as apikeys_router
     from bsgateway.api.routers.audit import router as audit_router
@@ -193,9 +315,12 @@ def create_app() -> FastAPI:
     app.include_router(execute_router, prefix="/api/v1")
     app.include_router(workers_router, prefix="/api/v1")
 
-    @app.get("/health", tags=["health"])
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    # /health — shared liveness probe (always 200, no DI). Phase A Batch 5
+    # adopts ``bsvibe_fastapi.make_health_router`` for parity across the
+    # four products. ``/health/ready`` (deep readiness with DB+Redis
+    # checks + per-dependency status keys) is BSGateway-specific and
+    # stays inline — production probes already scrape its envelope.
+    app.include_router(make_health_router())
 
     @app.get("/health/ready", tags=["health"])
     async def health_ready() -> JSONResponse:

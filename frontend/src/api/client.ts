@@ -5,12 +5,16 @@ const API_PATH_PREFIX = '/api/v1';
 /**
  * Build BASE_URL for API requests.
  *
- * - Dev (no env var): falls back to '/api/v1' (Vite proxy forwards /api/* to backend)
- * - Prod: VITE_API_URL should be the backend origin, e.g. 'https://api-gateway.bsvibe.dev'
- *   The path prefix '/api/v1' is appended automatically if not already present.
+ * - Dev (no env var): falls back to '/api/v1' (Next.js rewrites in
+ *   `next.config.mjs` forward /api/* to the backend)
+ * - Prod: NEXT_PUBLIC_API_URL should be the backend origin, e.g.
+ *   'https://api-gateway.bsvibe.dev'. The path prefix '/api/v1' is
+ *   appended automatically if not already present.
  */
 function buildBaseUrl(): string {
-  const raw = import.meta.env.VITE_API_URL;
+  const raw =
+    (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
+    '';
   if (!raw) return API_PATH_PREFIX;
 
   const url = raw.endsWith('/') ? raw.slice(0, -1) : raw;

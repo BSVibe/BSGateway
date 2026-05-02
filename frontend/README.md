@@ -1,73 +1,39 @@
-# React + TypeScript + Vite
+# BSGateway Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Next.js 15 (App Router) + React 19 + Tailwind 4.
 
-Currently, two official plugins are available:
+Migrated from Vite + React Router under Phase Z; see
+[`MIGRATION_NOTES.md`](../../BSVibe-Auth/phase0/auth-app/MIGRATION_NOTES.md)
+for the cross-asset baseline.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Scripts
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install        # install deps
+pnpm run dev        # Next dev server on :5173 (matches the old Vite port)
+pnpm run build      # Static export -> frontend/dist/ (FastAPI serves it under /dashboard)
+pnpm run preview    # Serve the built dist/ over localhost:5173 via `npx serve`
+pnpm run lint       # ESLint flat config
+pnpm run test:e2e   # Playwright suite (boots `next dev`)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Environment
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Variable                 | Visibility | Notes |
+|--------------------------|-----------|-------|
+| `NEXT_PUBLIC_AUTH_URL`   | client    | BSVibe-Auth host (defaults to `https://auth.bsvibe.dev`) |
+| `NEXT_PUBLIC_API_URL`    | client    | Backend origin; `/api/v1` is appended automatically |
+| `VITE_PROXY_TARGET`      | dev only  | Legacy fallback for the dev `rewrites()` proxy |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+`next dev` proxies `/api/*` to `NEXT_PUBLIC_API_URL` (or
+`VITE_PROXY_TARGET`, defaulting to `http://localhost:8000`). The static export
+build (`output: 'export'`) drops the rewrites — production deploys point the
+client at the backend directly via `NEXT_PUBLIC_API_URL`.
+
+## Deploy
+
+- **Vercel**: framework auto-detected (Next.js). The static export under
+  `frontend/dist/` is served directly.
+- **Self-hosted (Docker)**: `deploy/Dockerfile` builds `frontend/dist/` and
+  the FastAPI backend mounts it at `/dashboard` via
+  `StaticFiles(html=True)` (`bsgateway/api/app.py`).

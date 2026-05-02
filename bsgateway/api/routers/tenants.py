@@ -11,6 +11,7 @@ from bsgateway.api.deps import (
     get_encryption_key,
     get_pool,
     require_admin,
+    require_permission,
     require_tenant_access,
 )
 from bsgateway.core.exceptions import DuplicateError
@@ -56,6 +57,7 @@ async def create_tenant(
     body: TenantCreate,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_admin),
+    _allowed: None = Depends(require_permission("bsgateway.tenants.create")),
 ) -> TenantResponse:
     svc = get_tenant_service(request)
     try:
@@ -80,6 +82,7 @@ async def list_tenants(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     _auth: GatewayAuthContext = Depends(require_admin),
+    _allowed: None = Depends(require_permission("bsgateway.tenants.read")),
 ) -> list[TenantResponse]:
     svc = get_tenant_service(request)
     return await svc.list_tenants(limit, offset)

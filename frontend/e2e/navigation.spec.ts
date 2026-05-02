@@ -46,21 +46,25 @@ test.describe('Sidebar Navigation', () => {
 
   test('sidebar contains all navigation links', async ({ page }) => {
     await page.goto('/');
+    // @bsvibe/layout marks the closed mobile drawer with aria-hidden=true on
+    // the <aside>, so getByRole skips its descendants. Use DOM-level locators
+    // (Tailwind/Playwright treats them as visible at md+ via CSS rules).
     const nav = page.locator('aside nav');
-    await expect(nav.getByRole('link', { name: /Dashboard/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /^.*Routing$/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Models/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Routing Test/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Analytics/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /API Keys/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Audit Log/i })).toBeVisible();
+    await expect(nav.locator('a', { hasText: 'Dashboard' })).toBeVisible();
+    await expect(nav.locator('a', { hasText: /^.*Routing$/ })).toBeVisible();
+    await expect(nav.locator('a', { hasText: 'Models' })).toBeVisible();
+    await expect(nav.locator('a', { hasText: 'Routing Test' })).toBeVisible();
+    await expect(nav.locator('a', { hasText: 'Analytics' })).toBeVisible();
+    await expect(nav.locator('a', { hasText: 'API Keys' })).toBeVisible();
+    await expect(nav.locator('a', { hasText: 'Audit Log' })).toBeVisible();
   });
 
   test('Dashboard link is active on root path', async ({ page }) => {
     await page.goto('/');
     const dashLink = page.locator('aside a').filter({ hasText: 'Dashboard' });
-    // Active link has amber-500 text (using class check)
-    await expect(dashLink).toHaveClass(/text-amber-500/);
+    // Unified @bsvibe/layout active state: aria-current="page" + border-l-4
+    await expect(dashLink).toHaveAttribute('aria-current', 'page');
+    await expect(dashLink).toHaveClass(/bsvibe-sidebar__item--active/);
   });
 
   test('navigating to Routing activates Routing link', async ({ page }) => {
@@ -69,7 +73,8 @@ test.describe('Sidebar Navigation', () => {
     const link = page.locator('aside a', { hasText: 'Routing' }).filter({ hasNotText: 'Test' });
     await link.click();
     await expect(page).toHaveURL(/\/rules/);
-    await expect(link).toHaveClass(/text-amber-500/);
+    await expect(link).toHaveAttribute('aria-current', 'page');
+    await expect(link).toHaveClass(/bsvibe-sidebar__item--active/);
   });
 
   test('navigating to Models activates Models link', async ({ page }) => {
@@ -102,7 +107,10 @@ test.describe('Sidebar Navigation', () => {
 
   test('Logout button is visible', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('button', { name: /Logout/i })).toBeVisible();
+    // SidebarUserCard renders the sign-out button below the card. Use the
+    // <aside> scope + text match instead of getByRole because @bsvibe/layout
+    // sets aria-hidden=true on the closed drawer.
+    await expect(page.locator('aside button', { hasText: /Logout/i })).toBeVisible();
   });
 
   test('uses Material Symbols icons in nav items', async ({ page }) => {

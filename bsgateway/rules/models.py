@@ -10,6 +10,7 @@ from bsgateway.routing.classifiers.base import (
     extract_system_prompt,
     extract_user_text,
 )
+from bsgateway.routing.constants import WORDS_TO_TOKENS_RATIO
 
 # CJK Unicode ranges for language detection
 _CJK_RE = re.compile(r"[\u3000-\u9fff\uac00-\ud7af\u3040-\u309f\u30a0-\u30ff]")
@@ -59,7 +60,7 @@ def _estimate_tokens(text: str) -> int:
     # Remove CJK chars to count remaining word-based tokens
     non_cjk = _CJK_RE.sub("", text)
     word_tokens = len(non_cjk.split())
-    return int((word_tokens + cjk_chars) * 1.3)
+    return int((word_tokens + cjk_chars) * WORDS_TO_TOKENS_RATIO)
 
 
 @dataclass

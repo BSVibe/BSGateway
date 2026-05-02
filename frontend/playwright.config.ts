@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const frontendPort = Number(process.env.BSGATEWAY_TEST_FRONTEND_PORT || 5173);
+const frontendUrl = `http://localhost:${frontendPort}`;
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -8,7 +11,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['html'], ['list']],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: frontendUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -17,11 +20,29 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // Phase B Batch 2: mobile viewport coverage. Pixel 5 (Mobile Chrome) +
+    // iPhone 13 (Mobile Chromium engine — Playwright bundled WebKit hangs
+    // page-launch on macOS 26 with DEPENDENCIES_VALIDATED stuck; the
+    // viewport / userAgent / isMobile flag still match iPhone 13).
+    // See Shared Library Roadmap §B3.
+    {
+      name: 'pixel-5',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'iphone-13',
+      use: {
+        browserName: 'chromium',
+        ...devices['iPhone 13'],
+        defaultBrowserType: 'chromium',
+      },
+    },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
+    // Was `vite --port 5173`; now `next dev -p 5173`. Test surface is unchanged.
+    command: `pnpm exec next dev -p ${frontendPort}`,
+    url: frontendUrl,
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    timeout: 60_000,
   },
 });

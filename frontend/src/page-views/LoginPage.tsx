@@ -1,0 +1,103 @@
+'use client';
+
+import { useTranslation } from 'react-i18next';
+import { useAuth } from '../hooks/useAuth';
+
+interface FeatureKey {
+  icon: string;
+  key: 'costOptimization' | 'complexityAnalysis' | 'multiModel';
+}
+
+const features: readonly FeatureKey[] = [
+  { icon: 'schedule', key: 'costOptimization' },
+  { icon: 'show_chart', key: 'complexityAnalysis' },
+  { icon: 'hub', key: 'multiModel' },
+];
+
+export function LoginPage() {
+  const { t } = useTranslation();
+  const { login, signup } = useAuth({ probeRemoteSession: false });
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-surface px-4 relative overflow-hidden">
+      {/* Ambient glow */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse 700px 500px at 50% 40%, rgba(245,158,11,0.07) 0%, transparent 70%)',
+        }}
+      />
+
+      {/* Card */}
+      <div className="relative w-full max-w-md rounded-2xl border border-outline-variant/10 p-8 bg-surface-container-low">
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center">
+            <span className="material-symbols-outlined text-on-primary text-xl">hub</span>
+          </div>
+          <div>
+            <span className="text-xl font-bold text-on-surface tracking-tight">
+              BS<span className="text-amber-500">Gateway</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Headline */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-on-surface mb-2 leading-tight">
+            {t('login.headlinePart1')}{' '}
+            <span className="text-amber-500">{t('login.headlinePart2')}</span>
+          </h1>
+          <p className="text-sm text-on-surface-variant leading-relaxed">
+            {t('login.tagline')}
+          </p>
+        </div>
+
+        {/* Feature highlights */}
+        <div className="space-y-3 mb-8">
+          {features.map((feature) => (
+            <div
+              key={feature.key}
+              className="flex items-start gap-3 p-3 rounded-xl bg-surface-container border border-outline-variant/10"
+            >
+              <div className="flex-shrink-0 mt-0.5 text-amber-500">
+                <span className="material-symbols-outlined text-xl">{feature.icon}</span>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-on-surface">{t(`login.features.${feature.key}.title`)}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">{t(`login.features.${feature.key}.description`)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={login}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all bg-primary-container hover:brightness-110 text-on-primary active:scale-95"
+        >
+          <span className="material-symbols-outlined text-lg">login</span>
+          {t('login.signIn')}
+        </button>
+
+        <p className="text-center text-sm text-on-surface-variant mt-4">
+          {t('login.noAccount')}{' '}
+          <button
+            onClick={signup}
+            className="inline-flex min-h-11 items-center text-amber-500 hover:text-amber-400 font-medium transition-colors"
+          >
+            {t('login.signUp')}
+          </button>
+        </p>
+      </div>
+
+      {/* Footer */}
+      <p className="mt-6 text-xs text-on-surface-variant/60">
+        {t('login.poweredBy')}{' '}
+        <span className="text-on-surface-variant font-medium">BSVibe</span>
+      </p>
+    </div>
+  );
+}

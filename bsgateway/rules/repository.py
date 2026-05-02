@@ -137,17 +137,19 @@ class RulesRepository:
         tenant_id: UUID,
         priorities: dict[UUID, int],
     ) -> None:
+        """Update many rule priorities in a single round-trip (audit M3).
+
+        UNIQUE(tenant_id, priority) is DEFERRABLE INITIALLY DEFERRED, so
+        constraint checks happen at commit time — meaning we can issue all
+        UPDATEs in one ``executemany`` batch instead of N separate
+        statements. The transaction boundary still gives us atomicity.
+        """
+        if not priorities:
+            return
+        rows = [(rule_id, tenant_id, priority) for rule_id, priority in priorities.items()]
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                # UNIQUE(tenant_id, priority) is DEFERRABLE INITIALLY DEFERRED,
-                # so constraint checks happen at commit, not per-statement.
-                for rule_id, priority in priorities.items():
-                    await conn.execute(
-                        sql.query("update_rule_priority"),
-                        rule_id,
-                        tenant_id,
-                        priority,
-                    )
+                await conn.executemany(sql.query("update_rule_priority"), rows)
 
         # Invalidate cache
         if self._cache:
@@ -184,18 +186,24 @@ class RulesRepository:
         self,
         rule_id: UUID,
         conditions: list[dict],
-    ) -> list[asyncpg.Record]:
-        """Delete all conditions for a rule and insert new ones."""
+    ) -> None:
+        """Delete all conditions for a rule and batch-insert new ones (audit M3).
+
+        Replaces the legacy 1-DELETE + N-INSERT loop with 1 DELETE + 1
+        batch insert via ``executemany`` (constant 2 round-trips). The
+        previous ``RETURNING`` rows were unused by every caller, so the
+        return type is now ``None``.
+        """
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     sql.query("delete_conditions_for_rule"),
                     rule_id,
                 )
-                results = []
-                for c in conditions:
-                    row = await conn.fetchrow(
-                        sql.query("insert_condition"),
+                if not conditions:
+                    return
+                rows = [
+                    (
                         rule_id,
                         c["condition_type"],
                         c.get("operator", "eq"),
@@ -203,8 +211,9 @@ class RulesRepository:
                         json.dumps(c["value"]),
                         c.get("negate", False),
                     )
-                    results.append(row)
-                return results
+                    for c in conditions
+                ]
+                await conn.executemany(sql.query("insert_condition_batch"), rows)
 
     async def list_conditions_for_tenant(
         self,

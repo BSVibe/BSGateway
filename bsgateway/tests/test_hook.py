@@ -699,3 +699,34 @@ class TestNexusMetadataRouting:
         result = await router.async_pre_call_hook(MagicMock(), MagicMock(), data, "completion")
         assert result["model"] == "gpt-4o-mini"
         assert result["metadata"]["routing_decision"]["method"] == "passthrough"
+
+
+class TestRouterClose:
+    @pytest.mark.asyncio
+    async def test_aclose_closes_collector(self, routing_config: RoutingConfig) -> None:
+        """BSGatewayRouter.aclose() must release the collector pool (audit H15)."""
+        router = BSGatewayRouter(config=routing_config)
+        fake_collector = AsyncMock()
+        fake_collector.close = AsyncMock()
+        router.collector = fake_collector
+
+        await router.aclose()
+
+        fake_collector.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_aclose_no_collector_is_safe(self, router: BSGatewayRouter) -> None:
+        """aclose() must not raise when there is no collector."""
+        router.collector = None
+        await router.aclose()  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_aclose_swallows_collector_errors(self, routing_config: RoutingConfig) -> None:
+        """A failing collector close must not propagate during shutdown."""
+        router = BSGatewayRouter(config=routing_config)
+        fake = AsyncMock()
+        fake.close = AsyncMock(side_effect=RuntimeError("boom"))
+        router.collector = fake
+
+        await router.aclose()  # must not raise
+        fake.close.assert_awaited_once()

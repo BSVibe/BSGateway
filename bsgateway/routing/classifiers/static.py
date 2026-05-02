@@ -10,6 +10,7 @@ from bsgateway.routing.classifiers.base import (
     extract_system_prompt,
     extract_user_text,
 )
+from bsgateway.routing.constants import WORDS_TO_TOKENS_RATIO
 from bsgateway.routing.models import ClassifierConfig, TierConfig
 
 logger = structlog.get_logger(__name__)
@@ -98,7 +99,7 @@ class StaticClassifier:
         return "medium"
 
     def _score_token_count(self, text: str) -> int:
-        estimated_tokens = int(len(text.split()) * 1.3)
+        estimated_tokens = int(len(text.split()) * WORDS_TO_TOKENS_RATIO)
         thresholds = self.config.token_thresholds
         if estimated_tokens < thresholds["low"]:
             return 10

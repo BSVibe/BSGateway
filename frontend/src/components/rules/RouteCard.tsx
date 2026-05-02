@@ -1,4 +1,7 @@
+'use client';
+
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { TenantModel } from '../../types/api';
 import type { RouteCard as RouteCardType } from '../../api/routes';
 import { routesApi } from '../../api/routes';
@@ -28,6 +31,7 @@ export function RouteCard({
   canMoveUp = false,
   canMoveDown = false,
 }: RouteCardProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [newExample, setNewExample] = useState('');
   const [savingExample, setSavingExample] = useState(false);
@@ -44,7 +48,7 @@ export function RouteCard({
       await routesApi.toggleActive(tenantId, card.ruleId, !card.isActive);
       onUpdate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to toggle');
+      setError(err instanceof Error ? err.message : t('routes.card.toggleFailed'));
     } finally {
       setToggling(false);
     }
@@ -58,7 +62,7 @@ export function RouteCard({
       await routesApi.updateModel(tenantId, card.ruleId, newModel);
       onUpdate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update model');
+      setError(err instanceof Error ? err.message : t('routes.card.modelUpdateFailed'));
     } finally {
       setUpdatingModel(false);
     }
@@ -73,7 +77,7 @@ export function RouteCard({
       setNewExample('');
       onUpdate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add example');
+      setError(err instanceof Error ? err.message : t('routes.card.addExampleFailed'));
     } finally {
       setSavingExample(false);
     }
@@ -85,7 +89,7 @@ export function RouteCard({
       await routesApi.removeExample(tenantId, card.intentId, exampleId);
       onUpdate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove example');
+      setError(err instanceof Error ? err.message : t('routes.card.removeExampleFailed'));
     }
   };
 
@@ -105,14 +109,14 @@ export function RouteCard({
               ? 'bg-tertiary shadow-[0_0_8px_rgba(143,213,255,0.5)]'
               : 'bg-on-surface-variant/40'
           } ${toggling ? 'opacity-60' : 'hover:scale-125'}`}
-          title={card.isActive ? 'Active — click to disable' : 'Inactive — click to enable'}
+          title={card.isActive ? t('routes.card.active') : t('routes.card.inactive')}
         />
 
         {/* Center: description + model */}
         <div className="flex-1 min-w-0">
           <p className="text-on-surface text-sm leading-relaxed">{card.description}</p>
           <div className="mt-3 flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-surface-container-highest rounded-xl px-3 py-1.5">
+            <div className="flex min-h-11 items-center gap-2 bg-surface-container-highest rounded-xl px-3 py-1.5">
               <span className="material-symbols-outlined text-on-surface-variant text-sm">
                 arrow_forward
               </span>
@@ -120,7 +124,7 @@ export function RouteCard({
                 value={card.targetModel}
                 onChange={(e) => handleModelChange(e.target.value)}
                 disabled={updatingModel}
-                className="bg-transparent border-none text-xs font-mono text-on-surface focus:outline-none disabled:opacity-50 cursor-pointer"
+                className="min-h-10 bg-transparent border-none text-xs font-mono text-on-surface focus:outline-none disabled:opacity-50 cursor-pointer"
               >
                 {!models.some((m) => m.model_name === card.targetModel) && (
                   <option value={card.targetModel}>{card.targetModel}</option>
@@ -138,13 +142,13 @@ export function RouteCard({
             {card.intentId && (
               <button
                 onClick={() => setExpanded(!expanded)}
-                className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
+                className="flex min-h-10 items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
               >
                 <span className="material-symbols-outlined text-sm">
                   {expanded ? 'expand_less' : 'expand_more'}
                 </span>
                 <span>
-                  {card.examples.length} example{card.examples.length !== 1 ? 's' : ''}
+                  {t('routes.card.exampleCount', { count: card.examples.length })}
                 </span>
               </button>
             )}
@@ -158,7 +162,7 @@ export function RouteCard({
               onClick={onMoveUp}
               disabled={!canMoveUp}
               className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Move up (higher priority)"
+              title={t('routes.card.moveUp')}
             >
               <span className="material-symbols-outlined text-sm">arrow_upward</span>
             </button>
@@ -168,7 +172,7 @@ export function RouteCard({
               onClick={onMoveDown}
               disabled={!canMoveDown}
               className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Move down (lower priority)"
+              title={t('routes.card.moveDown')}
             >
               <span className="material-symbols-outlined text-sm">arrow_downward</span>
             </button>
@@ -186,7 +190,7 @@ export function RouteCard({
                 ? 'bg-error/20 text-error'
                 : 'hover:bg-error/10 text-on-surface-variant hover:text-error'
             }`}
-            title="Delete rule"
+            title={t('routes.card.deleteRule')}
           >
             <span className="material-symbols-outlined text-sm">
               {deleting === card.ruleId ? 'check' : 'delete'}
@@ -199,7 +203,7 @@ export function RouteCard({
       {expanded && card.intentId && (
         <div className="px-6 pb-6 pl-[3.25rem] space-y-3 border-t border-outline-variant/5 pt-4">
           <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-            Example phrases
+            {t('routes.card.examplesHeader')}
           </div>
           {card.examples.length > 0 ? (
             <div className="space-y-2">
@@ -215,7 +219,7 @@ export function RouteCard({
                   <button
                     onClick={() => handleRemoveExample(ex.id)}
                     className="opacity-0 group-hover/ex:opacity-100 text-on-surface-variant hover:text-error transition-all"
-                    title="Remove example"
+                    title={t('routes.card.removeExample')}
                   >
                     <span className="material-symbols-outlined text-sm">close</span>
                   </button>
@@ -224,7 +228,7 @@ export function RouteCard({
             </div>
           ) : (
             <p className="text-xs text-on-surface-variant/60 italic">
-              No examples yet — add one below to improve intent matching.
+              {t('routes.card.noExamples')}
             </p>
           )}
           <div className="flex items-center gap-2">
@@ -235,7 +239,7 @@ export function RouteCard({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleAddExample();
               }}
-              placeholder="Add an example phrase..."
+              placeholder={t('routes.card.addExamplePlaceholder')}
               className="flex-1 bg-surface-container-highest border-none rounded-xl py-2 px-3 text-sm focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/30"
             />
             <button
@@ -243,7 +247,7 @@ export function RouteCard({
               disabled={savingExample || !newExample.trim()}
               className="px-3 py-2 bg-primary-container text-on-primary rounded-xl text-xs font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
             >
-              {savingExample ? 'Adding...' : 'Add'}
+              {savingExample ? t('routes.card.adding') : t('routes.card.add')}
             </button>
           </div>
         </div>

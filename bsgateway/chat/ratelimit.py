@@ -20,11 +20,16 @@ class RateLimitResult:
     limit: int
     remaining: int
     reset_at: int  # Unix timestamp
-    degraded: bool = False  # True when Redis is unavailable (fail-open)
+    degraded: bool = False  # True when Redis is unavailable (fail-closed)
 
 
 class RateLimiter:
-    """Redis-backed per-tenant rate limiter using fixed-window counters."""
+    """Redis-backed per-tenant rate limiter using fixed-window counters.
+
+    Fails CLOSED on Redis errors: if Redis is unreachable the limiter
+    denies the request. This is the safer default — a Redis outage must
+    not silently lift all per-tenant quotas (audit issue H1).
+    """
 
     def __init__(self, redis_client: Redis) -> None:
         self._redis = redis_client
@@ -33,6 +38,11 @@ class RateLimiter:
         """Check if a request is allowed under the rate limit.
 
         Uses a fixed 60-second window keyed by the current minute.
+
+        On Redis failure (any exception, including TimeoutError /
+        ConnectionError) the call returns ``allowed=False`` /
+        ``degraded=True`` so the caller can return 429 with operator
+        visibility.
         """
         now = int(time.time())
         window = now // 60
@@ -54,19 +64,19 @@ class RateLimiter:
                 reset_at=reset_at,
             )
         except Exception:
-            # Design decision: fail-open to avoid blocking all requests during
-            # Redis outages. Operators MUST alert on this log and restore Redis
-            # promptly to re-enable rate limiting.
+            # Fail-CLOSED: when the limiter cannot consult Redis it denies
+            # the request rather than silently lifting per-tenant quotas.
+            # Operators MUST alert on this log and restore Redis promptly.
             logger.critical(
                 "rate_limit_redis_unavailable",
                 tenant_id=tenant_id,
-                detail="rate limiting BYPASSED — Redis unreachable",
+                detail="rate limiting DENYING requests — Redis unreachable",
                 exc_info=True,
             )
             return RateLimitResult(
-                allowed=True,
+                allowed=False,
                 limit=rpm,
-                remaining=rpm,
+                remaining=0,
                 reset_at=reset_at,
                 degraded=True,
             )

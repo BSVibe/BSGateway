@@ -29,6 +29,13 @@ INSERT INTO rule_conditions (rule_id, condition_type, operator, field, value, ne
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, rule_id, condition_type, operator, field, value, negate;
 
+-- name: insert_condition_batch
+-- Same as insert_condition but without RETURNING — used by executemany()
+-- in RulesRepository.replace_conditions to fold N inserts into a single
+-- batched round-trip (audit M3). asyncpg's executemany rejects RETURNING.
+INSERT INTO rule_conditions (rule_id, condition_type, operator, field, value, negate)
+VALUES ($1, $2, $3, $4, $5, $6);
+
 -- name: list_conditions
 SELECT id, rule_id, condition_type, operator, field, value, negate
 FROM rule_conditions WHERE rule_id = $1;

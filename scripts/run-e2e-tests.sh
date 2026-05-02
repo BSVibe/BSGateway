@@ -30,25 +30,25 @@ echo -e "${YELLOW}[E2E Test Suite]${NC} Starting BSGateway E2E Tests\n"
 
 # Check prerequisites
 echo -e "${YELLOW}[1/5]${NC} Checking prerequisites..."
-if ! which npm &> /dev/null; then
-  echo -e "${RED}Error: npm not found${NC}"
+if ! which pnpm &> /dev/null; then
+  echo -e "${RED}Error: pnpm not found${NC}"
   exit 1
 fi
 if ! uv --version &> /dev/null; then
   echo -e "${RED}Error: uv not found${NC}"
   exit 1
 fi
-echo -e "${GREEN}✓${NC} npm and uv are installed\n"
+echo -e "${GREEN}✓${NC} pnpm and uv are installed\n"
 
 # Install frontend dependencies
 echo -e "${YELLOW}[2/5]${NC} Installing frontend dependencies..."
 cd "$PROJECT_ROOT/frontend"
-npm install --silent
+pnpm install --frozen-lockfile --silent
 echo -e "${GREEN}✓${NC} Frontend dependencies installed\n"
 
 # Build frontend
 echo -e "${YELLOW}[3/5]${NC} Building frontend..."
-npm run build
+pnpm run build
 echo -e "${GREEN}✓${NC} Frontend built successfully\n"
 
 # Start backend in background
@@ -81,7 +81,7 @@ echo -e "${GREEN}✓${NC} API server is ready\n"
 # Start frontend dev server in background
 echo -e "${YELLOW}[5/5]${NC} Starting frontend dev server..."
 cd "$PROJECT_ROOT/frontend"
-npm run dev > "$TMP_DIR/frontend.log" 2>&1 &
+pnpm run dev > "$TMP_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 echo "Frontend PID: $FRONTEND_PID"
 
@@ -105,7 +105,7 @@ echo -e "${GREEN}✓${NC} Frontend dev server is ready\n"
 echo -e "${YELLOW}[Running E2E Tests]${NC}\n"
 cd "$PROJECT_ROOT/frontend"
 E2E_RESULT=0
-npm run test:e2e || E2E_RESULT=$?
+pnpm run test:e2e || E2E_RESULT=$?
 
 if [ $E2E_RESULT -eq 0 ]; then
   echo -e "${GREEN}✓ All E2E tests passed!${NC}"

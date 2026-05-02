@@ -1,14 +1,29 @@
+"""BSGateway settings.
+
+Phase A Batch 5: extends :class:`bsvibe_fastapi.FastApiSettings` so the
+CORS / CSV-list / structlog plumbing matches the four-product baseline
+(BSupervisor PR #13 §M18). BSGateway-specific knobs (gateway YAML
+path, encryption key, BSupervisor service-account credentials, …)
+remain on this subclass.
+
+The legacy ``cors_allowed_origins: str`` field is replaced by the
+shared ``Annotated[list[str], NoDecode]`` shape inherited from
+:class:`FastApiSettings`. Existing deployments that ship
+``CORS_ALLOWED_ORIGINS=http://a,http://b`` keep working unchanged.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import structlog
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from bsvibe_fastapi import FastApiSettings
+from pydantic_settings import SettingsConfigDict
 
 _config_logger = structlog.get_logger(__name__)
 
 
-class Settings(BaseSettings):
+class Settings(FastApiSettings):
     """BSGateway configuration via environment variables."""
 
     gateway_config_path: Path = Path("gateway.yaml")
@@ -26,13 +41,53 @@ class Settings(BaseSettings):
     bsvibe_auth_url: str = "https://auth.bsvibe.dev"
     encryption_key: str = ""  # 32-byte hex string for AES-256-GCM
 
-    # CORS (comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com")
-    cors_allowed_origins: str = ""
+    # ----------------------------------------------------------------------
+    # Phase 0 P0.7 — service-account credentials for minting BSupervisor JWTs.
+    # ----------------------------------------------------------------------
+    # Long-lived BSVibe-Auth user access token for a dedicated service
+    # account user (admin/owner of the tenant below). Generated out-of-band
+    # via the BSVibe-Auth admin console; rotated quarterly.
+    bsvibe_service_account_token: str = ""
+    # Tenant the service-account user is operating on behalf of.
+    bsvibe_service_account_tenant_id: str = ""
+
+    # ----------------------------------------------------------------------
+    # Phase 0 P0.7 — BSupervisor preflight integration.
+    # ----------------------------------------------------------------------
+    bsupervisor_url: str = ""
+    bsupervisor_audit_enabled: bool = False
+    bsupervisor_audit_timeout_ms: int = 200
+    # "open" → fail-open (default, matches BSNexus's pre-cutover behaviour);
+    # "closed" → block runs when BSupervisor is unreachable.
+    bsupervisor_audit_fail_mode: str = "open"
+
+    # ----------------------------------------------------------------------
+    # Phase Audit Batch 2 — bsvibe-audit outbox emission.
+    # ----------------------------------------------------------------------
+    # Enables the SQLAlchemy-side ``audit_outbox`` writer + relay. Default
+    # **on** so the four ``gateway.*`` events surface in the BSVibe-Auth
+    # audit log out of the box. Set ``BSVIBE_AUDIT_OUTBOX_ENABLED=false``
+    # to opt out (the only failure path is a missing
+    # ``COLLECTOR_DATABASE_URL``, which keeps the relay disabled even
+    # when this flag is true — see ``audit_publisher.build_audit_outbox``).
+    #
+    # Operator action when upgrading: run ``alembic upgrade head`` (creates
+    # the ``audit_outbox`` table from rev ``0002_audit_outbox``) and set
+    # ``BSVIBE_AUTH_AUDIT_URL`` so the relay has somewhere to push events.
+    bsvibe_audit_outbox_enabled: bool = True
 
     # Frontend dist directory (for serving dashboard static files)
     frontend_dist_dir: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # FastApiSettings.cors_allowed_origins is Annotated[list[str], NoDecode]
+    # with a CSV field_validator. Override the default to "" → [] (legacy
+    # behaviour: when unset, fall back to localhost in app.create_app).
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     @property
     def encryption_key_bytes(self) -> bytes:

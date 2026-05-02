@@ -15,6 +15,24 @@ dependencies = [
     "redis>=5.0.0",
     "httpx>=0.27.0",
     "bsvibe-auth[fastapi] @ git+https://github.com/BSVibe/BSVibe-Auth.git@v0.4.0#subdirectory=python",
+    # Phase Audit Batch 2 — pin all bsvibe-python packages to
+    # ``integration/phase-audit-batch-2`` (supersedes ``integration/phase-a``
+    # by adding ``bsvibe-audit`` and ``bsvibe-llm`` on top of the four
+    # Phase A packages: core/fastapi/sqlalchemy/authz/alerts). Single ref
+    # so uv resolves the whole bsvibe-python graph from one commit.
+    "bsvibe-core @ git+https://github.com/BSVibe/bsvibe-python.git@integration/phase-audit-batch-2#subdirectory=packages/bsvibe-core",
+    "bsvibe-fastapi @ git+https://github.com/BSVibe/bsvibe-python.git@integration/phase-audit-batch-2#subdirectory=packages/bsvibe-fastapi",
+    "bsvibe-sqlalchemy @ git+https://github.com/BSVibe/bsvibe-python.git@integration/phase-audit-batch-2#subdirectory=packages/bsvibe-sqlalchemy",
+    "bsvibe-authz @ git+https://github.com/BSVibe/bsvibe-python.git@integration/phase-audit-batch-2#subdirectory=packages/bsvibe-authz",
+    # Phase Audit Batch 2 — outbox-pattern audit emission for `gateway.*`
+    # domain events. Lives only on ``integration/phase-audit-batch-2``
+    # (the merge of ``feat/bsvibe-audit-impl`` + ``feat/bsvibe-llm-impl``
+    # on top of ``integration/phase-a``).
+    "bsvibe-audit @ git+https://github.com/BSVibe/bsvibe-python.git@integration/phase-audit-batch-2#subdirectory=packages/bsvibe-audit",
+    "alembic>=1.13.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg[binary]>=3.1.0",
+    "aiosqlite>=0.20.0",
 ]
 
 [project.optional-dependencies]

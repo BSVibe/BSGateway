@@ -17,6 +17,61 @@ logger = structlog.get_logger(__name__)
 _sql = NamedSqlLoader("apikey_schema.sql", "apikey_queries.sql")
 
 
+def split_sql_statements(sql: str) -> list[str]:
+    """Split SQL script on statement semicolons, ignoring line-comment text."""
+    statements: list[str] = []
+    current: list[str] = []
+    in_line_comment = False
+    in_single_quote = False
+    in_double_quote = False
+    i = 0
+
+    while i < len(sql):
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < len(sql) else ""
+
+        if in_line_comment:
+            current.append(ch)
+            if ch == "\n":
+                in_line_comment = False
+            i += 1
+            continue
+
+        if not in_single_quote and not in_double_quote and ch == "-" and nxt == "-":
+            in_line_comment = True
+            current.extend((ch, nxt))
+            i += 2
+            continue
+
+        if ch == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            current.append(ch)
+            i += 1
+            continue
+
+        if ch == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            current.append(ch)
+            i += 1
+            continue
+
+        if ch == ";" and not in_single_quote and not in_double_quote:
+            statement = "".join(current).strip()
+            if statement:
+                statements.append(statement)
+            current = []
+            i += 1
+            continue
+
+        current.append(ch)
+        i += 1
+
+    statement = "".join(current).strip()
+    if statement:
+        statements.append(statement)
+    return statements
+
+
 class ApiKeyRepository:
     """Database access for API keys."""
 
@@ -27,10 +82,8 @@ class ApiKeyRepository:
         schema = _sql.schema()
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                for statement in schema.split(";"):
-                    statement = statement.strip()
-                    if statement:
-                        await conn.execute(statement)
+                for statement in split_sql_statements(schema):
+                    await conn.execute(statement)
 
     async def create(
         self,
@@ -52,9 +105,15 @@ class ApiKeyRepository:
                 expires_at,
             )
 
-    async def get_by_hash(self, key_hash: str) -> asyncpg.Record | None:
+    async def list_active_by_prefix(self, key_prefix: str) -> list[asyncpg.Record]:
+        """Return active rows whose key_prefix matches.
+
+        With salted PBKDF2 hashes we can no longer look up by ``key_hash``
+        (each verify needs the per-row salt). The 12-char prefix is already
+        indexed and almost always returns at most one row.
+        """
         async with self._pool.acquire() as conn:
-            return await conn.fetchrow(_sql.query("get_api_key_by_hash"), key_hash)
+            return await conn.fetch(_sql.query("list_api_keys_by_prefix"), key_prefix)
 
     async def list_by_tenant(self, tenant_id: UUID) -> list[asyncpg.Record]:
         async with self._pool.acquire() as conn:

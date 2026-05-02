@@ -23,6 +23,8 @@ from bsgateway.executor.config import executor_settings
 from bsgateway.executor.dispatcher import WorkerDispatcher
 from bsgateway.executor.sql_loader import ExecutorSqlLoader
 from bsgateway.routing.collector import SqlLoader
+from bsgateway.routing.constants import LOG_TEXT_MAX_CHARS
+from bsgateway.routing.repository import RoutingLogsRepository
 from bsgateway.rules.engine import RuleEngine
 from bsgateway.rules.intent import IntentClassifier, IntentDefinition
 from bsgateway.rules.models import (
@@ -37,6 +39,8 @@ from bsgateway.rules.models import (
 if TYPE_CHECKING:
     import asyncpg
     from redis.asyncio import Redis
+
+    from bsgateway.supervisor.client import BSupervisorClient, RunMetadata
 
 logger = structlog.get_logger(__name__)
 
@@ -62,6 +66,7 @@ class ChatService:
         encryption_key: bytes,
         redis: Redis | None = None,
         background_tasks: set[asyncio.Task] | None = None,
+        supervisor: BSupervisorClient | None = None,
     ) -> None:
         self._pool = pool
         self._encryption_key = encryption_key
@@ -70,6 +75,7 @@ class ChatService:
         self._background_tasks: set[asyncio.Task] = (
             background_tasks if background_tasks is not None else set()
         )
+        self._supervisor = supervisor
 
     async def load_tenant_config(self, tenant_id: UUID) -> TenantConfig:
         """Batch-load rules + conditions + models + intent examples for a tenant."""
@@ -263,10 +269,18 @@ class ChatService:
                     status_code=500,
                 ) from exc
 
-        # Build litellm call kwargs
+        # Build litellm call kwargs.
+        #
+        # Sprint 0 follow-up (docs/TODO.md S1): plumb tenant_id into the
+        # litellm metadata so the BSGateway proxy hook (which reads
+        # ``data["metadata"]["tenant_id"]``) can scope its routing_logs
+        # write. Pre-fix the hook saw no tenant and skipped recording.
+        request_metadata = dict(request_data.get("metadata") or {})
+        request_metadata["tenant_id"] = str(tenant_id)
         litellm_kwargs: dict[str, Any] = {
             "model": model.litellm_model,
             "messages": request_data["messages"],
+            "metadata": request_metadata,
         }
         if api_key:
             litellm_kwargs["api_key"] = api_key
@@ -289,8 +303,11 @@ class ChatService:
             if param in request_data:
                 litellm_kwargs[param] = request_data[param]
 
-        # Extra params from model config (never allow overriding request-critical fields)
-        _protected = {"model", "messages", "stream", "api_key", "api_base"}
+        # Extra params from model config (never allow overriding request-critical fields).
+        # ``metadata`` is protected because we just stamped tenant_id into
+        # it — letting per-model extra_params clobber it would silently
+        # un-scope routing_logs (regression of C2).
+        _protected = {"model", "messages", "stream", "api_key", "api_base", "metadata"}
         if model.extra_params:
             for k, v in model.extra_params.items():
                 if k not in _protected:
@@ -299,7 +316,34 @@ class ChatService:
         stream = request_data.get("stream", False)
         litellm_kwargs["stream"] = stream
 
-        response = await litellm.acompletion(**litellm_kwargs)
+        run_meta = self._run_metadata(request_metadata, resolved_model=model.litellm_model)
+        if self._supervisor is not None and run_meta is not None:
+            pre = await self._supervisor.run_pre(run_meta)
+            if pre.blocked:
+                raise ChatError(
+                    pre.reason or "blocked by BSupervisor policy",
+                    code="bsupervisor_blocked",
+                    status_code=403,
+                )
+
+        try:
+            response = await litellm.acompletion(**litellm_kwargs)
+        except Exception:
+            if self._supervisor is not None and run_meta is not None:
+                await self._supervisor.run_post(
+                    run_meta,
+                    status="error",
+                )
+            raise
+
+        if self._supervisor is not None and run_meta is not None:
+            usage = getattr(response, "usage", None)
+            await self._supervisor.run_post(
+                run_meta,
+                status="success",
+                tokens_in=getattr(usage, "prompt_tokens", None) if usage is not None else None,
+                tokens_out=getattr(usage, "completion_tokens", None) if usage is not None else None,
+            )
 
         # Fire-and-forget: log routing decision + budget tracking
         task = asyncio.create_task(
@@ -312,6 +356,12 @@ class ChatService:
         task.add_done_callback(self._on_background_done)
 
         return response
+
+    @staticmethod
+    def _run_metadata(metadata: dict[str, Any], *, resolved_model: str) -> RunMetadata | None:
+        from bsgateway.supervisor.client import RunMetadata
+
+        return RunMetadata.from_request_metadata(metadata, resolved_model=resolved_model)
 
     async def _execute_via_worker(
         self,
@@ -462,30 +512,41 @@ class ChatService:
         request_data: dict,
         model: TenantModel,
     ) -> None:
-        """Log routing decision to DB and update budget tracker."""
+        """Log routing decision to DB and update budget tracker.
+
+        All persistence flows through ``RoutingLogsRepository`` which
+        forces ``tenant_id`` onto every routing_logs query — see C2 in
+        the BSVibe Ecosystem Audit.
+        """
         try:
             ctx = EvaluationContext.from_request(request_data)
             rule_id = uuid.UUID(rule_match.rule.id) if rule_match else None
+            repo = RoutingLogsRepository(self._pool)
 
-            async with self._pool.acquire() as conn:
-                await conn.execute(
-                    _sql.query("insert_routing_log_with_tenant"),
-                    tenant_id,  # $1
-                    rule_id,  # $2
-                    ctx.user_text[:2000],  # $3 truncate
-                    ctx.system_prompt[:2000],  # $4
-                    ctx.estimated_tokens,  # $5
-                    ctx.conversation_turns,  # $6
-                    0,  # $7 code_block_count
-                    0,  # $8 code_lines
-                    ctx.has_error_trace,  # $9
-                    ctx.tool_count,  # $10
-                    "rule" if rule_match else "direct",  # $11 tier
-                    "rule_engine",  # $12 strategy
-                    rule_match.rule.priority if rule_match else None,  # $13
-                    request_data.get("model", "auto"),  # $14
-                    model.litellm_model,  # $15
-                )
+            await repo.insert_routing_log(
+                tenant_id=tenant_id,
+                rule_id=rule_id,
+                user_text=ctx.user_text[:LOG_TEXT_MAX_CHARS],
+                system_prompt=ctx.system_prompt[:LOG_TEXT_MAX_CHARS],
+                features={
+                    "token_count": ctx.estimated_tokens,
+                    "conversation_turns": ctx.conversation_turns,
+                    "code_block_count": 0,
+                    "code_lines": 0,
+                    "has_error_trace": ctx.has_error_trace,
+                    "tool_count": ctx.tool_count,
+                },
+                tier="rule" if rule_match else "direct",
+                strategy="rule_engine",
+                score=rule_match.rule.priority if rule_match else None,
+                original_model=request_data.get("model", "auto"),
+                resolved_model=model.litellm_model,
+                embedding=None,
+                nexus_task_type=None,
+                nexus_priority=None,
+                nexus_complexity_hint=None,
+                decision_source="rule_engine",
+            )
         except (ConnectionError, TimeoutError, OSError):
             logger.warning("routing_log_failed", exc_info=True)
         except Exception:

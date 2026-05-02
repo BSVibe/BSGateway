@@ -23,8 +23,19 @@ const FAKE_JWT = buildFakeJwt({
 /**
  * Mock the auth.bsvibe.dev/api/session endpoint to return a valid session.
  * This replaces the old localStorage-based injectAuth.
+ *
+ * Phase B Batch 2: returns the full SessionEnvelope shape (`user` +
+ * `tenants` + `active_tenant_id`). The legacy 3-field response was missing
+ * `user`, which caused `<ProtectedRoute>` to redirect to /login and broke
+ * protected-page e2e.
  */
 export async function injectAuth(page: Page) {
+  await page.addInitScript(({ token }) => {
+    localStorage.setItem('bsgateway_access_token', token);
+    localStorage.setItem('bsgateway_refresh_token', 'fake-refresh-token');
+    sessionStorage.setItem('bsvibe_tenant_name', 'Test Tenant');
+  }, { token: FAKE_JWT });
+
   await page.route('**/auth.bsvibe.dev/api/session', (route) => {
     const method = route.request().method();
     if (method === 'GET') {
@@ -32,6 +43,22 @@ export async function injectAuth(page: Page) {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
+          user: {
+            id: 'user-test-123',
+            email: 'test@example.com',
+            name: 'Test User',
+          },
+          tenants: [
+            {
+              id: TENANT_ID,
+              name: 'Test Tenant',
+              slug: 'test-tenant',
+              plan: 'team',
+              type: 'company',
+              role: 'admin',
+            },
+          ],
+          active_tenant_id: TENANT_ID,
           access_token: FAKE_JWT,
           refresh_token: 'fake-refresh-token',
           expires_in: 3600,

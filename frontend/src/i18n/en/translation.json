@@ -1,15 +1,17 @@
 {
   "nav": {
     "dashboard": "Dashboard",
-    "rules": "Routing Rules",
+    "rules": "Routing",
     "models": "Models",
     "routingTest": "Routing Test",
-    "usage": "Usage",
+    "usage": "Analytics",
     "apiKeys": "API Keys",
     "audit": "Audit Log",
     "intents": "Intents",
     "settings": "Settings",
-    "logout": "Logout"
+    "logout": "Logout",
+    "tagline": "LLM Routing",
+    "openNav": "Open navigation"
   },
   "common": {
     "save": "Save",
@@ -21,46 +23,433 @@
     "loading": "Loading...",
     "error": "An error occurred",
     "noData": "No data available",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "creating": "Creating...",
+    "saving": "Saving...",
+    "tryAgain": "Try Again",
+    "reloadPage": "Reload Page",
+    "somethingWrong": "Something went wrong",
+    "discard": "Discard",
+    "addExample": "Add Example",
+    "optional": "(optional)"
+  },
+  "language": {
+    "label": "Language",
+    "ko": "한국어",
+    "en": "English"
   },
   "dashboard": {
-    "title": "Dashboard",
-    "totalRequests": "Total Requests",
-    "totalTokens": "Total Tokens",
-    "totalCost": "Total Cost",
-    "avgLatency": "Avg Latency"
+    "tenantOverview": "{{tenant}} Overview",
+    "systemOverview": "System Overview",
+    "subtitle": "Routing overview and metrics",
+    "stats": {
+      "totalRequests": "Total Requests",
+      "totalTokens": "Total Tokens",
+      "activeRules": "Active Rules",
+      "avgLatency": "Avg Latency",
+      "last7Days": "last 7 days",
+      "processedThisWeek": "processed this week",
+      "routingPolicies": "routing policies",
+      "notTracked": "not yet tracked"
+    },
+    "requestVolume": "Request Volume",
+    "requestVolumeSubtitle": "Live gateway traffic - last 7 days",
+    "modelDistribution": "Model Distribution",
+    "modelDistributionSubtitle": "Token usage by model",
+    "noUsageData": "No usage data yet",
+    "noModelData": "No model data yet",
+    "recentActivity": "Recent Activity",
+    "recentActivitySubtitle": "Latest audit events",
+    "table": {
+      "actor": "Actor",
+      "action": "Action",
+      "resource": "Resource",
+      "when": "When"
+    },
+    "noActivity": "No recent activity",
+    "noActivityHint": "Events will appear here as you use BSGateway",
+    "loadFailed": "Failed to load dashboard",
+    "time": {
+      "justNow": "just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago"
+    }
   },
-  "rules": {
+  "routes": {
     "title": "Routing Rules",
+    "subtitle": "Describe what kind of requests should go to which model.",
+    "configured_one": "{{count}} rule configured.",
+    "configured_other": "{{count}} rules configured.",
     "addRule": "Add Rule",
-    "editRule": "Edit Rule",
-    "deleteRule": "Delete Rule",
-    "pattern": "Pattern",
-    "model": "Model",
-    "priority": "Priority"
+    "createRule": "Create Rule",
+    "modal": {
+      "title": "Add Routing Rule",
+      "newRule": "New Rule",
+      "whichRequests": "What requests should be routed?",
+      "whichRequestsPlaceholder": "e.g. code review or debugging requests",
+      "whichModel": "Which model should they go to?",
+      "noModels": "No models registered yet.",
+      "registerFirst": "Register a model first",
+      "addExamples": "Add example phrases (optional)",
+      "examplePlaceholder": "e.g. 'please review this code'",
+      "descriptionRequired": "Description is required",
+      "modelRequired": "Target model is required",
+      "createFailed": "Failed to create rule"
+    },
+    "card": {
+      "exampleCount_one": "{{count}} example",
+      "exampleCount_other": "{{count}} examples",
+      "examplesHeader": "Example phrases",
+      "noExamples": "No examples yet — add one below to improve intent matching.",
+      "addExamplePlaceholder": "Add an example phrase...",
+      "add": "Add",
+      "adding": "Adding...",
+      "active": "Active — click to disable",
+      "inactive": "Inactive — click to enable",
+      "moveUp": "Move up (higher priority)",
+      "moveDown": "Move down (lower priority)",
+      "deleteRule": "Delete rule",
+      "removeExample": "Remove example",
+      "toggleFailed": "Failed to toggle",
+      "modelUpdateFailed": "Failed to update model",
+      "addExampleFailed": "Failed to add example",
+      "removeExampleFailed": "Failed to remove example"
+    },
+    "default": {
+      "title": "Default fallback",
+      "active": "active",
+      "missing": "missing",
+      "configured": "Used when no other rule matches.",
+      "missingHint": "Without a default, unmatched requests return 400. Pick a fallback model below.",
+      "clear": "Clear",
+      "clearTitle": "Clear default fallback",
+      "saveFailed": "Failed to save default model",
+      "clearFailed": "Failed to clear default"
+    },
+    "embedding": {
+      "header": "Embedding model",
+      "active": "active",
+      "disabled": "disabled",
+      "activeHint": "{{model}} — used to classify intents on incoming chat requests",
+      "disabledHint": "No embedding model configured. Intent rules will not match live traffic.",
+      "modelLabel": "Model",
+      "modelPlaceholder": "text-embedding-3-small",
+      "apiBaseLabel": "API base",
+      "apiBaseSelfHosted": "(optional, for self-hosted)",
+      "apiBasePlaceholder": "http://host.docker.internal:11434",
+      "save": "Save",
+      "saving": "Saving...",
+      "reembed": "Re-embed examples",
+      "reembedding": "Re-embedding...",
+      "reembedTitle": "Backfill all examples with the current embedding model. Run after swapping models.",
+      "disable": "Disable",
+      "swapHint": "Changing the model invalidates existing example embeddings — they are tagged with the model that produced them and skipped at classification time. Click Re-embed examples after a swap to refresh them with the new model in a single batch call.",
+      "modelRequired": "Model is required",
+      "savedRunReembed": "Saved. Run \"Re-embed\" if you swapped models.",
+      "disabledMessage": "Embedding disabled for this tenant.",
+      "reembedComplete": "Re-embed complete: {{refreshed}} refreshed, {{failed}} failed (model: {{model}}).",
+      "loadFailed": "Failed to load embedding settings",
+      "saveFailed": "Failed to save settings",
+      "clearFailed": "Failed to clear settings",
+      "reembedFailed": "Failed to re-embed"
+    },
+    "empty": {
+      "title": "No routing rules yet",
+      "hint": "Describe a kind of request and pick a model — that's it.",
+      "createFirst": "Create your first routing rule"
+    }
+  },
+  "models": {
+    "title": "Model Registry",
+    "subtitle": "Manage and monitor deployment-ready LLMs across your distributed infrastructure.",
+    "summary": "{{models}} model{{ms}} · {{workers}} worker{{ws}} registered.",
+    "installWorker": "Install Worker",
+    "hide": "Hide",
+    "registerModel": "Register Model",
+    "registerNewModel": "Register New Model",
+    "registering": "Registering...",
+    "registerFirst": "Register First Model",
+    "providerNote": "This form is for LLM providers (OpenAI, Anthropic, Ollama, ...). Executor workers (Claude Code / Codex) auto-register as models when you run their install script — use the Install Worker button above.",
+    "fields": {
+      "alias": "Alias",
+      "aliasHint": "Internal alias for routing",
+      "litellmModel": "LiteLLM Model ID",
+      "litellmHint": "provider/model format",
+      "apiBase": "API Base",
+      "apiKey": "API Key"
+    },
+    "validation": {
+      "aliasRequired": "Alias and model name are required"
+    },
+    "install": {
+      "registerWorker": "Register a Worker",
+      "intro": "Workers run Claude Code or Codex CLI on any machine, poll this gateway for tasks, and report results back.",
+      "step1": "Step 1 — Install Token",
+      "step2": "Step 2 — Install & Run on the Worker Machine",
+      "revoke": "Revoke",
+      "warningCopyNow": "⚠ Copy this token now — it won't be shown again. Store it securely.",
+      "generateToken": "Generate Token",
+      "regenerateToken": "Regenerate Token",
+      "working": "Working...",
+      "tokenExists": "A token is already minted (hidden). Regenerate to get a new one — the old one stops working.",
+      "tokenMissing": "Mint a token, then paste it on the worker machine.",
+      "copySnippet": "Copy Snippet",
+      "footnote": "The worker auto-detects available CLIs via shutil.which and reports them as capabilities. First run saves a persistent token to worker/.env."
+    },
+    "empty": {
+      "noModels": "No models registered",
+      "addToStart": "Add a model to start routing"
+    },
+    "card": {
+      "modelId": "Model ID"
+    },
+    "workers": {
+      "header": "Executor Workers",
+      "lastHeartbeat": "Last heartbeat: {{time}}",
+      "tasksTitle": "Tasks per day (last 7 days)",
+      "requestsTitle": "Requests per day (last 7 days)"
+    }
+  },
+  "rulesLegacy": {
+    "title": "Routing Rules",
+    "subtitle": "Configure intelligent traffic distribution based on prompt complexity, metadata, and token density.",
+    "configured_one": "{{count}} rule configured.",
+    "configured_other": "{{count}} rules configured.",
+    "createRule": "Create Rule",
+    "modal": {
+      "title": "Create Routing Rule",
+      "newRule": "New Rule",
+      "ruleName": "Rule Name",
+      "ruleNamePlaceholder": "e.g. High Priority Customer Router",
+      "targetModel": "Target Model",
+      "targetModelPlaceholder": "e.g. openai/gpt-4o",
+      "executionPriority": "Execution Priority",
+      "highest": "HIGHEST",
+      "lowest": "LOWEST",
+      "defaultRule": "Default rule (fallback)",
+      "saveDeploy": "Save & Deploy",
+      "validationRequired": "Name and target model are required",
+      "createFailed": "Failed to create rule"
+    },
+    "table": {
+      "name": "Name",
+      "targetModel": "Target Model",
+      "priority": "Priority",
+      "status": "Status",
+      "actions": "Actions",
+      "defaultBadge": "default",
+      "conditions_one": "{{count}} condition",
+      "conditions_other": "{{count}} conditions"
+    },
+    "empty": {
+      "title": "No routing rules yet",
+      "hint": "Create a rule to start intelligently routing your LLM requests.",
+      "createFirst": "Create First Rule"
+    }
   },
   "apiKeys": {
-    "title": "API Key Management",
-    "createKey": "Create Key",
-    "name": "Name",
-    "project": "Project",
-    "rateLimit": "Rate Limit",
-    "expiry": "Expiry",
-    "revoke": "Revoke"
+    "title": "API Keys",
+    "subtitle": "Manage access keys for your applications.",
+    "generate": "Generate New Key",
+    "stats": {
+      "active": "Active Keys",
+      "total": "Total Keys",
+      "revoked": "Revoked"
+    },
+    "form": {
+      "keyName": "Key Name",
+      "keyNamePlaceholder": "e.g. production, staging, ci-pipeline",
+      "keyNameHint": "A label to identify this key",
+      "create": "Create Key",
+      "validation": "Name is required"
+    },
+    "newKey": {
+      "banner": "API Key created. Copy it now -- it won't be shown again.",
+      "usage": "Usage:"
+    },
+    "table": {
+      "name": "Name",
+      "key": "Key",
+      "created": "Created",
+      "lastUsed": "Last Used",
+      "status": "Status",
+      "actions": "Actions",
+      "never": "Never",
+      "revoked": "Revoked",
+      "expired": "Expired",
+      "active": "Active"
+    },
+    "empty": {
+      "noKeys": "No API keys created"
+    }
+  },
+  "audit": {
+    "title": "Audit Log",
+    "subtitle": "All admin operations and changes",
+    "table": {
+      "timestamp": "Timestamp",
+      "actor": "Actor",
+      "action": "Action",
+      "resource": "Resource"
+    },
+    "empty": {
+      "noLogs": "No audit logs"
+    },
+    "pagination": {
+      "range": "{{from}}--{{to}} of {{total}}"
+    },
+    "loadFailed": "Failed to load audit logs"
   },
   "usage": {
-    "title": "Usage",
-    "period": "Period",
-    "today": "Today",
-    "week": "This Week",
-    "month": "This Month",
-    "custom": "Custom",
-    "byModel": "By Model",
-    "byCost": "By Cost"
+    "title": "Analytics Dashboard",
+    "subtitle": "Monitor performance metrics and operational costs across all active gateways.",
+    "period": {
+      "day": "Today",
+      "week": "Last 7 days",
+      "month": "Last 30 days"
+    },
+    "cards": {
+      "dailyTrend": "Daily Request Trend",
+      "totalRequests": "total requests",
+      "trafficByModel": "Traffic by Model",
+      "trafficByModelSubtitle": "Request distribution",
+      "trafficByRule": "Traffic by Rule",
+      "trafficByRuleSubtitle": "Routing rule hits",
+      "totalRequestsLabel": "Total Requests",
+      "totalTokens": "Total Tokens",
+      "activeModels": "Active Models"
+    },
+    "empty": {
+      "noDailyData": "No daily data available",
+      "noModelData": "No model data",
+      "noUsageData": "No usage data available",
+      "startRouting": "Start routing requests to see analytics"
+    },
+    "loadFailed": "Failed to load usage data"
+  },
+  "intents": {
+    "title": "Custom Intents",
+    "subtitle": "Define intent patterns for semantic routing.",
+    "newIntent": "New Intent",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "summarization",
+      "description": "Description",
+      "descriptionPlaceholder": "Requests asking to summarize content",
+      "examples": "Examples",
+      "examplePlaceholder": "e.g., 'Please summarize this...'",
+      "targetModel": "Target Model",
+      "targetModelPlaceholder": "gpt-4o",
+      "create": "Create Intent",
+      "validation": "Name is required"
+    },
+    "list": {
+      "inactive": "inactive",
+      "threshold": "threshold: {{value}}"
+    },
+    "empty": {
+      "noIntents": "No intents defined"
+    }
+  },
+  "test": {
+    "title": "Routing Simulator",
+    "subtitle": "Test routing logic before deployment",
+    "input": "Test Input",
+    "requestContext": "Request Context",
+    "promptContent": "Prompt Content",
+    "rolePlaceholder": "Paste your LLM prompt here for routing analysis...",
+    "addMessage": "Add Message",
+    "runSimulation": "Run Simulation",
+    "testing": "Testing...",
+    "validation": "At least one message is required",
+    "failed": "Test failed",
+    "result": {
+      "title": "Simulation Result",
+      "routedTo": "Routed to",
+      "matched": "MATCHED",
+      "noMatch": "NO MATCH",
+      "noModelSelected": "(no model selected)",
+      "matchedRule": "Matched rule:",
+      "detectedIntent": "Detected intent:",
+      "routingPath": "Routing Path",
+      "stepInput": "Input",
+      "stepClassifier": "Classifier",
+      "stepRules": "Rules",
+      "stepNone": "None"
+    },
+    "empty": {
+      "noRun": "No test run yet",
+      "configureRequest": "Configure a request and run the simulation"
+    }
+  },
+  "login": {
+    "headlinePart1": "Smart routing,",
+    "headlinePart2": "lower costs",
+    "tagline": "Automatically route LLM requests to the most cost-effective model based on complexity analysis.",
+    "features": {
+      "costOptimization": {
+        "title": "Cost Optimization",
+        "description": "Route requests to the most cost-effective model automatically"
+      },
+      "complexityAnalysis": {
+        "title": "Complexity Analysis",
+        "description": "Classify prompt complexity to select the right model tier"
+      },
+      "multiModel": {
+        "title": "Multi-Model Routing",
+        "description": "Seamlessly switch between OpenAI, Anthropic, and more"
+      }
+    },
+    "signIn": "Sign in with BSVibe",
+    "noAccount": "Don't have an account?",
+    "signUp": "Sign up",
+    "poweredBy": "Powered by"
   },
   "help": {
-    "button": "Help",
+    "open": "Open help",
     "close": "Close",
-    "viewDocs": "View Docs"
+    "title": "Help",
+    "viewDocs": "View Docs",
+    "allPages": "All pages",
+    "pages": {
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "View the overall summary on the dashboard"
+      },
+      "rules": {
+        "title": "Routing Rules",
+        "description": "Create and edit routing rules"
+      },
+      "models": {
+        "title": "Model Management",
+        "description": "Manage registered LLM models"
+      },
+      "routingTest": {
+        "title": "Routing Simulator",
+        "description": "Simulate routing decisions with test requests"
+      },
+      "usage": {
+        "title": "Usage",
+        "description": "Check usage and costs"
+      },
+      "apiKeys": {
+        "title": "API Keys",
+        "description": "Generate and manage API keys"
+      },
+      "audit": {
+        "title": "Audit Log",
+        "description": "Review the audit log"
+      },
+      "default": {
+        "title": "BSGateway",
+        "description": "BSGateway is an LLM cost-optimized routing proxy"
+      }
+    }
   }
 }

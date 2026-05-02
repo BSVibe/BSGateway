@@ -340,6 +340,56 @@ class TestComplete:
 
         assert mock_acomp.call_args.kwargs["api_base"] == "https://custom.api.com/v1"
 
+    async def test_supervisor_pre_and_post_events_are_emitted_for_run_metadata(self):
+        pool = _make_pool()
+        supervisor = AsyncMock()
+        supervisor.run_pre.return_value.blocked = False
+        supervisor.run_pre.return_value.reason = None
+        svc = ChatService(pool, ENCRYPTION_KEY, supervisor=supervisor)
+
+        mock_response = MagicMock()
+        mock_response.usage.prompt_tokens = 7
+        mock_response.usage.completion_tokens = 11
+
+        with (
+            patch.object(svc, "load_tenant_config", new_callable=AsyncMock) as mock_load,
+            patch.object(svc, "resolve_model", new_callable=AsyncMock) as mock_resolve,
+            patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response),
+        ):
+            mock_load.return_value = _make_tenant_config()
+            model = TenantModel(
+                model_name="e2e-model",
+                provider="openai",
+                litellm_model="openai/e2e-model",
+                api_key_encrypted=None,
+            )
+            mock_resolve.return_value = (model, None)
+
+            await svc.complete(
+                TENANT_ID,
+                {
+                    "model": "e2e-model",
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "metadata": {
+                        "run_id": "run-1",
+                        "project_id": "project-1",
+                        "request_id": "request-1",
+                        "agent_name": "e2e-agent",
+                    },
+                },
+            )
+
+        supervisor.run_pre.assert_awaited_once()
+        pre_meta = supervisor.run_pre.await_args.args[0]
+        assert pre_meta.tenant_id == str(TENANT_ID)
+        assert pre_meta.run_id == "run-1"
+        assert pre_meta.model == "openai/e2e-model"
+        supervisor.run_post.assert_awaited_once()
+        post_kwargs = supervisor.run_post.await_args.kwargs
+        assert post_kwargs["status"] == "success"
+        assert post_kwargs["tokens_in"] == 7
+        assert post_kwargs["tokens_out"] == 11
+
 
 class TestLoadTenantConfig:
     """Test TenantConfig batch loading from DB."""

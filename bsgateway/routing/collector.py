@@ -4,6 +4,7 @@ import asyncio
 import re
 import struct
 from pathlib import Path
+from uuid import UUID
 
 import asyncpg
 import litellm
@@ -15,6 +16,7 @@ from bsgateway.routing.classifiers.base import (
     extract_system_prompt,
     extract_user_text,
 )
+from bsgateway.routing.constants import WORDS_TO_TOKENS_RATIO
 from bsgateway.routing.models import EmbeddingConfig, RoutingDecision
 
 logger = structlog.get_logger(__name__)
@@ -72,14 +74,22 @@ class RoutingCollector:
     ) -> None:
         self.database_url = database_url
         self.embedding_config = embedding_config
-        self._pool: asyncpg.Pool = None  # type: ignore[assignment]
+        self._pool: asyncpg.Pool | None = None
         self._initialized = False
+        self._closed = False
         self._init_lock = asyncio.Lock()
 
     async def _ensure_db(self) -> None:
+        if self._closed:
+            # Once closed, never re-create the pool. Late-arriving record()
+            # calls are dropped instead of resurrecting connections during
+            # graceful shutdown (audit issue H15).
+            raise RuntimeError("RoutingCollector is closed")
         if self._initialized:
             return
         async with self._init_lock:
+            if self._closed:
+                raise RuntimeError("RoutingCollector is closed")
             if self._initialized:
                 return
             self._pool = await asyncpg.create_pool(self.database_url, min_size=1, max_size=5)
@@ -96,7 +106,34 @@ class RoutingCollector:
         data: dict,
         result: ClassificationResult,
         decision: RoutingDecision,
+        *,
+        tenant_id: UUID | None,
+        rule_id: UUID | None = None,
     ) -> None:
+        """Persist a routing decision row.
+
+        ``tenant_id`` is mandatory. Without it the row would be written
+        as NULL-tenant and could be co-mingled into another tenant's
+        aggregate queries (see C2 in the BSVibe Ecosystem Audit). When
+        the caller cannot resolve a tenant — e.g. a bare LiteLLM proxy
+        request that did not flow through the BSGateway chat router —
+        the record is silently dropped rather than written without
+        scoping.
+        """
+        if tenant_id is None:
+            logger.debug(
+                "routing_record_skipped_no_tenant",
+                reason="record() called without tenant_id; refusing to log "
+                "to prevent cross-tenant leakage",
+            )
+            return
+
+        if self._closed:
+            # Late background task firing after shutdown — drop the row
+            # instead of resurrecting the closed pool.
+            logger.debug("routing_record_skipped_closed")
+            return
+
         await self._ensure_db()
         messages = data.get("messages", [])
         user_text = extract_user_text(messages)
@@ -111,6 +148,8 @@ class RoutingCollector:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 sql.query("insert_routing_log"),
+                tenant_id,
+                rule_id,
                 user_text,
                 system_prompt,
                 features["token_count"],
@@ -150,8 +189,26 @@ class RoutingCollector:
             )
             vector = response.data[0]["embedding"]
             return struct.pack(f"{len(vector)}f", *vector)
-        except Exception:
-            logger.warning("embedding_generation_failed", exc_info=True)
+        except asyncio.CancelledError:
+            # Propagate cooperative cancellation; never silently retry.
+            raise
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+            ValueError,
+            KeyError,
+            IndexError,
+        ) as exc:
+            # Expected: embedding service unreachable / slow / returns
+            # a malformed payload. Embeddings are best-effort training
+            # signal — drop the vector and continue.
+            logger.warning("embedding_generation_failed", exc_info=exc)
+            return None
+        except Exception as exc:
+            # Programming bug — log under a distinct event so it is
+            # visible without crashing the routing path.
+            logger.error("embedding_unexpected_error", exc_info=exc)
             return None
 
     @staticmethod
@@ -159,7 +216,7 @@ class RoutingCollector:
         all_text = extract_all_text(messages)
         code_blocks = re.findall(r"```[\s\S]*?```", all_text)
         return {
-            "token_count": int(len(all_text.split()) * 1.3),
+            "token_count": int(len(all_text.split()) * WORDS_TO_TOKENS_RATIO),
             "conversation_turns": len([m for m in messages if m.get("role") == "user"]),
             "code_block_count": len(code_blocks),
             "code_lines": sum(b.count("\n") for b in code_blocks),
@@ -168,5 +225,18 @@ class RoutingCollector:
         }
 
     async def close(self) -> None:
-        if self._pool:
-            await self._pool.close()
+        """Close the lazy asyncpg pool. Idempotent.
+
+        Sprint 1 H15: callers (BSGatewayRouter / API lifespan) MUST invoke
+        this on shutdown to release pooled connections. ``_closed=True``
+        also blocks any late-arriving ``record()`` from resurrecting the
+        pool mid-shutdown.
+        """
+        async with self._init_lock:
+            self._closed = True
+            if self._pool is not None:
+                try:
+                    await self._pool.close()
+                finally:
+                    self._pool = None
+                    self._initialized = False

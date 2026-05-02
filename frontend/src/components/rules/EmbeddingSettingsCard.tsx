@@ -1,4 +1,7 @@
+'use client';
+
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { routesApi } from '../../api/routes';
 import type { EmbeddingSettings } from '../../types/api';
 
@@ -17,6 +20,7 @@ const PRESETS: { label: string; model: string; api_base?: string }[] = [
 ];
 
 export function EmbeddingSettingsCard({ tenantId }: Props) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reembedding, setReembedding] = useState(false);
@@ -36,19 +40,24 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
       setModel(result?.model ?? '');
       setApiBase(result?.api_base ?? '');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load embedding settings');
+      setError(err instanceof Error ? err.message : t('routes.embedding.loadFailed'));
     } finally {
       setLoading(false);
     }
+    // `t` intentionally omitted — see DashboardPage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   useEffect(() => {
-    refresh();
+    const id = window.setTimeout(() => {
+      refresh();
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [refresh]);
 
   const handleSave = async () => {
     if (!model.trim()) {
-      setError('Model is required');
+      setError(t('routes.embedding.modelRequired'));
       return;
     }
     setSaving(true);
@@ -62,9 +71,9 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
         max_input_length: 8000,
       });
       setSettings(result);
-      setStatus(`Saved. Run "Re-embed" if you swapped models.`);
+      setStatus(t('routes.embedding.savedRunReembed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save settings');
+      setError(err instanceof Error ? err.message : t('routes.embedding.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -79,9 +88,9 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
       setSettings(null);
       setModel('');
       setApiBase('');
-      setStatus('Embedding disabled for this tenant.');
+      setStatus(t('routes.embedding.disabledMessage'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear settings');
+      setError(err instanceof Error ? err.message : t('routes.embedding.clearFailed'));
     } finally {
       setSaving(false);
     }
@@ -94,10 +103,14 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
     try {
       const result = await routesApi.reembed(tenantId);
       setStatus(
-        `Re-embed complete: ${result.refreshed} refreshed, ${result.failed} failed (model: ${result.model}).`,
+        t('routes.embedding.reembedComplete', {
+          refreshed: result.refreshed,
+          failed: result.failed,
+          model: result.model,
+        }),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to re-embed');
+      setError(err instanceof Error ? err.message : t('routes.embedding.reembedFailed'));
     } finally {
       setReembedding(false);
     }
@@ -118,21 +131,21 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
           <span className="material-symbols-outlined text-primary">tune</span>
           <div className="text-left">
             <div className="text-sm font-bold text-on-surface flex items-center gap-2">
-              Embedding model
+              {t('routes.embedding.header')}
               {isConfigured ? (
                 <span className="text-[10px] px-2 py-0.5 bg-tertiary/15 text-tertiary rounded font-bold uppercase">
-                  active
+                  {t('routes.embedding.active')}
                 </span>
               ) : (
                 <span className="text-[10px] px-2 py-0.5 bg-on-surface-variant/10 text-on-surface-variant rounded font-bold uppercase">
-                  disabled
+                  {t('routes.embedding.disabled')}
                 </span>
               )}
             </div>
             <div className="text-xs text-on-surface-variant mt-0.5">
               {isConfigured
-                ? `${settings.model} — used to classify intents on incoming chat requests`
-                : 'No embedding model configured. Intent rules will not match live traffic.'}
+                ? t('routes.embedding.activeHint', { model: settings.model })
+                : t('routes.embedding.disabledHint')}
             </div>
           </div>
         </div>
@@ -156,13 +169,13 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
 
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-              Model
+              {t('routes.embedding.modelLabel')}
             </label>
             <input
               type="text"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="text-embedding-3-small"
+              placeholder={t('routes.embedding.modelPlaceholder')}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm font-mono focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/30"
             />
             <div className="flex flex-wrap gap-2 pt-1">
@@ -184,13 +197,13 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
 
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-              API base <span className="text-on-surface-variant/40 normal-case font-normal">(optional, for self-hosted)</span>
+              {t('routes.embedding.apiBaseLabel')} <span className="text-on-surface-variant/40 normal-case font-normal">{t('routes.embedding.apiBaseSelfHosted')}</span>
             </label>
             <input
               type="text"
               value={apiBase}
               onChange={(e) => setApiBase(e.target.value)}
-              placeholder="http://host.docker.internal:11434"
+              placeholder={t('routes.embedding.apiBasePlaceholder')}
               className="w-full bg-surface-container-highest border-none rounded-xl py-3 px-4 text-sm font-mono focus:ring-1 focus:ring-primary/40 placeholder:text-on-surface-variant/30"
             />
           </div>
@@ -201,15 +214,15 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
               disabled={saving || !model.trim()}
               className="px-5 py-2.5 bg-primary-container text-on-primary rounded-xl text-sm font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? t('routes.embedding.saving') : t('routes.embedding.save')}
             </button>
             <button
               onClick={handleReembed}
               disabled={reembedding || !isConfigured}
               className="px-5 py-2.5 bg-surface-container-highest text-on-surface rounded-xl text-sm font-bold hover:bg-surface-container-high active:scale-95 transition-all disabled:opacity-50"
-              title="Backfill all examples with the current embedding model. Run after swapping models."
+              title={t('routes.embedding.reembedTitle')}
             >
-              {reembedding ? 'Re-embedding...' : 'Re-embed examples'}
+              {reembedding ? t('routes.embedding.reembedding') : t('routes.embedding.reembed')}
             </button>
             {isConfigured && (
               <button
@@ -217,16 +230,13 @@ export function EmbeddingSettingsCard({ tenantId }: Props) {
                 disabled={saving}
                 className="px-5 py-2.5 text-sm font-bold text-on-surface-variant hover:text-error transition-colors"
               >
-                Disable
+                {t('routes.embedding.disable')}
               </button>
             )}
           </div>
 
           <p className="text-[11px] text-on-surface-variant/70 leading-relaxed pt-1">
-            Changing the model invalidates existing example embeddings — they are tagged with
-            the model that produced them and skipped at classification time. Click{' '}
-            <span className="font-bold">Re-embed examples</span> after a swap to refresh them
-            with the new model in a single batch call.
+            {t('routes.embedding.swapHint')}
           </p>
         </div>
       )}

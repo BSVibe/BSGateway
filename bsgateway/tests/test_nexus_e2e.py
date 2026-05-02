@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -28,6 +29,30 @@ from bsgateway.routing.models import (
     RoutingConfig,
     TierConfig,
 )
+
+TENANT_ID = uuid4()
+
+
+class _RouterWithFixedTenant(BSGatewayRouter):
+    """Inject a fixed tenant_id so collector fires in legacy scenario tests.
+
+    Accepts the optional ``user_api_key`` kwarg that the production
+    ``_extract_tenant_id`` learned in the Sprint 0 follow-up (S1) so
+    older test scenarios keep exercising the collector path even when
+    the hook plumbs the auth payload through.
+    """
+
+    @staticmethod
+    def _extract_tenant_id(
+        data: dict,
+        user_api_key: object | None = None,
+    ) -> object:
+        # ``user_api_key`` is accepted for signature parity with the
+        # production ``BSGatewayRouter._extract_tenant_id`` (Sprint 0
+        # follow-up S1) but the fixed-tenant test override deliberately
+        # ignores it.
+        del user_api_key
+        return TENANT_ID
 
 
 @pytest.fixture
@@ -66,7 +91,7 @@ def mock_collector() -> AsyncMock:
 
 @pytest.fixture
 def router(routing_config: RoutingConfig, mock_collector: AsyncMock) -> BSGatewayRouter:
-    r = BSGatewayRouter(config=routing_config)
+    r = _RouterWithFixedTenant(config=routing_config)
     r.collector = mock_collector  # Inject mock collector to capture calls
     return r
 

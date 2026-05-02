@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, setOnUnauthorized, resetLogoutFlag } from '../api/client';
 
-const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.bsvibe.dev';
+const AUTH_URL =
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_AUTH_URL) ||
+  'https://auth.bsvibe.dev';
 const TENANT_NAME_KEY = 'bsvibe_tenant_name';
 const STORED_TOKEN_KEY = 'bsgateway_access_token';
 const STORED_REFRESH_KEY = 'bsgateway_refresh_token';
@@ -13,6 +15,10 @@ interface SessionResponse {
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
+
+interface AccessTokenOptions {
+  probeRemoteSession?: boolean;
+}
 
 function decodeJwt(token: string): Record<string, unknown> {
   const parts = token.split('.');
@@ -52,7 +58,9 @@ function consumeHashTokens(): string | null {
   return access;
 }
 
-export async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken({
+  probeRemoteSession = true,
+}: AccessTokenOptions = {}): Promise<string | null> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 30_000) {
     return cachedToken.value;
   }
@@ -67,6 +75,10 @@ export async function getAccessToken(): Promise<string | null> {
   const stored = typeof window !== 'undefined' ? localStorage.getItem(STORED_TOKEN_KEY) : null;
   if (stored && !isExpired(stored)) {
     return stored;
+  }
+
+  if (!probeRemoteSession) {
+    return null;
   }
 
   // 3. Cookie-based session (works only on *.bsvibe.dev origins)
@@ -136,13 +148,22 @@ function readInitialState(): AuthState {
   };
 }
 
-export function useAuth() {
+interface SessionTenant {
+  id: string;
+  name: string;
+  role?: string;
+}
+
+export function useAuth({
+  probeRemoteSession = true,
+}: AccessTokenOptions = {}) {
   const [state, setState] = useState<AuthState>(readInitialState);
+  const [tenants, setTenants] = useState<SessionTenant[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const token = await getAccessToken();
+      const token = await getAccessToken({ probeRemoteSession });
       if (cancelled) return;
       if (!token) {
         setState((prev) => ({ ...prev, isLoading: false }));
@@ -160,9 +181,9 @@ export function useAuth() {
       });
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [probeRemoteSession]);
 
-  // Fetch tenant name on first auth
+  // Fetch tenant name on first auth (Gateway backend)
   useEffect(() => {
     if (!state.isAuthenticated || !state.tenantId || state.tenantName) return;
 
@@ -174,11 +195,38 @@ export function useAuth() {
       .catch(() => {});
   }, [state.isAuthenticated, state.tenantId, state.tenantName]);
 
+  // Fetch tenants list (auth-app /api/session) so the workspace switcher
+  // has all options for the current user. Cookie or bearer accepted.
+  // The tenants state defaults to []; when auth is gone, we just skip
+  // the fetch (logout() also resets) — avoids a React 19 compiler-lint
+  // synchronous-setState-in-effect warning.
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getAccessToken({ probeRemoteSession });
+      if (!token || cancelled) return;
+      try {
+        const res = await fetch(`${AUTH_URL}/api/session`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { tenants?: SessionTenant[] };
+        if (!cancelled) setTenants(data.tenants ?? []);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [state.isAuthenticated, probeRemoteSession]);
+
   const logout = useCallback(async () => {
     clearTokenCache();
     resetLogoutFlag();
     sessionStorage.removeItem(TENANT_NAME_KEY);
     await fetch(`${AUTH_URL}/api/session`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+    setTenants([]);
     setState({
       isAuthenticated: false,
       isLoading: false,
@@ -204,5 +252,30 @@ export function useAuth() {
     window.location.href = `${AUTH_URL}/signup?redirect_uri=${encodeURIComponent(redirectUri)}`;
   }, []);
 
-  return { ...state, login, signup, logout };
+  // Switch active workspace via /api/session/switch_tenant + reload.
+  const switchTenant = useCallback(async (nextTenantId: string) => {
+    if (nextTenantId === state.tenantId) return;
+    const token = await getAccessToken({ probeRemoteSession });
+    if (!token) return;
+    try {
+      const res = await fetch(`${AUTH_URL}/api/session/switch_tenant`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tenant_id: nextTenantId }),
+      });
+      if (res.ok) {
+        clearTokenCache();
+        sessionStorage.removeItem(TENANT_NAME_KEY);
+        window.location.reload();
+      }
+    } catch {
+      // ignore
+    }
+  }, [state.tenantId, probeRemoteSession]);
+
+  return { ...state, login, signup, logout, tenants, switchTenant };
 }

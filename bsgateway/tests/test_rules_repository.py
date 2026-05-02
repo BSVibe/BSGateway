@@ -186,13 +186,25 @@ class TestRulesCRUD:
         mock_conn.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_reorder_rules(self, repo, mock_conn):
+    async def test_reorder_rules_uses_single_batch_query(self, repo, mock_conn):
+        """Audit M3: reorder_rules MUST batch updates into a single query.
+
+        The legacy implementation issued one UPDATE per priority entry. With
+        N rules per tenant, that is N round-trips. ``executemany`` (and an
+        in-loop ``execute`` is replaced by exactly one ``executemany``)
+        keeps the API surface identical but cuts the round-trips to one.
+        """
         tenant_id = uuid4()
         priorities = {uuid4(): 1, uuid4(): 2, uuid4(): 3}
 
         await repo.reorder_rules(tenant_id, priorities)
 
-        assert mock_conn.execute.await_count == len(priorities)
+        # Single batch via ``executemany`` — no per-row round-trips.
+        mock_conn.executemany.assert_awaited_once()
+        mock_conn.execute.assert_not_awaited()
+        # All priorities are passed in one args list.
+        args_list = mock_conn.executemany.call_args[0][1]
+        assert len(args_list) == len(priorities)
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +280,13 @@ class TestConditionsCRUD:
         mock_conn.fetch.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_replace_conditions(self, repo, mock_conn):
+    async def test_replace_conditions_uses_batch_insert(self, repo, mock_conn):
+        """Audit M3: replace_conditions MUST batch inserts into one query.
+
+        Legacy code issued 1 DELETE + N INSERTs in a loop (with RETURNING).
+        Now it must be 1 DELETE + 1 batch insert (``executemany``) for a
+        constant 2 round-trips regardless of N.
+        """
         rule_id = uuid4()
         new_conditions = [
             {"condition_type": "header", "field": "x-a", "value": "1"},
@@ -280,29 +298,30 @@ class TestConditionsCRUD:
                 "negate": True,
             },
         ]
-        mock_conn.fetchrow.return_value = {"id": uuid4()}
 
-        results = await repo.replace_conditions(rule_id, new_conditions)
+        await repo.replace_conditions(rule_id, new_conditions)
 
-        # 1 delete + N inserts => execute called once, fetchrow called N times
+        # 1 DELETE via ``execute`` + 1 batch INSERT via ``executemany``.
         mock_conn.execute.assert_awaited_once()  # delete_conditions_for_rule
-        assert mock_conn.fetchrow.await_count == 2
-        assert len(results) == 2
+        mock_conn.executemany.assert_awaited_once()
+        # Per-row ``fetchrow`` from the legacy loop is gone.
+        mock_conn.fetchrow.assert_not_awaited()
+        # All conditions go in one args list.
+        args_list = mock_conn.executemany.call_args[0][1]
+        assert len(args_list) == 2
 
     @pytest.mark.asyncio
     async def test_replace_conditions_empty_list(self, repo, mock_conn):
         """Replacing with an empty list should only delete."""
-        results = await repo.replace_conditions(uuid4(), [])
+        await repo.replace_conditions(uuid4(), [])
 
         mock_conn.execute.assert_awaited_once()
+        mock_conn.executemany.assert_not_awaited()
         mock_conn.fetchrow.assert_not_awaited()
-        assert results == []
 
     @pytest.mark.asyncio
     async def test_replace_conditions_defaults(self, repo, mock_conn):
         """Conditions without operator/negate should use defaults."""
-        mock_conn.fetchrow.return_value = {"id": uuid4()}
-
         await repo.replace_conditions(
             uuid4(),
             [
@@ -310,10 +329,12 @@ class TestConditionsCRUD:
             ],
         )
 
-        call_args = mock_conn.fetchrow.call_args[0]
-        # arg order: sql, rule_id, condition_type, operator, field, value, negate
-        assert call_args[3] == "eq"
-        assert call_args[6] is False
+        # First (and only) row in the executemany args list.
+        args_list = mock_conn.executemany.call_args[0][1]
+        first_row = args_list[0]
+        # Per-row tuple: (rule_id, condition_type, operator, field, value, negate)
+        assert first_row[2] == "eq"
+        assert first_row[5] is False
 
     @pytest.mark.asyncio
     async def test_list_conditions_for_tenant(self, repo, mock_conn):

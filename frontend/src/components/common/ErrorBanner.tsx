@@ -1,9 +1,14 @@
+'use client';
+
+import { useTranslation } from 'react-i18next';
+
 interface ErrorBannerProps {
   message: string;
   onRetry?: () => void;
 }
 
 export function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
+  const { t } = useTranslation();
   return (
     <div className="bg-error-container/20 border border-error/30 rounded-xl p-4 flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -15,7 +20,7 @@ export function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
           onClick={onRetry}
           className="text-error hover:text-on-error-container text-sm font-bold underline"
         >
-          Retry
+          {t('common.retry')}
         </button>
       )}
     </div>
