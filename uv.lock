@@ -379,12 +379,12 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
-    { name = "bsvibe-audit", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-audit&rev=integration%2Fphase-audit-batch-2" },
+    { name = "bsvibe-audit", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-audit&rev=main" },
     { name = "bsvibe-auth", extras = ["fastapi"], git = "https://github.com/BSVibe/BSVibe-Auth.git?subdirectory=python&rev=v0.5.0" },
-    { name = "bsvibe-authz", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=integration%2Fphase-audit-batch-2" },
-    { name = "bsvibe-core", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-core&rev=integration%2Fphase-audit-batch-2" },
-    { name = "bsvibe-fastapi", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-fastapi&rev=integration%2Fphase-audit-batch-2" },
-    { name = "bsvibe-sqlalchemy", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-sqlalchemy&rev=integration%2Fphase-audit-batch-2" },
+    { name = "bsvibe-authz", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=main" },
+    { name = "bsvibe-core", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-core&rev=main" },
+    { name = "bsvibe-fastapi", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-fastapi&rev=main" },
+    { name = "bsvibe-sqlalchemy", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-sqlalchemy&rev=main" },
     { name = "cryptography", specifier = ">=42.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -404,11 +404,25 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [[package]]
-name = "bsvibe-audit"
+name = "bsvibe-alerts"
 version = "0.1.0"
-source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-audit&rev=integration%2Fphase-audit-batch-2#ec7fa8dbf0424a017bc7bd867eb6039b40fc93f9" }
+source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-alerts&rev=main#92770da53c93df060631c4ba711690e32fe9ca32" }
 dependencies = [
     { name = "bsvibe-core" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "structlog" },
+]
+
+[[package]]
+name = "bsvibe-audit"
+version = "0.1.0"
+source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-audit&rev=main#92770da53c93df060631c4ba711690e32fe9ca32" }
+dependencies = [
+    { name = "bsvibe-alerts" },
+    { name = "bsvibe-core" },
+    { name = "click" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -434,7 +448,7 @@ fastapi = [
 [[package]]
 name = "bsvibe-authz"
 version = "0.1.0"
-source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=integration%2Fphase-audit-batch-2#ec7fa8dbf0424a017bc7bd867eb6039b40fc93f9" }
+source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=main#92770da53c93df060631c4ba711690e32fe9ca32" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
@@ -447,7 +461,7 @@ dependencies = [
 [[package]]
 name = "bsvibe-core"
 version = "0.1.0"
-source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-core&rev=integration%2Fphase-audit-batch-2#ec7fa8dbf0424a017bc7bd867eb6039b40fc93f9" }
+source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-core&rev=main#92770da53c93df060631c4ba711690e32fe9ca32" }
 dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -457,7 +471,7 @@ dependencies = [
 [[package]]
 name = "bsvibe-fastapi"
 version = "0.1.0"
-source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-fastapi&rev=integration%2Fphase-audit-batch-2#ec7fa8dbf0424a017bc7bd867eb6039b40fc93f9" }
+source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-fastapi&rev=main#92770da53c93df060631c4ba711690e32fe9ca32" }
 dependencies = [
     { name = "bsvibe-core" },
     { name = "fastapi" },
@@ -469,7 +483,7 @@ dependencies = [
 [[package]]
 name = "bsvibe-sqlalchemy"
 version = "0.1.0"
-source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-sqlalchemy&rev=integration%2Fphase-audit-batch-2#ec7fa8dbf0424a017bc7bd867eb6039b40fc93f9" }
+source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-sqlalchemy&rev=main#92770da53c93df060631c4ba711690e32fe9ca32" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },
