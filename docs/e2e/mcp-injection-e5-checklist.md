@@ -27,8 +27,11 @@ flowing from `POST /api/v1/chat/completions` → ChatService → WorkerDispatche
 
 ## opencode / codex 분기
 
-- [ ] codex executor는 `mcp_servers` 무시 (CLI MCP 미지원 — TODO 후행). 빈 mcp_servers 시 정상 동작
-- [ ] opencode executor는 `mcp_servers` 무시 (v1.1 분리). 빈 mcp_servers 시 정상 동작
+- [x] codex executor는 `mcp_servers` 무시 (CLI MCP 미지원 — TODO 후행). 빈 mcp_servers 시 정상 동작
+- [x] opencode executor는 `mcp_servers` 를 ``mcpServers`` 필드로 session create body에 forward (E5b done). 빈 mcp_servers 시 필드 absent
+- [x] opencode executor는 `workspace_dir` 무시 (TODO E6b — long-lived `opencode serve` cwd 제한). claude / codex만 per-task cwd 적용
+- [x] LLM-path strip: `metadata.mcp_servers` + `metadata.workspace_dir`이 LiteLLM kwargs / BSupervisor extras로 leak되지 않음 (`chat/service.py` strip)
+- [x] Non-string `workspace_dir` → `"."` fallback (FileNotFoundError 방지)
 
 ## 회귀
 

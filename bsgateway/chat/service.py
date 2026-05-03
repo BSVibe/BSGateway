@@ -280,6 +280,14 @@ class ChatService:
         # write. Pre-fix the hook saw no tenant and skipped recording.
         request_metadata = dict(request_data.get("metadata") or {})
         request_metadata["tenant_id"] = str(tenant_id)
+        # Strip executor-only keys before they leak into LiteLLM kwargs +
+        # BSupervisor ``extras``. ``mcp_servers`` carries a run-scoped HMAC
+        # token in the embedded URL; surfacing it to LiteLLM callbacks
+        # (Langfuse, Helicone, custom loggers) or BSupervisor audit logs
+        # would expand the token's blast radius beyond the worker process.
+        # ``workspace_dir`` is similarly worker-only — no LLM semantic.
+        for executor_only in ("mcp_servers", "workspace_dir"):
+            request_metadata.pop(executor_only, None)
         litellm_kwargs: dict[str, Any] = {
             "model": model.litellm_model,
             "messages": request_data["messages"],
@@ -399,8 +407,16 @@ class ChatService:
         # from the request metadata bag down to the worker, where the
         # executor injects them as cwd / --mcp-config.
         request_metadata_bag = request_data.get("metadata") or {}
-        workspace_dir_raw = request_metadata_bag.get("workspace_dir") or "."
-        workspace_dir = str(workspace_dir_raw) if workspace_dir_raw else "."
+        workspace_dir_raw = request_metadata_bag.get("workspace_dir")
+        # Accept only ``str`` paths. List / dict / int values from a
+        # malformed caller would otherwise stringify into garbage like
+        # ``"['/abs']"`` and surface as an opaque FileNotFoundError when
+        # the worker tries to ``cwd`` into it. Default ``"."`` matches
+        # the dispatcher / worker fallback contract.
+        if isinstance(workspace_dir_raw, str) and workspace_dir_raw:
+            workspace_dir = workspace_dir_raw
+        else:
+            workspace_dir = "."
         mcp_servers = request_metadata_bag.get("mcp_servers")
         if mcp_servers is not None and not isinstance(mcp_servers, dict):
             mcp_servers = None

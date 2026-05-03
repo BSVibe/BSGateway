@@ -24,8 +24,18 @@ fix (`docs/TODO.md` S1) is the right place to add the new keys.
 | `composition_id`       | UUID string      | optional        | `CompositionSnapshot.id` — already in BSNexus's old `audit_sink.preflight` payload. |
 | `agent_name`           | string           | recommended     | Becomes `agent_id` on the BSupervisor `EventRequest`. Defaults to `service:bsgateway` when missing. |
 | `cost_estimate_cents`  | int              | optional        | Surfaces in incident dashboards alongside the actual cost reported by `run.post`. |
-| `workspace_dir`        | string (abs path)| recommended (executor models) | Filesystem path the worker `cwd`s into for `claude_code` / `codex` / `opencode`. Defaults to `"."` when omitted. Must be reachable on the worker host (BSGateway worker is co-located with BSNexus today). |
+| `workspace_dir`        | string (abs path)| recommended (claude + codex) | Filesystem path the worker `cwd`s into. **Honored by claude_code and codex**; ignored by opencode (long-lived ``opencode serve`` cwd is fixed at spawn — see TODO E6b). Defaults to ``"."`` when omitted. Non-string values (list / dict / int) are rejected back to ``"."`` so a malformed caller doesn't surface as FileNotFoundError. Must be reachable on the worker host (BSGateway worker is co-located with BSNexus today). Caller is responsible for absolute-path / no-``..`` validation. |
 | `mcp_servers`          | dict             | optional (claude + opencode) | BSNexus-style MCP server config: `{name: {url, headers}}`. claude worker writes a chmod 0600 tempfile and passes `--mcp-config <path>` to the CLI. opencode worker forwards as ``mcpServers`` on session create (TODO E5b). Empty / omitted ⇒ field absent (back-compat). codex CLI does not support MCP yet. |
+
+**Executor-only keys** (`workspace_dir`, `mcp_servers`) are stripped from
+the LiteLLM metadata bag and the BSupervisor `extras` envelope before
+they leave BSGateway. The MCP server URL embeds a run-scoped HMAC
+token in its query string; surfacing that into LiteLLM callbacks
+(Langfuse, Helicone, custom loggers) or BSupervisor audit logs would
+expand the token's blast radius beyond the worker process.
+``ChatService.complete`` performs the strip after stamping
+``tenant_id``, before the keys reach LiteLLM kwargs (`chat/service.py`
+top of executor-vs-LLM dispatch).
 
 Any additional keys are forwarded under `metadata.extras` on the
 BSupervisor event payload (preserved untouched). BSGateway will not

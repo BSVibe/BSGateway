@@ -374,6 +374,16 @@ class OpenCodeExecutor:
     port (or a configured port) and reuses it for the worker's lifetime.
     Each task gets a fresh session — multi-turn reuse is intentionally
     out of scope for v1 (see follow-ups).
+
+    **TODO E6 — workspace_dir limitation**: ``opencode serve`` is a
+    single long-lived process whose ``cwd`` is fixed at spawn time. The
+    session create body does not currently expose a per-session
+    ``directory`` / ``cwd`` field (verified against opencode upstream
+    at PR #26 time). We therefore **ignore** ``context.workspace_dir``
+    here — opencode operates in the worker's process cwd. claude_code
+    and codex both honor ``workspace_dir`` per-task. BSNexus v1 picks
+    ``executor_type=claude_code`` so this is acceptable; tightening the
+    opencode cwd is a follow-up TODO E6b.
     """
 
     _server_lock = asyncio.Lock()

@@ -189,6 +189,61 @@ class TestMetadataForwarding:
         assert captured["mcp_servers"] == mcp
 
 
+class TestMetadataExecutorOnlyStrip:
+    """B2/B3/S3 from PR #26 review — ``mcp_servers`` and ``workspace_dir``
+    must not leak past the executor path. The strip happens in
+    ``ChatService.complete`` before LiteLLM kwargs are built. Executor
+    path reads them straight from ``request_data.metadata``.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("bogus", [["/abs"], {"path": "/x"}, 123, ""])
+    async def test_workspace_dir_non_string_rejected(self, bogus) -> None:
+        """list / dict / int / empty-string workspace_dir would stringify
+        to garbage like ``"['/abs']"`` and surface as opaque
+        FileNotFoundError when the worker tries to ``cwd`` into it.
+        Default to ``"."`` instead."""
+        pool, _conn, _row = _make_pool_with_task()
+        redis = AsyncMock()
+        svc = _build_svc(pool, redis=redis)
+
+        captured: dict[str, Any] = {}
+
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+        ):
+            captured["workspace_dir"] = workspace_dir
+            return "msg-1"
+
+        async def fake_await(self, task_id, tenant_id, timeout_seconds, poll_interval=None):
+            return {"status": "done", "output": "ok", "error_message": None}
+
+        with (
+            patch(
+                "bsgateway.chat.service.WorkerDispatcher.dispatch_task",
+                fake_dispatch,
+            ),
+            patch.object(svc, "_await_task_completion", new=fake_await.__get__(svc)),
+            patch("bsgateway.chat.service._executor_sql") as mock_sql,
+        ):
+            mock_sql.query.side_effect = lambda q: q
+
+            request = {
+                "model": "my-worker",
+                "messages": [{"role": "user", "content": "hi"}],
+                "metadata": {"workspace_dir": bogus},
+            }
+            await svc._execute_via_worker(TENANT_ID, request, _executor_model(), None)
+            assert captured["workspace_dir"] == ".", f"non-string {bogus!r} leaked"
+
+
 class TestStreamingResponse:
     @pytest.mark.asyncio
     async def test_chunks_become_openai_chunk_dicts(self) -> None:
