@@ -33,6 +33,16 @@ class WorkerSettings(BaseSettings):
     max_parallel_tasks: int = 5
     skip_permissions: bool = True
 
+    # Streaming chunks back to gateway via Redis pub/sub. Same Redis instance the
+    # gateway uses. Empty disables streaming (executors still run, but the
+    # gateway falls back to its non-streaming completion path).
+    redis_url: str = ""
+
+    # opencode serve embedded process. Port 0 picks a free port. The worker
+    # spawns one ``opencode serve`` per executor instance and reuses it.
+    opencode_serve_host: str = "127.0.0.1"
+    opencode_serve_port: int = 0
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BSGATEWAY_", extra="ignore")
 
 

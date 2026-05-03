@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections import defaultdict
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -20,8 +22,9 @@ from bsgateway.embedding.provider import build_provider
 from bsgateway.embedding.serialization import hydrate_intent_definitions
 from bsgateway.embedding.settings import EmbeddingSettings
 from bsgateway.executor.config import executor_settings
-from bsgateway.executor.dispatcher import WorkerDispatcher
+from bsgateway.executor.dispatcher import WorkerDispatcher, done_channel, stream_channel
 from bsgateway.executor.sql_loader import ExecutorSqlLoader
+from bsgateway.routing.classifiers.base import extract_system_prompt
 from bsgateway.routing.collector import SqlLoader
 from bsgateway.routing.constants import LOG_TEXT_MAX_CHARS
 from bsgateway.routing.repository import RoutingLogsRepository
@@ -369,8 +372,17 @@ class ChatService:
         request_data: dict,
         model: TenantModel,
         rule_match: RuleMatch | None,
-    ) -> dict[str, Any]:
-        """Dispatch the chat request to an executor worker and await its result."""
+    ) -> Any:
+        """Dispatch the chat request to an executor worker.
+
+        For ``stream=False`` returns a single ``chat.completion`` dict
+        (built from the worker's ``executor_tasks`` final row). For
+        ``stream=True`` returns an async generator yielding incremental
+        ``chat.completion.chunk`` dicts that the chat router wraps as
+        SSE. Both paths use Redis pub/sub instead of polling — chunks
+        flow on ``task:{id}:stream`` and completion on
+        ``task:{id}:done`` (TODO E1 closed via the same channel).
+        """
         if self._redis is None:
             raise ChatError(
                 "Redis not configured — executor dispatch requires Redis",
@@ -381,14 +393,16 @@ class ChatService:
         prompt = _last_user_message(request_data.get("messages", []))
         if not prompt:
             raise ChatError("Executor models require a user message", code="no_user_message")
+        system_prompt = extract_system_prompt(request_data)
 
         lm = model.litellm_model
         executor_type = lm.split("/", 1)[-1] if "/" in lm else lm
         extra = model.extra_params or {}
         pinned_worker_id = extra.get("worker_id")
+        timeout_seconds = int(
+            extra.get("timeout_seconds", executor_settings.worker_default_timeout_seconds)
+        )
 
-        # Create task, pick worker, mark dispatched — single connection +
-        # transaction for atomicity.
         async with self._pool.acquire() as conn, conn.transaction():
             task_row = await conn.fetchrow(
                 _executor_sql.query("create_task"), tenant_id, executor_type, prompt
@@ -406,15 +420,34 @@ class ChatService:
 
         from bsgateway.streams import RedisStreamManager
 
-        dispatcher = WorkerDispatcher(RedisStreamManager(self._redis))
-        await dispatcher.dispatch_task(worker_id, task_id, executor_type, prompt)
+        sm = RedisStreamManager(self._redis)
+        # Subscribe BEFORE dispatch so we can't miss the first chunk —
+        # pub/sub is lossy. The subscription is held inside the iterator
+        # the gateway router consumes so cleanup happens on stream close.
+        if request_data.get("stream"):
+            return self._stream_worker_response(
+                sm,
+                worker_id=worker_id,
+                task_id=task_id,
+                executor_type=executor_type,
+                prompt=prompt,
+                system=system_prompt,
+                tenant_id=tenant_id,
+                request_data=request_data,
+                model=model,
+                rule_match=rule_match,
+                timeout_seconds=timeout_seconds,
+            )
+
+        dispatcher = WorkerDispatcher(sm)
+        await dispatcher.dispatch_task(
+            worker_id, task_id, executor_type, prompt, system=system_prompt
+        )
 
         final_row = await self._await_task_completion(
             task_id,
             tenant_id,
-            timeout_seconds=int(
-                extra.get("timeout_seconds", executor_settings.worker_default_timeout_seconds)
-            ),
+            timeout_seconds=timeout_seconds,
         )
 
         if final_row["status"] == "failed":
@@ -447,6 +480,104 @@ class ChatService:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
+    async def _stream_worker_response(
+        self,
+        stream_manager: Any,
+        *,
+        worker_id: UUID,
+        task_id: UUID,
+        executor_type: str,
+        prompt: str,
+        system: str,
+        tenant_id: UUID,
+        request_data: dict,
+        model: TenantModel,
+        rule_match: RuleMatch | None,
+        timeout_seconds: int,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Async generator: dispatch then forward worker chunks as OpenAI chunks.
+
+        Subscribes to ``task:{id}:stream`` before dispatch to avoid
+        missing the first chunk (Redis pub/sub is lossy). Each worker
+        chunk becomes a ``chat.completion.chunk`` with ``delta.content``;
+        the terminal chunk carries ``finish_reason``.
+        """
+        chan = stream_channel(task_id)
+        sub_iter = await stream_manager.subscribe_pubsub(chan, timeout=timeout_seconds)
+
+        dispatcher = WorkerDispatcher(stream_manager)
+        await dispatcher.dispatch_task(
+            worker_id, task_id, executor_type, prompt, system=system
+        )
+
+        completion_id = f"exec-{uuid.uuid4().hex[:24]}"
+        created = int(time.time())
+
+        def _make_chunk(delta: str = "", finish_reason: str | None = None) -> dict[str, Any]:
+            choice: dict[str, Any] = {
+                "index": 0,
+                "delta": {"content": delta} if delta else {},
+                "finish_reason": finish_reason,
+            }
+            return {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model.model_name,
+                "choices": [choice],
+            }
+
+        # OpenAI's first stream chunk conventionally carries the role.
+        first_chunk = _make_chunk()
+        first_chunk["choices"][0]["delta"] = {"role": "assistant"}
+        yield first_chunk
+
+        terminal_error: str | None = None
+        try:
+            async for msg in sub_iter:
+                delta = msg.get("delta") or ""
+                done = bool(msg.get("done"))
+                err = msg.get("error")
+                if delta:
+                    yield _make_chunk(delta=delta)
+                if err:
+                    terminal_error = err
+                if done:
+                    break
+        finally:
+            aclose = getattr(sub_iter, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:
+                    pass
+
+        if terminal_error:
+            yield _make_chunk(finish_reason="stop")
+            yield {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model.model_name,
+                "choices": [],
+                "error": {
+                    "message": terminal_error,
+                    "type": "executor_error",
+                    "code": "executor_failed",
+                },
+            }
+        else:
+            yield _make_chunk(finish_reason="stop")
+
+        log_task = asyncio.create_task(
+            asyncio.wait_for(
+                self._log_request(tenant_id, rule_match, request_data, model),
+                timeout=executor_settings.routing_log_timeout_seconds,
+            )
+        )
+        self._background_tasks.add(log_task)
+        log_task.add_done_callback(self._on_background_done)
+
     async def _pick_worker(
         self,
         conn: asyncpg.Connection,
@@ -474,22 +605,48 @@ class ChatService:
         timeout_seconds: int,
         poll_interval: float | None = None,
     ) -> asyncpg.Record:
-        """Poll executor_tasks until status transitions out of pending/dispatched.
+        """Wait for the worker to publish on ``task:{id}:done`` then read the row.
 
-        TODO: replace DB polling with a Redis pub/sub channel the worker
-        /result handler writes to (e.g. ``task:{id}:done``). Cuts up to
-        ``timeout/poll_interval`` DB hits per task under load.
+        Replaces the previous 1 Hz DB polling loop. The worker publishes
+        a single completion message on ``task:{id}:done`` after writing
+        the final ``executor_tasks`` row; we then read the row exactly
+        once. On Redis outage / missed publish we fall back to a single
+        DB read at timeout so callers never hang silently.
         """
-        if poll_interval is None:
-            poll_interval = executor_settings.worker_poll_interval_seconds
-        elapsed = 0.0
-        while elapsed < timeout_seconds:
-            await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
-            async with self._pool.acquire() as conn:
-                row = await conn.fetchrow(_executor_sql.query("get_task"), task_id, tenant_id)
-            if row and row["status"] in ("done", "failed"):
-                return row
+        if self._redis is None:
+            raise ChatError(
+                "Redis not configured — executor dispatch requires Redis",
+                code="redis_missing",
+                status_code=503,
+            )
+
+        from bsgateway.streams import RedisStreamManager
+
+        sm = RedisStreamManager(self._redis)
+        chan = done_channel(task_id)
+        try:
+            sub_iter = await sm.subscribe_pubsub(chan, timeout=timeout_seconds)
+            async for _msg in sub_iter:
+                # The worker only publishes once when the executor_tasks row
+                # has been written; read it back for the canonical record.
+                async with self._pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        _executor_sql.query("get_task"), task_id, tenant_id
+                    )
+                if row and row["status"] in ("done", "failed"):
+                    return row
+                # Worker published before its own /result write landed —
+                # rare race; loop and re-read on next message.
+        except Exception as exc:
+            logger.warning("await_pubsub_failed", task_id=str(task_id), error=str(exc))
+
+        # Fallback: one final DB read in case the publish was missed.
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(_executor_sql.query("get_task"), task_id, tenant_id)
+        if row and row["status"] in ("done", "failed"):
+            return row
+        # poll_interval kept for backward-compat callers; unused now.
+        _ = poll_interval
         raise ChatError(
             f"Executor task timed out after {timeout_seconds}s",
             code="executor_timeout",

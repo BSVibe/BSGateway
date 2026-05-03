@@ -12,9 +12,10 @@ Remove completed rows once the corresponding inline comment is gone.
 
 | # | Item | Source | Trigger | Status |
 |---|------|--------|---------|--------|
-| E1 | Replace DB polling with Redis pub/sub in `_await_task_completion` — worker `/result` handler publishes to `task:{id}:done`, dispatcher awaits via `SUBSCRIBE` with timeout. Cuts up to `timeout/poll_interval` DB hits per task. | `bsgateway/chat/service.py::_await_task_completion` | Worker throughput grows, or DB load from polling becomes visible | Open |
-| E2 | Extract shared `executor_core` package for the subprocess logic that twins `bsgateway/executor/{claude_code,codex}.py` and `worker/executors.py`. Keep stdlib-only so the worker stays dependency-light. | `worker/executors.py` module docstring | Adding a 3rd executor type (e.g. `aider`, `opencode`) | Open |
+| E2 | Extract shared `executor_core` package for the subprocess logic that twins `bsgateway/executor/{claude_code,codex}.py` and `worker/executors.py`. Keep stdlib-only so the worker stays dependency-light. | `worker/executors.py` module docstring | Adding a 3rd executor type (e.g. `aider`) — opencode is already in worker | Open |
 | E3 | Add partial expression index on `tenants.settings->>'worker_install_token_hash'` so `resolve_install_token_tenant` lookups don't seq-scan. DDL:<br>`CREATE INDEX tenants_worker_install_token_hash ON tenants ((settings->>'worker_install_token_hash')) WHERE settings ? 'worker_install_token_hash';` | `bsgateway/api/routers/workers.py` (above `_invalidate_models_cache`) | Tenant count reaches ~10k, or install-token lookup p99 shows in profiler | Open |
+| E4 | opencode multi-turn session reuse — currently `OpenCodeExecutor.execute()` creates a fresh `/session` per task, dropping conversational state. Wire a session-cache keyed by tenant + conversation hint (e.g. an OpenAI-API `metadata.conversation_id`) so subsequent turns hit the same opencode session. Add an LRU eviction policy. | `worker/executors.py::OpenCodeExecutor.execute` | Users start sending multi-turn opencode requests | Open |
+| E5 | Forward OpenAI `tools` / `tool_choice` definitions to executor CLIs (claude `--allowed-tools`, opencode session `tools`, codex MCP servers). Today only `system` is pass-through; tools live in worker-local config. | `bsgateway/chat/service.py::_execute_via_worker` | First user complaint that custom tools aren't honored on executor models | Open |
 
 ## Infrastructure / cross-cutting
 

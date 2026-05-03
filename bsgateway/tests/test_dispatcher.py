@@ -52,6 +52,7 @@ class TestDispatchTask:
             task_id=task_id,
             executor_type="codex",
             prompt="Fix bug",
+            system="be terse",
         )
 
         data = mock_stream_manager.publish.call_args[0][1]
@@ -60,6 +61,21 @@ class TestDispatchTask:
         assert data["prompt"] == "Fix bug"
         assert data["action"] == "execute"
         assert "dispatched_at" in data
+        assert data["system"] == "be terse"
+        assert data["stream_channel"] == f"task:{task_id}:stream"
+        assert data["done_channel"] == f"task:{task_id}:done"
+
+    async def test_system_defaults_to_empty(
+        self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock
+    ) -> None:
+        await dispatcher.dispatch_task(
+            worker_id=uuid4(),
+            task_id=uuid4(),
+            executor_type="claude_code",
+            prompt="hi",
+        )
+        data = mock_stream_manager.publish.call_args[0][1]
+        assert data["system"] == ""
 
     async def test_returns_message_id(
         self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock

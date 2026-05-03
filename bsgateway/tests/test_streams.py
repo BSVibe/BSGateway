@@ -1,9 +1,9 @@
-"""Tests for RedisStreamManager: publish, consume, acknowledge."""
+"""Tests for RedisStreamManager: publish, consume, acknowledge, pub/sub."""
 
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -134,3 +134,62 @@ class TestAcknowledge:
         await stream_manager.acknowledge("mystream", "grp", "111-0")
 
         mock_redis.xack.assert_awaited_once_with("mystream", "grp", "111-0")
+
+
+class TestPubSub:
+    async def test_publish_pubsub_serializes_json(
+        self, stream_manager: RedisStreamManager, mock_redis: AsyncMock
+    ) -> None:
+        await stream_manager.publish_pubsub("ch", {"delta": "hi", "done": False})
+        mock_redis.publish.assert_awaited_once()
+        ch, payload = mock_redis.publish.await_args.args
+        assert ch == "ch"
+        assert json.loads(payload) == {"delta": "hi", "done": False}
+
+    async def test_subscribe_pubsub_yields_messages_then_stops_on_timeout(
+        self, stream_manager: RedisStreamManager, mock_redis: AsyncMock
+    ) -> None:
+        pubsub = AsyncMock()
+        # Two real messages, then None forever (simulating quiet channel).
+        msgs = [
+            {"data": json.dumps({"delta": "a"}).encode()},
+            {"data": json.dumps({"delta": "b", "done": True}).encode()},
+        ]
+        call = {"i": 0}
+
+        async def _get_message(*_args, **_kwargs):
+            i = call["i"]
+            call["i"] += 1
+            if i < len(msgs):
+                return msgs[i]
+            return None
+
+        pubsub.get_message = _get_message
+        pubsub.subscribe = AsyncMock()
+        pubsub.unsubscribe = AsyncMock()
+        pubsub.aclose = AsyncMock()
+        mock_redis.pubsub = MagicMock(return_value=pubsub)
+
+        sub_iter = await stream_manager.subscribe_pubsub("ch", timeout=0.5)
+        out: list[dict] = []
+        async for msg in sub_iter:
+            out.append(msg)
+
+        assert out == [{"delta": "a"}, {"delta": "b", "done": True}]
+        pubsub.subscribe.assert_awaited_once_with("ch")
+        pubsub.unsubscribe.assert_awaited_once_with("ch")
+
+    async def test_subscribe_pubsub_subscribes_before_returning(
+        self, stream_manager: RedisStreamManager, mock_redis: AsyncMock
+    ) -> None:
+        """Ensure SUBSCRIBE happens before the iterator is returned (no race)."""
+        pubsub = AsyncMock()
+        pubsub.get_message = AsyncMock(return_value=None)
+        pubsub.subscribe = AsyncMock()
+        pubsub.unsubscribe = AsyncMock()
+        pubsub.aclose = AsyncMock()
+        mock_redis.pubsub = MagicMock(return_value=pubsub)
+
+        await stream_manager.subscribe_pubsub("ch", timeout=0.05)
+
+        pubsub.subscribe.assert_awaited_once_with("ch")

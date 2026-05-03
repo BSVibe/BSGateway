@@ -93,6 +93,62 @@ class TestRegisterWorker:
         )
         assert resp.status_code == 401
 
+    def test_register_multi_capability_creates_one_model_per_cap(
+        self, app, client: TestClient, mock_pool
+    ) -> None:
+        """3 capabilities → 3 tenant_models rows with suffixed names."""
+        _pool, conn = mock_pool
+        conn.fetchrow.return_value = {"id": WORKER_ID}
+
+        with patch(
+            "bsgateway.api.routers.workers.resolve_install_token_tenant",
+            new=AsyncMock(return_value=TENANT_ID),
+        ):
+            resp = client.post(
+                "/api/v1/workers/register",
+                json={
+                    "name": "trio",
+                    "labels": [],
+                    "capabilities": ["claude_code", "codex", "opencode"],
+                },
+                headers={"X-Install-Token": "bsg-test"},
+            )
+
+        assert resp.status_code == 201
+        # 1 create_worker call + 3 upsert_worker_model calls
+        assert conn.fetchrow.await_count == 4
+
+        upsert_calls = conn.fetchrow.await_args_list[1:]
+        names = [call.args[2] for call in upsert_calls]
+        litellm = [call.args[3] for call in upsert_calls]
+        assert names == ["trio (claude_code)", "trio (codex)", "trio (opencode)"]
+        assert litellm == [
+            "executor/claude_code",
+            "executor/codex",
+            "executor/opencode",
+        ]
+
+    def test_register_single_capability_keeps_bare_name(
+        self, app, client: TestClient, mock_pool
+    ) -> None:
+        _pool, conn = mock_pool
+        conn.fetchrow.return_value = {"id": WORKER_ID}
+
+        with patch(
+            "bsgateway.api.routers.workers.resolve_install_token_tenant",
+            new=AsyncMock(return_value=TENANT_ID),
+        ):
+            resp = client.post(
+                "/api/v1/workers/register",
+                json={"name": "solo", "capabilities": ["opencode"]},
+                headers={"X-Install-Token": "bsg-test"},
+            )
+
+        assert resp.status_code == 201
+        upsert_call = conn.fetchrow.await_args_list[1]
+        assert upsert_call.args[2] == "solo"
+        assert upsert_call.args[3] == "executor/opencode"
+
     def test_register_with_invalid_token_is_401(self, client: TestClient) -> None:
         with patch(
             "bsgateway.api.routers.workers.resolve_install_token_tenant",

@@ -51,6 +51,11 @@ DELETE FROM tenant_models
 WHERE tenant_id = $1 AND model_name = $2 AND provider = 'executor'
   AND (extra_params->>'worker_id') = $3;
 
+-- name: delete_worker_models_by_worker_id
+DELETE FROM tenant_models
+WHERE tenant_id = $1 AND provider = 'executor'
+  AND (extra_params->>'worker_id') = $2;
+
 -- name: get_tenant_model
 SELECT id, tenant_id, model_name, provider, litellm_model, api_key_encrypted, api_base,
        is_active, extra_params, created_at, updated_at

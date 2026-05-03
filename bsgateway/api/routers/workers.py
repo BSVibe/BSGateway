@@ -259,7 +259,7 @@ async def register_worker(
         raise HTTPException(status_code=401, detail="Invalid install token")
 
     token = secrets.token_urlsafe(32)
-    executor_type = (body.capabilities or ["claude_code"])[0]
+    capabilities = body.capabilities or ["claude_code"]
 
     async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
@@ -267,18 +267,22 @@ async def register_worker(
             tenant_id,
             body.name,
             json.dumps(body.labels),
-            json.dumps(body.capabilities),
+            json.dumps(capabilities),
             _hash_token(token),
         )
-        # Each worker is also a routable tenant_model, pinned to this specific
-        # worker_id so rules + chat requests dispatch directly to it.
-        await conn.fetchrow(
-            _routing_sql.query("upsert_worker_model"),
-            tenant_id,
-            body.name,
-            f"executor/{executor_type}",
-            json.dumps({"worker_id": str(row["id"])}),
-        )
+        # Each registered capability becomes its own routable tenant_model
+        # row, all pinned to this worker_id. Single-cap workers keep the
+        # bare worker name (backwards compatible); multi-cap workers get a
+        # ``{name} ({executor_type})`` suffix so they don't collide.
+        for cap in capabilities:
+            model_name = body.name if len(capabilities) == 1 else f"{body.name} ({cap})"
+            await conn.fetchrow(
+                _routing_sql.query("upsert_worker_model"),
+                tenant_id,
+                model_name,
+                f"executor/{cap}",
+                json.dumps({"worker_id": str(row["id"]), "executor_type": cap}),
+            )
 
     await _invalidate_models_cache(request, tenant_id)
 
@@ -385,10 +389,11 @@ async def delete_worker(
 
         async with conn.transaction():
             await conn.execute(_sql.query("deactivate_worker"), worker_id, auth.tenant_id)
+            # Multi-capability workers register one tenant_models row per
+            # capability (suffixed name). Drop them all by worker_id.
             await conn.execute(
-                _routing_sql.query("delete_worker_model"),
+                _routing_sql.query("delete_worker_models_by_worker_id"),
                 auth.tenant_id,
-                worker_row["name"],
                 str(worker_id),
             )
 

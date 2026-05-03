@@ -1,5 +1,10 @@
 """BSGateway Worker — polls for tasks, executes via CLI executors, reports results.
 
+Each task's chunked output is also published to a Redis pub/sub channel
+(``task:{id}:stream``) so the gateway can forward incremental SSE chunks
+to the client. A terminal ``task:{id}:done`` publish lets the gateway
+exit its non-streaming await loop without polling the database.
+
 Usage:
     python -m worker
 """
@@ -7,15 +12,24 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
 
 from worker.config import settings
-from worker.executors import ExecutionResult, ExecutorProtocol, create_executor
+from worker.executors import (
+    ExecutionChunk,
+    ExecutionResult,
+    ExecutorProtocol,
+    create_executor,
+)
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 logger = structlog.get_logger(__name__)
 
@@ -30,6 +44,8 @@ def detect_capabilities() -> list[str]:
         caps.append("claude_code")
     if shutil.which("codex"):
         caps.append("codex")
+    if shutil.which("opencode"):
+        caps.append("opencode")
     return caps
 
 
@@ -110,21 +126,72 @@ async def register(
 
 async def _handle_task(
     task: dict[str, Any],
-    executor: ExecutorProtocol,
+    executors: dict[str, ExecutorProtocol],
     client: httpx.AsyncClient,
     headers: dict[str, str],
+    redis: Redis | None,
 ) -> None:
-    """Execute a single task and report the result."""
+    """Execute a single task and report the result + stream chunks."""
     task_id = task["task_id"]
     prompt = task.get("prompt") or task.get("title", "")
+    executor_type = task.get("executor_type", "claude_code")
     context: dict[str, Any] = {
         "task_id": task_id,
         "workspace_dir": task.get("workspace_dir", "."),
+        "system": task.get("system") or "",
     }
+    stream_channel = task.get("stream_channel") or f"task:{task_id}:stream"
+    done_channel = task.get("done_channel") or f"task:{task_id}:done"
 
-    logger.info("task_received", task_id=task_id)
+    logger.info("task_received", task_id=task_id, executor=executor_type)
 
-    result: ExecutionResult = await executor.execute(prompt, context)
+    executor = executors.get(executor_type) or select_executor(executor_type)
+    executors[executor_type] = executor
+
+    parts: list[str] = []
+    error: str | None = None
+    success = True
+    final_chunk: ExecutionChunk | None = None
+    stream = executor.execute(prompt, context)
+    try:
+        async for chunk in stream:
+            if chunk.delta:
+                parts.append(chunk.delta)
+            if chunk.error:
+                error = chunk.error
+                success = False
+            if redis is not None:
+                await _publish(
+                    redis,
+                    stream_channel,
+                    {"delta": chunk.delta, "done": chunk.done, "error": chunk.error},
+                )
+            if chunk.done:
+                final_chunk = chunk
+                break
+    except Exception as exc:  # pragma: no cover — defensive
+        error = str(exc)
+        success = False
+        if redis is not None:
+            await _publish(
+                redis,
+                stream_channel,
+                {"delta": "", "done": True, "error": error},
+            )
+    finally:
+        aclose = getattr(stream, "aclose", None)
+        if aclose is not None:
+            try:
+                await aclose()
+            except Exception:
+                pass
+
+    result = ExecutionResult(
+        success=success,
+        stdout="".join(parts),
+        error_message=error,
+        error_category="" if success else ("environment" if final_chunk is None else "tool"),
+    )
 
     await client.post(
         "/api/v1/workers/result",
@@ -136,7 +203,36 @@ async def _handle_task(
             "error_message": result.error_message,
         },
     )
+    if redis is not None:
+        await _publish(
+            redis,
+            done_channel,
+            {
+                "task_id": task_id,
+                "success": result.success,
+                "error_message": result.error_message,
+            },
+        )
     logger.info("task_completed", task_id=task_id, success=result.success)
+
+
+async def _publish(redis: Redis, channel: str, payload: dict[str, Any]) -> None:
+    try:
+        await redis.publish(channel, json.dumps(payload))
+    except Exception:
+        logger.warning("pubsub_publish_failed", channel=channel, exc_info=True)
+
+
+def _connect_redis() -> Redis | None:
+    if not settings.redis_url:
+        return None
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        return _Redis.from_url(settings.redis_url, decode_responses=False)
+    except Exception:
+        logger.warning("redis_connect_failed", url=settings.redis_url, exc_info=True)
+        return None
 
 
 # ─── Main loop ───────────────────────────────────────────────────────
@@ -153,17 +249,32 @@ async def poll_and_execute() -> None:
         )
         settings.worker_token = token
 
-    # Auto-detect executor: prefer claude_code
     capabilities = detect_capabilities()
-    executor_type = capabilities[0] if capabilities else "claude_code"
-    executor = select_executor(executor_type)
+    executors: dict[str, ExecutorProtocol] = {}
+    for cap in capabilities:
+        try:
+            executors[cap] = select_executor(cap)
+        except ValueError:
+            logger.warning("unknown_capability", capability=cap)
+
+    if not executors:
+        # No CLIs detected — register as claude_code so the worker still appears,
+        # but tasks will fail at execute time with a clear FileNotFoundError.
+        executors["claude_code"] = select_executor("claude_code")
 
     logger.info(
         "worker_starting",
         name=settings.worker_name,
-        executor=executor_type,
+        executors=list(executors.keys()),
         server=settings.server_url,
     )
+
+    redis = _connect_redis()
+    if redis is None:
+        logger.warning(
+            "no_redis",
+            hint="Set BSGATEWAY_REDIS_URL to enable streaming chunks back to the gateway.",
+        )
 
     headers = {"X-Worker-Token": settings.worker_token}
     in_flight: set[asyncio.Task[None]] = set()
@@ -171,21 +282,18 @@ async def poll_and_execute() -> None:
 
     async def _run_task(task: dict[str, Any]) -> None:
         try:
-            await _handle_task(task, executor, client, headers)
+            await _handle_task(task, executors, client, headers, redis)
         except Exception:
             logger.exception("task_execution_error", task_id=task.get("task_id"))
 
     async with httpx.AsyncClient(base_url=settings.server_url, timeout=30) as client:
         while True:
             try:
-                # Clean up completed tasks
                 done = {t for t in in_flight if t.done()}
                 in_flight -= done
 
-                # Heartbeat
                 await client.post("/api/v1/workers/heartbeat", headers=headers)
 
-                # Only poll if we have capacity
                 if len(in_flight) >= max_parallel:
                     await asyncio.sleep(settings.capacity_wait_seconds)
                     continue
