@@ -380,7 +380,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "bsvibe-audit", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-audit&rev=integration%2Fphase-audit-batch-2" },
-    { name = "bsvibe-auth", extras = ["fastapi"], git = "https://github.com/BSVibe/BSVibe-Auth.git?subdirectory=python&rev=v0.4.0" },
+    { name = "bsvibe-auth", extras = ["fastapi"], git = "https://github.com/BSVibe/BSVibe-Auth.git?subdirectory=python&rev=v0.5.0" },
     { name = "bsvibe-authz", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=integration%2Fphase-audit-batch-2" },
     { name = "bsvibe-core", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-core&rev=integration%2Fphase-audit-batch-2" },
     { name = "bsvibe-fastapi", git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-fastapi&rev=integration%2Fphase-audit-batch-2" },
@@ -419,7 +419,7 @@ dependencies = [
 [[package]]
 name = "bsvibe-auth"
 version = "0.1.0"
-source = { git = "https://github.com/BSVibe/BSVibe-Auth.git?subdirectory=python&rev=v0.4.0#404cf28ed821f8c768c3980defc00e2455986d89" }
+source = { git = "https://github.com/BSVibe/BSVibe-Auth.git?subdirectory=python&rev=v0.5.0#c19f9a92454c4c90daf0f0f26bfc53771eabc8c4" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
