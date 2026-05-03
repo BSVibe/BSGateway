@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -40,6 +42,8 @@ class WorkerDispatcher:
         executor_type: str,
         prompt: str,
         system: str = "",
+        workspace_dir: str = ".",
+        mcp_servers: dict[str, Any] | None = None,
     ) -> str:
         """Publish a task to a worker's dedicated stream.
 
@@ -47,14 +51,27 @@ class WorkerDispatcher:
         inject it via the CLI's native flag (``--append-system-prompt``,
         ``--config experimental_instructions_file=...``, or opencode
         session ``system`` field). The worker harness itself (CLAUDE.md,
-        settings.json, MCP, hooks) is NOT shipped — the worker uses its
+        settings.json, hooks) is NOT shipped — the worker uses its
         local install.
+
+        ``workspace_dir`` is the absolute filesystem path the executor
+        will ``cwd`` into. Defaults to ``"."`` for back-compat with
+        callers that don't yet plumb the wire.
+
+        ``mcp_servers`` is the BSNexus-style MCP server dict
+        (``{name: {url, headers}}``). The worker writes it to a chmod
+        0600 tempfile and passes ``--mcp-config <path>`` to claude CLI.
+        Empty / None ⇒ no ``--mcp-config`` injection (back-compat).
+        Serialised as a JSON string here because Redis Streams only
+        accept flat string fields.
         """
         data = {
             "task_id": str(task_id),
             "executor_type": executor_type,
             "prompt": prompt,
             "system": system,
+            "workspace_dir": workspace_dir,
+            "mcp_servers": json.dumps(mcp_servers or {}),
             "stream_channel": stream_channel(task_id),
             "done_channel": done_channel(task_id),
             "action": "execute",
