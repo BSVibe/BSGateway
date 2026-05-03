@@ -24,6 +24,8 @@ fix (`docs/TODO.md` S1) is the right place to add the new keys.
 | `composition_id`       | UUID string      | optional        | `CompositionSnapshot.id` — already in BSNexus's old `audit_sink.preflight` payload. |
 | `agent_name`           | string           | recommended     | Becomes `agent_id` on the BSupervisor `EventRequest`. Defaults to `service:bsgateway` when missing. |
 | `cost_estimate_cents`  | int              | optional        | Surfaces in incident dashboards alongside the actual cost reported by `run.post`. |
+| `workspace_dir`        | string (abs path)| recommended (executor models) | Filesystem path the worker `cwd`s into for `claude_code` / `codex` / `opencode`. Defaults to `"."` when omitted. Must be reachable on the worker host (BSGateway worker is co-located with BSNexus today). |
+| `mcp_servers`          | dict             | optional (claude + opencode) | BSNexus-style MCP server config: `{name: {url, headers}}`. claude worker writes a chmod 0600 tempfile and passes `--mcp-config <path>` to the CLI. opencode worker forwards as ``mcpServers`` on session create (TODO E5b). Empty / omitted ⇒ field absent (back-compat). codex CLI does not support MCP yet. |
 
 Any additional keys are forwarded under `metadata.extras` on the
 BSupervisor event payload (preserved untouched). BSGateway will not

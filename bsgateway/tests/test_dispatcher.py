@@ -88,3 +88,64 @@ class TestDispatchTask:
         )
 
         assert msg_id == "msg-001"
+
+    async def test_includes_workspace_dir_in_payload(
+        self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock
+    ) -> None:
+        await dispatcher.dispatch_task(
+            worker_id=uuid4(),
+            task_id=uuid4(),
+            executor_type="claude_code",
+            prompt="hi",
+            workspace_dir="/abs/path/to/workspace",
+        )
+        data = mock_stream_manager.publish.call_args[0][1]
+        assert data["workspace_dir"] == "/abs/path/to/workspace"
+
+    async def test_workspace_dir_defaults_to_dot(
+        self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock
+    ) -> None:
+        await dispatcher.dispatch_task(
+            worker_id=uuid4(),
+            task_id=uuid4(),
+            executor_type="claude_code",
+            prompt="hi",
+        )
+        data = mock_stream_manager.publish.call_args[0][1]
+        assert data["workspace_dir"] == "."
+
+    async def test_includes_mcp_servers_in_payload(
+        self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock
+    ) -> None:
+        mcp = {
+            "bsnexus": {
+                "url": "http://localhost:8100/mcp/sse?token=xyz",
+                "headers": {},
+            }
+        }
+        await dispatcher.dispatch_task(
+            worker_id=uuid4(),
+            task_id=uuid4(),
+            executor_type="claude_code",
+            prompt="hi",
+            mcp_servers=mcp,
+        )
+        data = mock_stream_manager.publish.call_args[0][1]
+        # Stored as JSON string for Redis Stream compatibility (no nested dicts).
+        import json as _json
+
+        assert _json.loads(data["mcp_servers"]) == mcp
+
+    async def test_mcp_servers_defaults_to_empty(
+        self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock
+    ) -> None:
+        await dispatcher.dispatch_task(
+            worker_id=uuid4(),
+            task_id=uuid4(),
+            executor_type="claude_code",
+            prompt="hi",
+        )
+        data = mock_stream_manager.publish.call_args[0][1]
+        import json as _json
+
+        assert _json.loads(data["mcp_servers"]) == {}

@@ -143,50 +143,69 @@ class ClaudeCodeExecutor:
     async def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]:
         workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
+        mcp_servers = context.get("mcp_servers") or {}
+        # Materialise the mcp config tempfile once for the whole retry loop —
+        # claude CLI re-reads the path on each invocation, so we don't need
+        # to recreate it per attempt. Cleanup happens here in the finally so
+        # tmpfile lifetime is bounded by the executor.execute() generator,
+        # not by individual subprocess attempts.
+        mcp_config_path: str | None = None
+        if mcp_servers:
+            mcp_config_path = _write_claude_mcp_config(mcp_servers)
         attempts_remaining = self._rate_limit_retries
         deadline = asyncio.get_event_loop().time() + self._total_timeout
-        while True:
-            rate_limited = False
-            stderr_buf: list[str] = []
-            had_delta = False
-            try:
-                async for chunk in self._run_once(prompt, workspace, system, deadline, stderr_buf):
-                    if chunk.delta:
-                        had_delta = True
-                    if chunk.error and self._is_rate_limited(
-                        (chunk.error or "") + "".join(stderr_buf)
+        try:
+            while True:
+                rate_limited = False
+                stderr_buf: list[str] = []
+                had_delta = False
+                try:
+                    async for chunk in self._run_once(
+                        prompt, workspace, system, mcp_config_path, deadline, stderr_buf
                     ):
+                        if chunk.delta:
+                            had_delta = True
+                        if chunk.error and self._is_rate_limited(
+                            (chunk.error or "") + "".join(stderr_buf)
+                        ):
+                            rate_limited = True
+                            # don't yield this chunk; we may retry
+                            continue
+                        yield chunk
+                        if chunk.done:
+                            return
+                    if not had_delta and self._is_rate_limited("".join(stderr_buf)):
                         rate_limited = True
-                        # don't yield this chunk; we may retry
-                        continue
-                    yield chunk
-                    if chunk.done:
-                        return
-                if not had_delta and self._is_rate_limited("".join(stderr_buf)):
-                    rate_limited = True
-            except TimeoutError:
+                except TimeoutError:
+                    yield ExecutionChunk(
+                        done=True,
+                        error=f"Total execution timed out after {self._total_timeout}s",
+                    )
+                    return
+
+                if rate_limited and attempts_remaining > 0:
+                    attempts_remaining -= 1
+                    await asyncio.sleep(self._rate_limit_wait)
+                    continue
+                # Either non-retryable failure, or retries exhausted — surface terminal error.
                 yield ExecutionChunk(
                     done=True,
-                    error=f"Total execution timed out after {self._total_timeout}s",
+                    error="Rate limit retries exhausted" if rate_limited else "claude exited",
                 )
                 return
-
-            if rate_limited and attempts_remaining > 0:
-                attempts_remaining -= 1
-                await asyncio.sleep(self._rate_limit_wait)
-                continue
-            # Either non-retryable failure, or retries exhausted — surface terminal error.
-            yield ExecutionChunk(
-                done=True,
-                error="Rate limit retries exhausted" if rate_limited else "claude exited",
-            )
-            return
+        finally:
+            if mcp_config_path is not None:
+                try:
+                    os.unlink(mcp_config_path)
+                except OSError:
+                    pass
 
     async def _run_once(
         self,
         prompt: str,
         workspace: str,
         system: str,
+        mcp_config_path: str | None,
         deadline: float,
         stderr_buf: list[str],
     ) -> AsyncIterator[ExecutionChunk]:
@@ -200,6 +219,8 @@ class ClaudeCodeExecutor:
         ]
         if system:
             cmd_args += ["--append-system-prompt", system]
+        if mcp_config_path:
+            cmd_args += ["--mcp-config", mcp_config_path]
         process: asyncio.subprocess.Process | None = None
         try:
             process = await asyncio.create_subprocess_exec(
@@ -421,6 +442,7 @@ class OpenCodeExecutor:
             return
 
         system = context.get("system") or ""
+        mcp_servers = context.get("mcp_servers") or {}
         try:
             async with httpx.AsyncClient(
                 base_url=base_url, timeout=self._request_timeout
@@ -428,6 +450,12 @@ class OpenCodeExecutor:
                 session_body: dict[str, Any] = {}
                 if system:
                     session_body["system"] = system
+                # TODO E5b — opencode session-level MCP injection. The
+                # ``mcpServers`` field on session create matches claude
+                # CLI's ``--mcp-config`` shape (``{name: {url, headers}}``).
+                # Empty / missing ⇒ field omitted (back-compat).
+                if mcp_servers:
+                    session_body["mcpServers"] = mcp_servers
                 res = await client.post("/session", json=session_body)
                 res.raise_for_status()
                 session_id = res.json().get("id") or res.json().get("sessionID")
@@ -594,6 +622,31 @@ def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def _write_claude_mcp_config(mcp_servers: dict[str, Any]) -> str:
+    """Write a claude-CLI-format MCP config file. Returns the path.
+
+    Wraps the BSNexus-style ``{name: {url, headers}}`` dict into the
+    ``{"mcpServers": ...}`` envelope claude CLI expects on
+    ``--mcp-config``. File mode is 0600 because the embedded URL may
+    contain a run-scoped auth token.
+    """
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".json",
+        delete=False,
+        encoding="utf-8",
+    )
+    try:
+        json.dump({"mcpServers": mcp_servers}, tmp)
+    finally:
+        tmp.close()
+    try:
+        os.chmod(tmp.name, 0o600)
+    except OSError:
+        pass
+    return tmp.name
 
 
 # ─── Factory ──────────────────────────────────────────────────────────

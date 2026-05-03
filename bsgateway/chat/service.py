@@ -395,6 +395,16 @@ class ChatService:
             raise ChatError("Executor models require a user message", code="no_user_message")
         system_prompt = extract_system_prompt(request_data)
 
+        # BSNexus integration (TODO E5): forward workspace_dir + mcp_servers
+        # from the request metadata bag down to the worker, where the
+        # executor injects them as cwd / --mcp-config.
+        request_metadata_bag = request_data.get("metadata") or {}
+        workspace_dir_raw = request_metadata_bag.get("workspace_dir") or "."
+        workspace_dir = str(workspace_dir_raw) if workspace_dir_raw else "."
+        mcp_servers = request_metadata_bag.get("mcp_servers")
+        if mcp_servers is not None and not isinstance(mcp_servers, dict):
+            mcp_servers = None
+
         lm = model.litellm_model
         executor_type = lm.split("/", 1)[-1] if "/" in lm else lm
         extra = model.extra_params or {}
@@ -432,6 +442,8 @@ class ChatService:
                 executor_type=executor_type,
                 prompt=prompt,
                 system=system_prompt,
+                workspace_dir=workspace_dir,
+                mcp_servers=mcp_servers,
                 tenant_id=tenant_id,
                 request_data=request_data,
                 model=model,
@@ -441,7 +453,13 @@ class ChatService:
 
         dispatcher = WorkerDispatcher(sm)
         await dispatcher.dispatch_task(
-            worker_id, task_id, executor_type, prompt, system=system_prompt
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system=system_prompt,
+            workspace_dir=workspace_dir,
+            mcp_servers=mcp_servers,
         )
 
         final_row = await self._await_task_completion(
@@ -489,6 +507,8 @@ class ChatService:
         executor_type: str,
         prompt: str,
         system: str,
+        workspace_dir: str = ".",
+        mcp_servers: dict[str, Any] | None = None,
         tenant_id: UUID,
         request_data: dict,
         model: TenantModel,
@@ -506,7 +526,15 @@ class ChatService:
         sub_iter = await stream_manager.subscribe_pubsub(chan, timeout=timeout_seconds)
 
         dispatcher = WorkerDispatcher(stream_manager)
-        await dispatcher.dispatch_task(worker_id, task_id, executor_type, prompt, system=system)
+        await dispatcher.dispatch_task(
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system=system,
+            workspace_dir=workspace_dir,
+            mcp_servers=mcp_servers,
+        )
 
         completion_id = f"exec-{uuid.uuid4().hex[:24]}"
         created = int(time.time())

@@ -173,6 +173,100 @@ async def test_claude_executor_no_system_omits_flag() -> None:
 
 
 @pytest.mark.asyncio
+async def test_claude_executor_uses_workspace_dir_as_cwd() -> None:
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+    proc = _make_proc([], returncode=0)
+
+    captured: dict[str, Any] = {}
+
+    async def _fake_exec(*args, **kwargs):
+        captured["cwd"] = kwargs.get("cwd")
+        return proc
+
+    with patch("asyncio.create_subprocess_exec", _fake_exec):
+        await collect(executor.execute("p", {"task_id": "t", "workspace_dir": "/abs/ws"}))
+
+    assert captured["cwd"] == "/abs/ws"
+
+
+@pytest.mark.asyncio
+async def test_claude_executor_writes_mcp_config_when_servers_provided() -> None:
+    """mcp_servers context → tmpfile JSON + --mcp-config CLI arg."""
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+    proc = _make_proc([], returncode=0)
+
+    mcp_servers = {
+        "bsnexus": {
+            "url": "http://localhost:8100/mcp/sse?token=run-xyz",
+            "headers": {},
+        }
+    }
+    captured_args: list[str] = []
+    captured_paths: list[str] = []
+
+    async def _fake_exec(*args, **_kwargs):
+        captured_args.extend(args)
+        # Read the tmpfile content while the subprocess is "alive".
+        if "--mcp-config" in args:
+            idx = args.index("--mcp-config")
+            path = args[idx + 1]
+            captured_paths.append(path)
+            with open(path) as f:
+                captured_paths.append(f.read())
+        return proc
+
+    with patch("asyncio.create_subprocess_exec", _fake_exec):
+        await collect(executor.execute("p", {"task_id": "t", "mcp_servers": mcp_servers}))
+
+    assert "--mcp-config" in captured_args
+    assert len(captured_paths) == 2  # path + content
+    written = json.loads(captured_paths[1])
+    # Claude expects an object with `mcpServers` top-level key (camelCase).
+    assert written == {"mcpServers": mcp_servers}
+    # Tmpfile should be unlinked after exit.
+    import os as _os
+
+    assert not _os.path.exists(captured_paths[0])
+
+
+@pytest.mark.asyncio
+async def test_claude_executor_omits_mcp_config_when_servers_empty() -> None:
+    """Backward-compat: empty/missing mcp_servers ⇒ no --mcp-config arg."""
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    args = mock_exec.call_args.args
+    assert "--mcp-config" not in args
+
+
+@pytest.mark.asyncio
+async def test_claude_executor_unlinks_mcp_tmpfile_on_subprocess_error() -> None:
+    """Tmpfile cleanup runs even when subprocess fails."""
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+
+    captured_paths: list[str] = []
+
+    async def _fake_exec(*args, **_kwargs):
+        if "--mcp-config" in args:
+            idx = args.index("--mcp-config")
+            captured_paths.append(args[idx + 1])
+        raise FileNotFoundError("claude not found")
+
+    mcp_servers = {"bsnexus": {"url": "http://x/mcp/sse", "headers": {}}}
+
+    with patch("asyncio.create_subprocess_exec", _fake_exec):
+        await collect(executor.execute("p", {"task_id": "t", "mcp_servers": mcp_servers}))
+
+    assert len(captured_paths) == 1
+    import os as _os
+
+    assert not _os.path.exists(captured_paths[0])
+
+
+@pytest.mark.asyncio
 async def test_claude_executor_handles_filenotfound() -> None:
     executor = ClaudeCodeExecutor(rate_limit_retries=0)
 
@@ -303,6 +397,122 @@ async def test_opencode_executor_streams_sse_events() -> None:
 
     assert result.success is True
     assert result.stdout == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_passes_mcp_servers_to_session_create() -> None:
+    """TODO E5b — opencode session-level MCP injection. mcp_servers from
+    context lands in the ``mcpServers`` field of the session POST body."""
+    executor = OpenCodeExecutor()
+    executor._cmd = "/bin/true"
+    executor._base_url = "http://127.0.0.1:1234"
+    executor._proc = MagicMock()
+    executor._proc.returncode = None
+
+    captured: list[dict[str, Any]] = []
+
+    class _FakeStreamResp:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            pass
+
+        async def aiter_lines(self):
+            yield "data: " + json.dumps(
+                {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
+            )
+            yield ""
+
+    class _FakeStreamCtx:
+        async def __aenter__(self):
+            return _FakeStreamResp()
+
+        async def __aexit__(self, *a, **kw):
+            return None
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a, **kw):
+            return None
+
+        async def post(self, path: str, json: dict[str, Any] | None = None):
+            captured.append({"path": path, "body": json})
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json = MagicMock(return_value={"id": "sess-1"})
+            return resp
+
+        def stream(self, method: str, path: str):
+            return _FakeStreamCtx()
+
+    mcp = {"bsnexus": {"url": "http://localhost:8100/mcp/sse?token=t", "headers": {}}}
+    with patch("worker.executors.httpx.AsyncClient", _FakeClient):
+        await collect(executor.execute("p", {"task_id": "t", "mcp_servers": mcp}))
+
+    session_create = next(c for c in captured if c["path"] == "/session")
+    assert session_create["body"].get("mcpServers") == mcp
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_omits_mcp_servers_when_empty() -> None:
+    """Back-compat: empty ``mcp_servers`` ⇒ ``mcpServers`` field absent."""
+    executor = OpenCodeExecutor()
+    executor._cmd = "/bin/true"
+    executor._base_url = "http://127.0.0.1:1234"
+    executor._proc = MagicMock()
+    executor._proc.returncode = None
+
+    captured: list[dict[str, Any]] = []
+
+    class _FakeStreamResp:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            pass
+
+        async def aiter_lines(self):
+            yield "data: " + json.dumps(
+                {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
+            )
+            yield ""
+
+    class _FakeStreamCtx:
+        async def __aenter__(self):
+            return _FakeStreamResp()
+
+        async def __aexit__(self, *a, **kw):
+            return None
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a, **kw):
+            return None
+
+        async def post(self, path: str, json: dict[str, Any] | None = None):
+            captured.append({"path": path, "body": json})
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json = MagicMock(return_value={"id": "sess-1"})
+            return resp
+
+        def stream(self, method: str, path: str):
+            return _FakeStreamCtx()
+
+    with patch("worker.executors.httpx.AsyncClient", _FakeClient):
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    session_create = next(c for c in captured if c["path"] == "/session")
+    assert "mcpServers" not in session_create["body"]
 
 
 # ─── factory ─────────────────────────────────────────────────────────

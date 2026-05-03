@@ -135,10 +135,26 @@ async def _handle_task(
     task_id = task["task_id"]
     prompt = task.get("prompt") or task.get("title", "")
     executor_type = task.get("executor_type", "claude_code")
+    # mcp_servers is forwarded as a JSON string by the dispatcher so the
+    # Redis Stream payload stays flat. Workers without the new wire (older
+    # gateway) won't include it — fall back to empty dict.
+    raw_mcp = task.get("mcp_servers")
+    mcp_servers: dict[str, Any] = {}
+    if raw_mcp:
+        if isinstance(raw_mcp, str):
+            try:
+                parsed = json.loads(raw_mcp)
+                if isinstance(parsed, dict):
+                    mcp_servers = parsed
+            except (json.JSONDecodeError, ValueError):
+                logger.warning("mcp_servers_parse_failed", task_id=task_id)
+        elif isinstance(raw_mcp, dict):
+            mcp_servers = raw_mcp
     context: dict[str, Any] = {
         "task_id": task_id,
         "workspace_dir": task.get("workspace_dir", "."),
         "system": task.get("system") or "",
+        "mcp_servers": mcp_servers,
     }
     stream_channel = task.get("stream_channel") or f"task:{task_id}:stream"
     done_channel = task.get("done_channel") or f"task:{task_id}:done"

@@ -57,7 +57,16 @@ class TestSystemPromptForwarding:
 
         captured: dict[str, Any] = {}
 
-        async def fake_dispatch(self, worker_id, task_id, executor_type, prompt, system=""):
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+        ):
             captured["system"] = system
             captured["prompt"] = prompt
             return "msg-1"
@@ -88,6 +97,98 @@ class TestSystemPromptForwarding:
         assert captured["prompt"] == "hello"
 
 
+class TestMetadataForwarding:
+    """metadata.workspace_dir + metadata.mcp_servers → WorkerDispatcher kwargs."""
+
+    @pytest.mark.asyncio
+    async def test_workspace_dir_forwarded_to_dispatcher(self) -> None:
+        pool, _conn, _row = _make_pool_with_task()
+        redis = AsyncMock()
+        svc = _build_svc(pool, redis=redis)
+
+        captured: dict[str, Any] = {}
+
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+        ):
+            captured["workspace_dir"] = workspace_dir
+            return "msg-1"
+
+        async def fake_await(self, task_id, tenant_id, timeout_seconds, poll_interval=None):
+            return {"status": "done", "output": "ok", "error_message": None}
+
+        with (
+            patch(
+                "bsgateway.chat.service.WorkerDispatcher.dispatch_task",
+                fake_dispatch,
+            ),
+            patch.object(svc, "_await_task_completion", new=fake_await.__get__(svc)),
+            patch("bsgateway.chat.service._executor_sql") as mock_sql,
+        ):
+            mock_sql.query.side_effect = lambda q: q
+
+            request = {
+                "model": "my-worker",
+                "messages": [{"role": "user", "content": "hi"}],
+                "metadata": {"workspace_dir": "/abs/ws"},
+            }
+            await svc._execute_via_worker(TENANT_ID, request, _executor_model(), None)
+
+        assert captured["workspace_dir"] == "/abs/ws"
+
+    @pytest.mark.asyncio
+    async def test_mcp_servers_forwarded_to_dispatcher(self) -> None:
+        pool, _conn, _row = _make_pool_with_task()
+        redis = AsyncMock()
+        svc = _build_svc(pool, redis=redis)
+
+        captured: dict[str, Any] = {}
+
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+        ):
+            captured["mcp_servers"] = mcp_servers
+            return "msg-1"
+
+        async def fake_await(self, task_id, tenant_id, timeout_seconds, poll_interval=None):
+            return {"status": "done", "output": "ok", "error_message": None}
+
+        mcp = {"bsnexus": {"url": "http://localhost:8100/mcp/sse?token=t", "headers": {}}}
+
+        with (
+            patch(
+                "bsgateway.chat.service.WorkerDispatcher.dispatch_task",
+                fake_dispatch,
+            ),
+            patch.object(svc, "_await_task_completion", new=fake_await.__get__(svc)),
+            patch("bsgateway.chat.service._executor_sql") as mock_sql,
+        ):
+            mock_sql.query.side_effect = lambda q: q
+
+            request = {
+                "model": "my-worker",
+                "messages": [{"role": "user", "content": "hi"}],
+                "metadata": {"mcp_servers": mcp},
+            }
+            await svc._execute_via_worker(TENANT_ID, request, _executor_model(), None)
+
+        assert captured["mcp_servers"] == mcp
+
+
 class TestStreamingResponse:
     @pytest.mark.asyncio
     async def test_chunks_become_openai_chunk_dicts(self) -> None:
@@ -95,7 +196,16 @@ class TestStreamingResponse:
         redis = AsyncMock()
         svc = _build_svc(pool, redis=redis)
 
-        async def fake_dispatch(self, worker_id, task_id, executor_type, prompt, system=""):
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+        ):
             return "msg-1"
 
         async def fake_subscribe(channel: str, *, timeout: float):
@@ -144,7 +254,16 @@ class TestStreamingResponse:
         redis = AsyncMock()
         svc = _build_svc(pool, redis=redis)
 
-        async def fake_dispatch(self, worker_id, task_id, executor_type, prompt, system=""):
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+        ):
             return "msg-1"
 
         async def fake_subscribe(channel: str, *, timeout: float):
