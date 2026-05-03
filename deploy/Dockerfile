@@ -40,4 +40,10 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "bsgateway.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+# `--forwarded-allow-ips=*` makes uvicorn honour X-Forwarded-Proto from
+# Caddy (which is on the host network, not 127.0.0.1 from inside the
+# container), so FastAPI's auto-redirect for trailing slashes emits
+# https:// Location headers instead of http:// — without this, browser
+# CORS rejects the redirect during cross-origin requests from
+# https://gateway.bsvibe.dev.
+CMD ["python", "-m", "uvicorn", "bsgateway.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
