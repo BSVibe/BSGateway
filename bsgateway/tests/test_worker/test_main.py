@@ -260,6 +260,109 @@ async def test_handle_task_passes_system_prompt_in_context() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handle_task_passes_workspace_dir_in_context() -> None:
+    from worker.main import _handle_task
+
+    captured: dict = {}
+
+    async def _gen(prompt, context):
+        captured["context"] = context
+        yield ExecutionChunk(done=True)
+
+    executor = MagicMock()
+    executor.execute = _gen
+    executors = {"claude_code": executor}
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+    task = {
+        "task_id": "t-w1",
+        "prompt": "do",
+        "executor_type": "claude_code",
+        "workspace_dir": "/tmp/my-workspace",
+    }
+    await _handle_task(task, executors, mock_client, {"X-Worker-Token": "t"}, None)
+
+    assert captured["context"]["workspace_dir"] == "/tmp/my-workspace"
+
+
+@pytest.mark.asyncio
+async def test_handle_task_workspace_dir_defaults_to_dot() -> None:
+    from worker.main import _handle_task
+
+    captured: dict = {}
+
+    async def _gen(prompt, context):
+        captured["context"] = context
+        yield ExecutionChunk(done=True)
+
+    executor = MagicMock()
+    executor.execute = _gen
+    executors = {"claude_code": executor}
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+    task = {"task_id": "t-w2", "prompt": "do", "executor_type": "claude_code"}
+    await _handle_task(task, executors, mock_client, {"X-Worker-Token": "t"}, None)
+
+    assert captured["context"]["workspace_dir"] == "."
+
+
+@pytest.mark.asyncio
+async def test_handle_task_passes_mcp_servers_in_context() -> None:
+    from worker.main import _handle_task
+
+    captured: dict = {}
+
+    async def _gen(prompt, context):
+        captured["context"] = context
+        yield ExecutionChunk(done=True)
+
+    executor = MagicMock()
+    executor.execute = _gen
+    executors = {"claude_code": executor}
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+    mcp = {"bsnexus": {"url": "http://x/mcp/sse?token=t", "headers": {}}}
+    task = {
+        "task_id": "t-m1",
+        "prompt": "do",
+        "executor_type": "claude_code",
+        "mcp_servers": json.dumps(mcp),
+    }
+    await _handle_task(task, executors, mock_client, {"X-Worker-Token": "t"}, None)
+
+    assert captured["context"]["mcp_servers"] == mcp
+
+
+@pytest.mark.asyncio
+async def test_handle_task_mcp_servers_defaults_to_empty() -> None:
+    from worker.main import _handle_task
+
+    captured: dict = {}
+
+    async def _gen(prompt, context):
+        captured["context"] = context
+        yield ExecutionChunk(done=True)
+
+    executor = MagicMock()
+    executor.execute = _gen
+    executors = {"claude_code": executor}
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+    task = {"task_id": "t-m2", "prompt": "do", "executor_type": "claude_code"}
+    await _handle_task(task, executors, mock_client, {"X-Worker-Token": "t"}, None)
+
+    assert captured["context"]["mcp_servers"] == {}
+
+
+@pytest.mark.asyncio
 async def test_handle_task_falls_back_to_title() -> None:
     from worker.main import _handle_task
 
