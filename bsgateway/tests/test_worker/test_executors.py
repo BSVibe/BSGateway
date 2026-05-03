@@ -91,8 +91,9 @@ class TestOpencodeExtract:
 # ─── ClaudeCodeExecutor — subprocess streaming ───────────────────────
 
 
-def _make_proc(stdout_lines: list[bytes], stderr_lines: list[bytes] | None = None,
-               returncode: int = 0) -> MagicMock:
+def _make_proc(
+    stdout_lines: list[bytes], stderr_lines: list[bytes] | None = None, returncode: int = 0
+) -> MagicMock:
     """Mock asyncio.subprocess.Process with controlled stdout/stderr/returncode."""
 
     proc = MagicMock()
@@ -127,11 +128,13 @@ def _make_proc(stdout_lines: list[bytes], stderr_lines: list[bytes] | None = Non
 
 @pytest.mark.asyncio
 async def test_claude_executor_streams_stdout_lines() -> None:
-    executor = ClaudeCodeExecutor(timeout_seconds=5, total_timeout_seconds=10,
-                                   rate_limit_retries=0)
-    line = json.dumps(
-        {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}}
-    ).encode() + b"\n"
+    executor = ClaudeCodeExecutor(timeout_seconds=5, total_timeout_seconds=10, rate_limit_retries=0)
+    line = (
+        json.dumps(
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}}
+        ).encode()
+        + b"\n"
+    )
     proc = _make_proc([line], returncode=0)
 
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
@@ -213,9 +216,7 @@ async def test_codex_executor_writes_system_to_tempfile_and_cleans_up() -> None:
         return proc
 
     with patch("asyncio.create_subprocess_exec", _fake_exec):
-        await collect(
-            executor.execute("p", {"task_id": "t", "system": "Be helpful and brief."})
-        )
+        await collect(executor.execute("p", {"task_id": "t", "system": "Be helpful and brief."}))
 
     cfg_args = [a for a in captured_args if a.startswith("experimental_instructions_file=")]
     assert len(cfg_args) == 1
@@ -240,23 +241,23 @@ async def test_opencode_executor_streams_sse_events() -> None:
 
     sse_events = [
         # session ack (subscribe message)
-        "data: " + json.dumps(
+        "data: "
+        + json.dumps(
             {
                 "type": "message.part.update",
                 "properties": {"sessionID": "sess-1", "part": {"type": "text", "text": "He"}},
             }
         ),
         "",
-        "data: " + json.dumps(
+        "data: "
+        + json.dumps(
             {
                 "type": "message.part.update",
                 "properties": {"sessionID": "sess-1", "part": {"type": "text", "text": "llo"}},
             }
         ),
         "",
-        "data: " + json.dumps(
-            {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
-        ),
+        "data: " + json.dumps({"type": "session.idle", "properties": {"sessionID": "sess-1"}}),
         "",
     ]
 

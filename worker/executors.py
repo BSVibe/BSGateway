@@ -63,9 +63,7 @@ class ExecutionResult:
 
 @runtime_checkable
 class ExecutorProtocol(Protocol):
-    def execute(
-        self, prompt: str, context: dict[str, Any]
-    ) -> AsyncIterator[ExecutionChunk]: ...
+    def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]: ...
 
     def supported_task_types(self) -> list[str]: ...
 
@@ -142,9 +140,7 @@ class ClaudeCodeExecutor:
     def supported_task_types(self) -> list[str]:
         return ["coding", "refactor", "bugfix", "test"]
 
-    async def execute(
-        self, prompt: str, context: dict[str, Any]
-    ) -> AsyncIterator[ExecutionChunk]:
+    async def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]:
         workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
         attempts_remaining = self._rate_limit_retries
@@ -154,9 +150,7 @@ class ClaudeCodeExecutor:
             stderr_buf: list[str] = []
             had_delta = False
             try:
-                async for chunk in self._run_once(
-                    prompt, workspace, system, deadline, stderr_buf
-                ):
+                async for chunk in self._run_once(prompt, workspace, system, deadline, stderr_buf):
                     if chunk.delta:
                         had_delta = True
                     if chunk.error and self._is_rate_limited(
@@ -276,9 +270,7 @@ class CodexExecutor:
     def supported_task_types(self) -> list[str]:
         return ["coding", "refactor", "bugfix", "test"]
 
-    async def execute(
-        self, prompt: str, context: dict[str, Any]
-    ) -> AsyncIterator[ExecutionChunk]:
+    async def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]:
         workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
         deadline = asyncio.get_event_loop().time() + self._timeout
@@ -334,9 +326,7 @@ class CodexExecutor:
             else:
                 yield ExecutionChunk(done=True)
         except TimeoutError:
-            yield ExecutionChunk(
-                done=True, error=f"Execution timed out after {self._timeout}s"
-            )
+            yield ExecutionChunk(done=True, error=f"Execution timed out after {self._timeout}s")
         except (FileNotFoundError, PermissionError, OSError) as e:
             yield ExecutionChunk(done=True, error=str(e))
         finally:
@@ -423,9 +413,7 @@ class OpenCodeExecutor:
                 await asyncio.sleep(0.2)
         raise RuntimeError(f"opencode serve did not become ready at {base_url}")
 
-    async def execute(
-        self, prompt: str, context: dict[str, Any]
-    ) -> AsyncIterator[ExecutionChunk]:
+    async def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]:
         try:
             base_url = await self._ensure_server()
         except (FileNotFoundError, PermissionError, OSError, RuntimeError) as e:
@@ -570,9 +558,7 @@ def _opencode_is_terminal(event: dict[str, Any], session_id: str) -> bool:
 # ─── Subprocess helpers ──────────────────────────────────────────────
 
 
-async def _aiter_lines(
-    stream: asyncio.StreamReader, deadline: float
-) -> AsyncIterator[str]:
+async def _aiter_lines(stream: asyncio.StreamReader, deadline: float) -> AsyncIterator[str]:
     while True:
         remaining = deadline - asyncio.get_event_loop().time()
         if remaining <= 0:

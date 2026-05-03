@@ -124,9 +124,7 @@ class TestStreamingResponse:
                 "stream": True,
                 "messages": [{"role": "user", "content": "hi"}],
             }
-            response = await svc._execute_via_worker(
-                TENANT_ID, request, _executor_model(), None
-            )
+            response = await svc._execute_via_worker(TENANT_ID, request, _executor_model(), None)
 
             chunks = []
             async for c in response:
@@ -174,9 +172,7 @@ class TestStreamingResponse:
                 "stream": True,
                 "messages": [{"role": "user", "content": "hi"}],
             }
-            response = await svc._execute_via_worker(
-                TENANT_ID, request, _executor_model(), None
-            )
+            response = await svc._execute_via_worker(TENANT_ID, request, _executor_model(), None)
             chunks = [c async for c in response]
 
         # Last entry should carry the error payload.
@@ -249,9 +245,7 @@ class TestAwaitPubsubCompletion:
         ):
             mock_sql.query.side_effect = lambda q: q
             with pytest.raises(ChatError, match="timed out"):
-                await svc._await_task_completion(
-                    uuid4(), TENANT_ID, timeout_seconds=1
-                )
+                await svc._await_task_completion(uuid4(), TENANT_ID, timeout_seconds=1)
 
     @pytest.mark.asyncio
     async def test_no_redis_raises(self) -> None:

@@ -506,9 +506,7 @@ class ChatService:
         sub_iter = await stream_manager.subscribe_pubsub(chan, timeout=timeout_seconds)
 
         dispatcher = WorkerDispatcher(stream_manager)
-        await dispatcher.dispatch_task(
-            worker_id, task_id, executor_type, prompt, system=system
-        )
+        await dispatcher.dispatch_task(worker_id, task_id, executor_type, prompt, system=system)
 
         completion_id = f"exec-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
@@ -630,9 +628,7 @@ class ChatService:
                 # The worker only publishes once when the executor_tasks row
                 # has been written; read it back for the canonical record.
                 async with self._pool.acquire() as conn:
-                    row = await conn.fetchrow(
-                        _executor_sql.query("get_task"), task_id, tenant_id
-                    )
+                    row = await conn.fetchrow(_executor_sql.query("get_task"), task_id, tenant_id)
                 if row and row["status"] in ("done", "failed"):
                     return row
                 # Worker published before its own /result write landed —

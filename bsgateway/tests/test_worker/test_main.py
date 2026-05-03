@@ -215,9 +215,7 @@ async def test_handle_task_no_redis_still_runs() -> None:
     """Worker must still execute and POST result even when Redis is unavailable."""
     from worker.main import _handle_task
 
-    executor = _make_streaming_executor(
-        [ExecutionChunk(delta="ok"), ExecutionChunk(done=True)]
-    )
+    executor = _make_streaming_executor([ExecutionChunk(delta="ok"), ExecutionChunk(done=True)])
     executors = {"claude_code": executor}
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
