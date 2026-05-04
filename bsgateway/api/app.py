@@ -106,8 +106,8 @@ async def lifespan(app: FastAPI):
     if (
         settings.bsupervisor_audit_enabled
         and settings.bsupervisor_url
-        and settings.bsvibe_service_account_token
-        and settings.bsvibe_service_account_tenant_id
+        and settings.bsvibe_client_id
+        and settings.bsvibe_client_secret
     ):
         try:
             from bsgateway.routing.hook import proxy_handler_instance
@@ -118,10 +118,10 @@ async def lifespan(app: FastAPI):
 
             minter = ServiceTokenMinter(
                 auth_url=settings.bsvibe_auth_url,
-                service_account_token=settings.bsvibe_service_account_token,
-                service_account_tenant_id=settings.bsvibe_service_account_tenant_id,
+                client_id=settings.bsvibe_client_id,
+                client_secret=settings.bsvibe_client_secret,
                 audience="bsupervisor",
-                scope=["bsupervisor.events"],
+                scope=["bsupervisor.write"],
             )
             client = BSupervisorClient(
                 base_url=settings.bsupervisor_url,

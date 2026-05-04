@@ -1,6 +1,12 @@
 # Standard pre-commit hooks for BS projects
 # See https://pre-commit.com for more information
 
+# Pin to the Python version used by .devcontainer/Dockerfile (python:3.11-slim)
+# and pyproject.toml (requires-python >= 3.11). Avoids host-default 3.14
+# picking, which has libexpat ABI mismatches on some macOS installs.
+default_language_version:
+  python: python3.11
+
 repos:
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks

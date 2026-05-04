@@ -40,7 +40,7 @@ import httpx
 import structlog
 
 if TYPE_CHECKING:
-    from .service_token import ServiceTokenMinter
+    from bsvibe_authz import ServiceTokenMinter
 
 logger = structlog.get_logger(__name__)
 

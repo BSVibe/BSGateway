@@ -42,14 +42,12 @@ class Settings(FastApiSettings):
     encryption_key: str = ""  # 32-byte hex string for AES-256-GCM
 
     # ----------------------------------------------------------------------
-    # Phase 0 P0.7 — service-account credentials for minting BSupervisor JWTs.
+    # OAuth2 client_credentials grant — see BSVibe-Auth `/api/oauth/token`.
+    # Each backend has a dedicated row in `oauth_clients`; the secret is
+    # provisioned once and stored in Vaultwarden.
     # ----------------------------------------------------------------------
-    # Long-lived BSVibe-Auth user access token for a dedicated service
-    # account user (admin/owner of the tenant below). Generated out-of-band
-    # via the BSVibe-Auth admin console; rotated quarterly.
-    bsvibe_service_account_token: str = ""
-    # Tenant the service-account user is operating on behalf of.
-    bsvibe_service_account_tenant_id: str = ""
+    bsvibe_client_id: str = ""
+    bsvibe_client_secret: str = ""
 
     # ----------------------------------------------------------------------
     # Phase 0 P0.7 — BSupervisor preflight integration.

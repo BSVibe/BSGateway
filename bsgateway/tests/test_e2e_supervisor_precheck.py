@@ -7,8 +7,8 @@ headers + body, exercised through ``BSGatewayRouter.async_pre_call_hook``
 and ``async_log_success_event``.
 
 Mocks (everything outside BSGateway):
-- BSVibe-Auth ``POST /api/service-tokens/issue`` — returns a deterministic
-  service JWT.
+- BSVibe-Auth ``POST /api/oauth/token`` (OAuth2 client_credentials) —
+  returns a deterministic service JWT.
 - BSupervisor ``POST /api/events`` — captures payloads.
 - LiteLLM is not invoked; we drive the hook directly.
 """
@@ -53,10 +53,10 @@ def _make_router_with_supervisor(
     calls)."""
     minter = ServiceTokenMinter(
         auth_url="https://auth.bsvibe.test",
-        service_account_token="bootstrap-jwt",
-        service_account_tenant_id="00000000-0000-0000-0000-000000000abc",
+        client_id="bsgateway-test",
+        client_secret="bootstrap-secret",
         audience="bsupervisor",
-        scope=["bsupervisor.events"],
+        scope=["bsupervisor.write"],
     )
     client = BSupervisorClient(
         base_url="https://api-supervisor.bsvibe.test",
@@ -88,12 +88,13 @@ def _make_router_with_supervisor(
     )
     sup_resp.raise_for_status = MagicMock(return_value=None)
 
-    async def _mocked_post(*, url, json, headers, **_kw):
-        if url.endswith("/api/service-tokens/issue"):
-            auth_calls.append({"url": url, "json": json, "headers": headers})
+    async def _mocked_post(*, url, headers, **kw):
+        if url.endswith("/api/oauth/token"):
+            # New minter sends form-encoded body (data=), JSON elsewhere.
+            auth_calls.append({"url": url, "data": kw.get("data"), "headers": headers})
             return auth_token_resp
         if url.endswith("/api/events"):
-            sup_calls.append({"url": url, "json": json, "headers": headers})
+            sup_calls.append({"url": url, "json": kw.get("json"), "headers": headers})
             return sup_resp
         raise AssertionError(f"unexpected URL {url!r}")
 
@@ -132,11 +133,18 @@ async def test_e2e_run_pre_uses_minted_service_token_and_hits_events(monkeypatch
     # The hook resolved the model.
     assert out["model"] == "gpt-4o-mini"
 
-    # Service JWT was minted exactly once.
+    # Service JWT was minted exactly once via OAuth2 client_credentials.
+    import base64
+
     assert len(auth_calls) == 1
-    assert auth_calls[0]["json"]["audience"] == "bsupervisor"
-    assert auth_calls[0]["json"]["scope"] == ["bsupervisor.events"]
-    assert auth_calls[0]["headers"]["Authorization"] == "Bearer bootstrap-jwt"
+    body = auth_calls[0]["data"]
+    assert body["grant_type"] == "client_credentials"
+    assert body["audience"] == "bsupervisor"
+    assert body["scope"] == "bsupervisor.write"
+    auth_header = auth_calls[0]["headers"]["Authorization"]
+    assert auth_header.startswith("Basic ")
+    decoded = base64.b64decode(auth_header[len("Basic ") :]).decode()
+    assert decoded == "bsgateway-test:bootstrap-secret"
 
     # BSupervisor saw the run.pre event with full metadata.
     assert len(sup_calls) == 1
