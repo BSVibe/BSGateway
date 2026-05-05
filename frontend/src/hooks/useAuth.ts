@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { isDemoMode } from '@bsvibe/demo';
 import { api, setOnUnauthorized, resetLogoutFlag } from '../api/client';
 
 const AUTH_URL =
@@ -104,6 +105,26 @@ export function clearTokenCache() {
   }
 }
 
+/**
+ * Inject a demo session JWT into the auth token cache so the API client
+ * (`getAccessToken()`) returns the demo Bearer for every fetch. Without
+ * this, the demo dashboard renders an empty shell — every API call goes
+ * out without Authorization and the backend returns 401.
+ *
+ * Wire this up from the demo shell's ``useAutoDemoSession({onSessionReady})``
+ * callback (`@bsvibe/demo` >= 0.3).
+ */
+export function injectDemoToken(
+  token: string,
+  expiresIn: number,
+): void {
+  cachedToken = { value: token, expiresAt: Date.now() + expiresIn * 1000 };
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORED_TOKEN_KEY, token);
+    sessionStorage.setItem(TENANT_NAME_KEY, 'Demo sandbox');
+  }
+}
+
 interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -126,13 +147,16 @@ function readInitialState(): AuthState {
     try {
       const payload = decodeJwt(stored);
       const meta = payload.app_metadata as Record<string, string> | undefined;
+      // Demo JWT carries `tenant_id` directly (no app_metadata envelope).
+      const directTenantId = (payload.tenant_id as string | undefined) ?? null;
+      const isDemoSession = payload.is_demo === true;
       return {
         isAuthenticated: true,
         isLoading: false,
-        tenantId: meta?.tenant_id ?? null,
-        tenantName,
-        role: meta?.role ?? 'member',
-        email: (payload.email as string) ?? null,
+        tenantId: meta?.tenant_id ?? directTenantId,
+        tenantName: tenantName ?? (isDemoSession ? 'Demo sandbox' : null),
+        role: meta?.role ?? (isDemoSession ? 'demo' : 'member'),
+        email: (payload.email as string) ?? (isDemoSession ? 'demo@bsvibe.dev' : null),
       };
     } catch {
       // Fall through to unauthenticated default
@@ -171,13 +195,19 @@ export function useAuth({
       }
       const payload = decodeJwt(token);
       const meta = payload.app_metadata as Record<string, string> | undefined;
+      const directTenantId = (payload.tenant_id as string | undefined) ?? null;
+      const isDemoSession = payload.is_demo === true;
       setState({
         isAuthenticated: true,
         isLoading: false,
-        tenantId: meta?.tenant_id ?? null,
-        tenantName: sessionStorage.getItem(TENANT_NAME_KEY),
-        role: meta?.role ?? 'member',
-        email: (payload.email as string) ?? null,
+        tenantId: meta?.tenant_id ?? directTenantId,
+        tenantName:
+          sessionStorage.getItem(TENANT_NAME_KEY) ??
+          (isDemoSession ? 'Demo sandbox' : null),
+        role: meta?.role ?? (isDemoSession ? 'demo' : 'member'),
+        email:
+          (payload.email as string) ??
+          (isDemoSession ? 'demo@bsvibe.dev' : null),
       });
     })();
     return () => { cancelled = true; };
@@ -202,6 +232,9 @@ export function useAuth({
   // synchronous-setState-in-effect warning.
   useEffect(() => {
     if (!state.isAuthenticated) return;
+    // Demo deployments authenticate against the demo backend, not BSVibe
+    // Auth — skip the prod tenants fetch (would CORS-fail anyway).
+    if (isDemoMode()) return;
     let cancelled = false;
     (async () => {
       const token = await getAccessToken({ probeRemoteSession });

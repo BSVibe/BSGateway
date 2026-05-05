@@ -4,7 +4,7 @@ import { Component, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DemoBanner, isDemoMode, useAutoDemoSession } from '@bsvibe/demo';
 import { Layout } from './Layout';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth, injectDemoToken } from '../../hooks/useAuth';
 import { LoginPage } from '../../page-views/LoginPage';
 // Initialize i18next on the client (avoids running in server-render path).
 import '../../i18n';
@@ -68,7 +68,15 @@ function ErrorBoundaryFallback({
 
 function DemoShell({ children }: { children: ReactNode }) {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'https://api-demo-gateway.bsvibe.dev';
-  const { loading, error } = useAutoDemoSession(apiBase);
+  const { loading, error } = useAutoDemoSession(apiBase, {
+    onSessionReady: ({ token, expiresIn }) => {
+      // Stash the demo JWT in the auth token cache so child pages'
+      // useAuth() / api client picks it up. Without this, the demo
+      // shell renders but every data fetch goes out without
+      // Authorization → 401 → empty dashboard.
+      injectDemoToken(token, expiresIn);
+    },
+  });
 
   if (loading) {
     return (

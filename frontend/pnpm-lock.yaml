@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@bsvibe/demo':
-        specifier: ^0.2.1
-        version: 0.2.1(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@bsvibe/design-tokens':
         specifier: ^0.2.0
         version: 0.2.0(tailwindcss@4.2.4)
@@ -168,15 +168,12 @@ packages:
       react: '>=19.0.0'
       react-dom: '>=19.0.0'
 
-  '@bsvibe/demo@0.2.1':
-    resolution: {integrity: sha512-D857qt1tAuwLWBqCgb21OVWRQn/KhT9NAYwDh22L8BUMT3tZWVXNlRiAIuXqvphu6AVnqvf1eYYx36qMq+1plw==, tarball: https://npm.pkg.github.com/download/@bsvibe/demo/0.2.1/cbae934e79d1a4d3b02753543ee94f51aac9108e}
+  '@bsvibe/demo@0.3.0':
+    resolution: {integrity: sha512-9+TWv7cS/0038C/LAhiFeaESzKVFVCUFC53zMnva41X7wJIKg8842Mt0lUOsMLao+n9wTuAe1gzUAi8qsbDQrw==, tarball: https://npm.pkg.github.com/download/@bsvibe/demo/0.3.0/e544353be8d1444181ffd106b4deeffe9824369f}
     peerDependencies:
       '@playwright/test': '>=1.40'
       react: '>=19.0.0'
       react-dom: '>=19.0.0'
-    peerDependenciesMeta:
-      '@playwright/test':
-        optional: true
 
   '@bsvibe/design-tokens@0.2.0':
     resolution: {integrity: sha512-R4166uzrtbIKqXVyFqc3lF759xb6lGLRmmfulswRMEI2lB1Pio1/pFaOU5RXtY4bxfap+A8PN0TQ7QsoCjXbvw==, tarball: https://npm.pkg.github.com/download/@bsvibe/design-tokens/0.2.0/711833c797b7f4202cde4d899b396512be0a6daf}
@@ -2450,12 +2447,11 @@ snapshots:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
 
-  '@bsvibe/demo@0.2.1(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@bsvibe/demo@0.3.0(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
+      '@playwright/test': 1.59.1
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
-    optionalDependencies:
-      '@playwright/test': 1.59.1
 
   '@bsvibe/design-tokens@0.2.0(tailwindcss@4.2.4)':
     optionalDependencies:
