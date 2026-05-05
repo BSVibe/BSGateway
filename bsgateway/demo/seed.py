@@ -94,28 +94,31 @@ async def seed_demo(*, tenant_id: UUID, conn: asyncpg.Connection) -> None:
         )
 
     # ─── Routing logs (last 7 days, ~30 entries spread across models) ─────
+    # Schema columns: timestamp, user_text, system_prompt, token_count,
+    # tier (NOT NULL), strategy (NOT NULL), score, original_model (NOT NULL),
+    # resolved_model (NOT NULL), tenant_id. id is autoincrement integer.
     now = datetime.now(UTC)
     for i in range(30):
         _model_name, _provider, resolved = DEMO_MODELS[i % len(DEMO_MODELS)]
         ts = now - timedelta(days=i // 5, hours=i * 2)
+        token_count = 150 + (i % 11) * 30
         await conn.execute(
             """
-            INSERT INTO routing_logs (id, tenant_id, requested_model,
-                                      resolved_model, complexity_score,
-                                      latency_ms, prompt_tokens,
-                                      completion_tokens, timestamp)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT DO NOTHING
+            INSERT INTO routing_logs (timestamp, user_text, system_prompt,
+                                      token_count, tier, strategy, score,
+                                      original_model, resolved_model, tenant_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             """,
-            uuid4(),
-            tenant_id,
+            ts,
+            f"Demo request {i + 1}",
+            "",
+            token_count,
+            ["fast", "balanced", "premium"][i % 3],
+            "static",
+            int(10 + (i % 9) * 10),
             "auto",
             resolved,
-            0.1 + (i % 9) * 0.1,
-            120 + (i % 13) * 50,
-            150 + (i % 11) * 30,
-            80 + (i % 7) * 25,
-            ts,
+            tenant_id,
         )
 
     # ─── Tenant intents ────────────────────────────────────────────────────
