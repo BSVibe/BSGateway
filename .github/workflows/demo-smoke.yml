@@ -71,7 +71,14 @@ jobs:
         env:
           NEXT_PUBLIC_BSVIBE_DEMO: '1'
           NEXT_PUBLIC_API_URL: http://localhost:4500
-        run: pnpm run build
+        run: |
+          pnpm run build
+          echo "::group::dist/ root listing"
+          ls -la dist | head -30
+          echo "::endgroup::"
+          echo "::group::dist/index.html head (if exists)"
+          head -c 300 dist/index.html 2>&1 || echo "MISSING"
+          echo "::endgroup::"
 
       - name: Start frontend in background
         working-directory: frontend
