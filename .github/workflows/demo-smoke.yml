@@ -76,9 +76,13 @@ jobs:
       - name: Start frontend in background
         working-directory: frontend
         run: |
-          # next.config has `output: 'export'` → static files in dist/
-          # Use serve to host the static build.
-          nohup pnpm dlx serve dist -l "$FRONTEND_PORT" -s > /tmp/frontend.log 2>&1 &
+          # next.config has `output: 'export'` → static files in dist/.
+          # Use `pnpm exec serve` (installed as devDep). `pnpm dlx serve`
+          # has a cwd quirk that resolved `dist` against pnpm's tmp dir
+          # instead of the package, leaving serve to fall back to the
+          # frontend root and emit a directory listing.
+          test -f dist/index.html || { echo "::error::dist/index.html missing — build did not produce static export"; ls -la dist | head -20; exit 1; }
+          nohup pnpm exec serve dist -l "$FRONTEND_PORT" -s > /tmp/frontend.log 2>&1 &
           for _ in $(seq 1 30); do
             if curl -fsS -o /dev/null --max-time 2 "http://localhost:${FRONTEND_PORT}/"; then
               echo "frontend ready"
