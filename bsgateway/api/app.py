@@ -315,6 +315,21 @@ def create_app() -> FastAPI:
     app.include_router(execute_router, prefix="/api/v1")
     app.include_router(workers_router, prefix="/api/v1")
 
+    # ─── Demo mode (separate deployment, BSVIBE_DEMO_MODE=true) ─────────
+    # When the demo flag is set the backend exposes /api/v1/demo/session and
+    # swaps the prod auth dep for a demo-JWT-aware one. Prod backends never
+    # reach this branch.
+    from bsgateway.demo.guard import is_demo_mode
+
+    if is_demo_mode():
+        from bsgateway.api.deps import get_auth_context
+        from bsgateway.demo.auth import demo_auth_context
+        from bsgateway.demo.router import demo_router
+
+        app.include_router(demo_router, prefix="/api/v1")
+        app.dependency_overrides[get_auth_context] = demo_auth_context
+        logger.info("demo_mode_active", router="/api/v1/demo")
+
     # /health — shared liveness probe (always 200, no DI). Phase A Batch 5
     # adopts ``bsvibe_fastapi.make_health_router`` for parity across the
     # four products. ``/health/ready`` (deep readiness with DB+Redis

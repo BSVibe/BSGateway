@@ -29,6 +29,11 @@ dependencies = [
     # (the merge of ``feat/bsvibe-audit-impl`` + ``feat/bsvibe-llm-impl``
     # on top of ``integration/phase-a``).
     "bsvibe-audit @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-audit",
+    # Demo stack helpers — JWT issuer, LLM mock guard, tenant GC. Lives
+    # on feat/bsvibe-demo until published to main alongside the public
+    # demo rollout. Override in ``[tool.uv.sources]`` (below) for local
+    # dev against the workspace worktree.
+    "bsvibe-demo @ git+https://github.com/BSVibe/bsvibe-python.git@feat/bsvibe-demo#subdirectory=packages/bsvibe-demo",
     "alembic>=1.13.0",
     "sqlalchemy>=2.0.0",
     "psycopg[binary]>=3.1.0",
