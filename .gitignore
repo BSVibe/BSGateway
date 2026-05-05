@@ -56,3 +56,7 @@ node_modules/
 .agent/
 .pnpm-store/
 .env.production
+
+# Demo env (per-product DEMO_JWT_SECRET, demo PG creds)
+.env.demo
+deploy/.env.demo

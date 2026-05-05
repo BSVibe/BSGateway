@@ -2,6 +2,7 @@
 
 import { Component, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DemoBanner, isDemoMode, useAutoDemoSession } from '@bsvibe/demo';
 import { Layout } from './Layout';
 import { useAuth } from '../../hooks/useAuth';
 import { LoginPage } from '../../page-views/LoginPage';
@@ -65,7 +66,51 @@ function ErrorBoundaryFallback({
   );
 }
 
-function ShellInner({ children }: { children: ReactNode }) {
+function DemoShell({ children }: { children: ReactNode }) {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'https://api-demo-gateway.bsvibe.dev';
+  const { loading, error } = useAutoDemoSession(apiBase);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-surface gap-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-amber-500" />
+        <p className="text-on-surface-variant text-sm">Setting up your demo sandbox…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="text-center p-8">
+          <h1 className="text-xl font-bold text-on-surface mb-2">Demo unavailable</h1>
+          <p className="text-on-surface-variant text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <DemoBanner productName="BSGateway" locale="en" />
+      <Layout
+        onLogout={() => {
+          /* demo: no logout */
+        }}
+        tenantSlug="demo"
+        tenantName="Demo sandbox"
+        email="demo@bsvibe.dev"
+        role="demo"
+        tenants={[]}
+        onSwitchTenant={() => Promise.resolve()}
+      >
+        {children}
+      </Layout>
+    </>
+  );
+}
+
+function ProdShellInner({ children }: { children: ReactNode }) {
   const hasMounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -100,6 +145,12 @@ function ShellInner({ children }: { children: ReactNode }) {
       {children}
     </Layout>
   );
+}
+
+function ShellInner({ children }: { children: ReactNode }) {
+  // Build-time switch — demo branch is tree-shaken out of prod bundles
+  // because isDemoMode() resolves to a static boolean at build time.
+  return isDemoMode() ? <DemoShell>{children}</DemoShell> : <ProdShellInner>{children}</ProdShellInner>;
 }
 
 export function AppShell({ children }: { children: ReactNode }) {

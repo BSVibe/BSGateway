@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@bsvibe/demo':
+        specifier: file:../../../../bsvibe-frontend-lib-wt/feat-demo/packages/demo
+        version: file:../../../../bsvibe-frontend-lib-wt/feat-demo/packages/demo(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@bsvibe/design-tokens':
         specifier: ^0.2.0
         version: 0.2.0(tailwindcss@4.2.4)
@@ -158,6 +161,12 @@ packages:
 
   '@bsvibe/auth@1.0.0-alpha.0':
     resolution: {integrity: sha512-rgh9FxidMwy6bzBU7F5gWGJlERaG/GxGHDaYOIMyg7u2t//DYxjymnXq8xSLW3EnZyWgfVlHZShJal/ftIFdDA==, tarball: https://npm.pkg.github.com/download/@bsvibe/auth/1.0.0-alpha.0/7e9b95a86dce416a6b1011c2a0ec2b38c8749844}
+    peerDependencies:
+      react: '>=19.0.0'
+      react-dom: '>=19.0.0'
+
+  '@bsvibe/demo@file:../../../../bsvibe-frontend-lib-wt/feat-demo/packages/demo':
+    resolution: {directory: ../../../../bsvibe-frontend-lib-wt/feat-demo/packages/demo, type: directory}
     peerDependencies:
       react: '>=19.0.0'
       react-dom: '>=19.0.0'
@@ -2346,6 +2355,11 @@ snapshots:
   '@bsvibe/auth@1.0.0-alpha.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@bsvibe/types': 0.1.0
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+
+  '@bsvibe/demo@file:../../../../bsvibe-frontend-lib-wt/feat-demo/packages/demo(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+    dependencies:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
 
