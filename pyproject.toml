@@ -33,7 +33,7 @@ dependencies = [
     # on feat/bsvibe-demo until published to main alongside the public
     # demo rollout. Override in ``[tool.uv.sources]`` (below) for local
     # dev against the workspace worktree.
-    "bsvibe-demo @ git+https://github.com/BSVibe/bsvibe-python.git@feat/bsvibe-demo#subdirectory=packages/bsvibe-demo",
+    "bsvibe-demo @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-demo",
     "alembic>=1.13.0",
     "sqlalchemy>=2.0.0",
     "psycopg[binary]>=3.1.0",
