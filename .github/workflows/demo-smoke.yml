@@ -83,13 +83,20 @@ jobs:
       - name: Start frontend in background
         working-directory: frontend
         run: |
-          # Static export lives in dist/. Use `http-server` (devDep). It's a
-          # simple, deterministic static server — `serve` and a hand-rolled
-          # node http server both misbehaved here (serve resolved `dist`
-          # against the wrong directory; the inline node version hit
-          # ENOENT on a path that did exist on disk).
+          # Static export lives in dist/. Both `serve` and `http-server`
+          # via `pnpm exec` ended up serving the .next/ build-cache
+          # directory in this Linux runner — page snapshots showed
+          # cache/, server/, static/ instead of dist/'s 404, _next,
+          # api-keys… Pass an absolute path AND cd into dist/ before
+          # exec to remove every layer of resolution ambiguity.
           test -f dist/index.html || { echo "::error::dist/index.html missing"; ls -la dist | head -20; exit 1; }
-          nohup pnpm exec http-server dist -p "$FRONTEND_PORT" -s --silent > /tmp/frontend.log 2>&1 &
+          DIST_ABS="$(pwd)/dist"
+          echo "DIST_ABS=$DIST_ABS"
+          ls -la "$DIST_ABS" | head -5
+          realpath "$DIST_ABS"
+          # Also list what dist content the node binary actually sees
+          node -e "console.log(require('fs').readdirSync(process.argv[1]).slice(0, 8))" "$DIST_ABS"
+          (cd "$DIST_ABS" && nohup node ../node_modules/http-server/bin/http-server . -p "$FRONTEND_PORT" -s --silent > /tmp/frontend.log 2>&1 &)
           for _ in $(seq 1 30); do
             if curl -fsS -o /dev/null --max-time 2 "http://localhost:${FRONTEND_PORT}/"; then
               echo "frontend ready"
