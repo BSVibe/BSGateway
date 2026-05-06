@@ -264,6 +264,81 @@ class TestRuleTest:
             assert data["target_model"] is not None
             assert "context" in data
 
+    def test_rule_test_endpoint_cached_rules_match_conditions_by_str_id(self, client: TestClient):
+        """Regression: when list_rules returns from the JSON cache, rule
+        ``id`` is a string while ``list_conditions_for_tenant`` returns
+        UUID-typed ``rule_id``. The lookup must normalise both to str so
+        cached rules still see their conditions — otherwise every rule
+        looks unconditioned (empty AND-loop returns True) and the
+        priority-1 rule unconditionally wins.
+        """
+        tid = uuid4()
+        rid = uuid4()
+        cached_rule_row = _rule_row(
+            tenant_id=tid,
+            rule_id=rid,
+            name="urgent-only",
+            priority=1,
+            target="claude-opus",
+        )
+        # Simulate cache hit: id and tenant_id come back as strings.
+        cached_rule_row["id"] = str(cached_rule_row["id"])
+        cached_rule_row["tenant_id"] = str(cached_rule_row["tenant_id"])
+        cached_rule_row["created_at"] = cached_rule_row["created_at"].isoformat()
+        cached_rule_row["updated_at"] = cached_rule_row["updated_at"].isoformat()
+
+        condition = {
+            "id": uuid4(),
+            "rule_id": rid,  # UUID — fresh from DB
+            "condition_type": "text_pattern",
+            "operator": "regex",
+            "field": "user_text",
+            "value": json.dumps(r"\b(URGENT|CRITICAL)\b"),
+            "negate": False,
+        }
+        default_rule = _rule_row(
+            tenant_id=tid,
+            name="default",
+            priority=99,
+            is_default=True,
+            target="gpt-4o-mini",
+        )
+
+        with (
+            patch(
+                "bsgateway.rules.repository.RulesRepository.list_rules",
+                new_callable=AsyncMock,
+                return_value=[cached_rule_row, default_rule],
+            ),
+            patch(
+                "bsgateway.rules.repository.RulesRepository.list_conditions_for_tenant",
+                new_callable=AsyncMock,
+                return_value=[condition],
+            ),
+            patch(
+                "bsgateway.rules.repository.RulesRepository.get_intent_by_name",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            resp = client.post(
+                f"/api/v1/tenants/{tid}/rules/test",
+                json={
+                    "messages": [{"role": "user", "content": "hello there"}],
+                    "model": "auto",
+                },
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            # Without the str-normalised lookup the priority-1 rule would
+            # match unconditionally; with the fix it falls through to default.
+            assert data["target_model"] == "gpt-4o-mini"
+            assert data["matched_rule"]["priority"] == 99
+            # The conditioned rule must have been evaluated (and failed) —
+            # otherwise the fix isn't doing anything.
+            traced = [t for t in data["evaluation_trace"] if "rule" in t]
+            assert any(t["rule"] == "urgent-only" and t["matched"] is False for t in traced)
+
 
 class TestIntentsCRUD:
     def test_create_intent(self, client: TestClient):
