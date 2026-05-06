@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@bsvibe/demo':
-        specifier: ^0.3.1
-        version: 0.3.1(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        specifier: ^0.3.2
+        version: 0.3.2(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@bsvibe/design-tokens':
         specifier: ^0.2.0
         version: 0.2.0(tailwindcss@4.2.4)
@@ -168,8 +168,8 @@ packages:
       react: '>=19.0.0'
       react-dom: '>=19.0.0'
 
-  '@bsvibe/demo@0.3.1':
-    resolution: {integrity: sha512-hsBqX4lq1zWSzTFWtJq2lvMOIb13w/vS7lx+2N/PTA5i0F/HNY0aw/eYNRGtsSYoq9ObFzLfmeuusq8xQjVQpA==, tarball: https://npm.pkg.github.com/download/@bsvibe/demo/0.3.1/16472c1f0414a135e2f6bb21263567c65e2a99c5}
+  '@bsvibe/demo@0.3.2':
+    resolution: {integrity: sha512-NCFapC8iyYzHuo+y9+REI1rFrbPqB33SPQXXP3zzTytaz1Gj95/Y1JSjBQN+AsWY0sa89hC4vwsI2DGIqSxo/Q==, tarball: https://npm.pkg.github.com/download/@bsvibe/demo/0.3.2/74d85f54e79234d118c942c909a1a9f94c85ceed}
     peerDependencies:
       '@playwright/test': '>=1.40'
       react: '>=19.0.0'
@@ -2447,7 +2447,7 @@ snapshots:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
 
-  '@bsvibe/demo@0.3.1(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@bsvibe/demo@0.3.2(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@playwright/test': 1.59.1
       react: 19.2.5

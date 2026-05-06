@@ -14,7 +14,7 @@
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
-    "@bsvibe/demo": "^0.3.1",
+    "@bsvibe/demo": "^0.3.2",
     "@bsvibe/design-tokens": "^0.2.0",
     "@bsvibe/layout": "^0.7.0",
     "i18next": "^26.0.3",
