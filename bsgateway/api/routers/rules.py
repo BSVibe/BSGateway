@@ -221,11 +221,15 @@ async def test_rules(
     repo = _get_repo(request)
     rule_rows = await repo.list_rules(tenant_id)
 
-    # Build routing rules with conditions (batch fetch to avoid N+1)
+    # Build routing rules with conditions (batch fetch to avoid N+1).
+    # Key by str(rule_id): list_rules() may come from the JSON cache (UUID
+    # serialised to str) while list_conditions_for_tenant() always returns
+    # UUID objects from a fresh asyncpg fetch. Normalising both sides
+    # ensures the lookup hits regardless of cache state.
     all_conditions = await repo.list_conditions_for_tenant(tenant_id)
-    cond_by_rule: dict[UUID, list] = defaultdict(list)
+    cond_by_rule: dict[str, list] = defaultdict(list)
     for c in all_conditions:
-        cond_by_rule[c["rule_id"]].append(c)
+        cond_by_rule[str(c["rule_id"])].append(c)
 
     rules: list[RoutingRule] = []
     for r in rule_rows:
@@ -237,7 +241,7 @@ async def test_rules(
                 value=parse_jsonb_value(c["value"]),
                 negate=c["negate"],
             )
-            for c in cond_by_rule.get(r["id"], [])
+            for c in cond_by_rule.get(str(r["id"]), [])
         ]
         rules.append(
             RoutingRule(
