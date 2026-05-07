@@ -36,7 +36,6 @@ const navItems: readonly NavItemDef[] = [
   { path: '/models', labelKey: 'nav.models', icon: 'model_training' },
   { path: '/test', labelKey: 'nav.routingTest', icon: 'route' },
   { path: '/usage', labelKey: 'nav.usage', icon: 'bar_chart' },
-  { path: '/api-keys', labelKey: 'nav.apiKeys', icon: 'vpn_key' },
   { path: '/audit', labelKey: 'nav.audit', icon: 'receipt_long' },
 ];
 

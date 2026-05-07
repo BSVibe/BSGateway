@@ -204,7 +204,7 @@
  * BSGateway already has a md:translate-x-0 / -translate-x-full sidebar
  * pattern + md:hidden hamburger. This block adds:
  *   - 44px tap targets (Material 3 / iOS HIG) on hamburger and aside nav
- *   - DataTables (rules / api keys / models) wrap in `overflow-x-auto`
+ *   - DataTables (rules / models / audit) wrap in `overflow-x-auto`
  *     so horizontal scroll on narrow viewports already works structurally
  *   - Preserves output: 'export' + FastAPI mount path (unchanged)
  * ---------------------------------------------------------------------- */

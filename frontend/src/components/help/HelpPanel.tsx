@@ -27,10 +27,6 @@ const HELP_CONTENT: Record<string, HelpPageEntry> = {
     i18nKey: 'usage',
     docLink: '/bsgateway/features/usage',
   },
-  '/api-keys': {
-    i18nKey: 'apiKeys',
-    docLink: '/bsgateway/features/api-keys',
-  },
   '/audit': {
     i18nKey: 'audit',
   },

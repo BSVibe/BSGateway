@@ -5,7 +5,6 @@
     "models": "Models",
     "routingTest": "Routing Test",
     "usage": "Analytics",
-    "apiKeys": "API Keys",
     "audit": "Audit Log",
     "intents": "Intents",
     "settings": "Settings",
@@ -253,42 +252,6 @@
       "createFirst": "Create First Rule"
     }
   },
-  "apiKeys": {
-    "title": "API Keys",
-    "subtitle": "Manage access keys for your applications.",
-    "generate": "Generate New Key",
-    "stats": {
-      "active": "Active Keys",
-      "total": "Total Keys",
-      "revoked": "Revoked"
-    },
-    "form": {
-      "keyName": "Key Name",
-      "keyNamePlaceholder": "e.g. production, staging, ci-pipeline",
-      "keyNameHint": "A label to identify this key",
-      "create": "Create Key",
-      "validation": "Name is required"
-    },
-    "newKey": {
-      "banner": "API Key created. Copy it now -- it won't be shown again.",
-      "usage": "Usage:"
-    },
-    "table": {
-      "name": "Name",
-      "key": "Key",
-      "created": "Created",
-      "lastUsed": "Last Used",
-      "status": "Status",
-      "actions": "Actions",
-      "never": "Never",
-      "revoked": "Revoked",
-      "expired": "Expired",
-      "active": "Active"
-    },
-    "empty": {
-      "noKeys": "No API keys created"
-    }
-  },
   "audit": {
     "title": "Audit Log",
     "subtitle": "All admin operations and changes",
@@ -437,10 +400,6 @@
       "usage": {
         "title": "Usage",
         "description": "Check usage and costs"
-      },
-      "apiKeys": {
-        "title": "API Keys",
-        "description": "Generate and manage API keys"
       },
       "audit": {
         "title": "Audit Log",

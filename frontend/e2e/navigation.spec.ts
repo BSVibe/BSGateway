@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { injectAuth, mockTenantInfo, mockGet, MOCK_RULES, MOCK_MODELS, MOCK_USAGE, MOCK_API_KEYS } from './helpers';
+import { injectAuth, mockTenantInfo, mockGet, MOCK_RULES, MOCK_MODELS, MOCK_USAGE } from './helpers';
 
 test.describe('Sidebar Navigation', () => {
   test.beforeEach(async ({ page }) => {
@@ -9,7 +9,6 @@ test.describe('Sidebar Navigation', () => {
     // Mock all API endpoints needed by different pages
     await mockGet(page, '/rules', MOCK_RULES);
     await mockGet(page, '/models', MOCK_MODELS);
-    await mockGet(page, '/api-keys', MOCK_API_KEYS);
     await page.route('**/api/v1/tenants/test-tenant-id/usage*', (route) => {
       if (route.request().method() === 'GET') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_USAGE) });
@@ -55,7 +54,6 @@ test.describe('Sidebar Navigation', () => {
     await expect(nav.locator('a', { hasText: 'Models' })).toBeVisible();
     await expect(nav.locator('a', { hasText: 'Routing Test' })).toBeVisible();
     await expect(nav.locator('a', { hasText: 'Analytics' })).toBeVisible();
-    await expect(nav.locator('a', { hasText: 'API Keys' })).toBeVisible();
     await expect(nav.locator('a', { hasText: 'Audit Log' })).toBeVisible();
   });
 
@@ -91,13 +89,6 @@ test.describe('Sidebar Navigation', () => {
     await expect(page.getByRole('heading', { name: /analytics dashboard/i })).toBeVisible();
   });
 
-  test('navigating to API Keys loads the page', async ({ page }) => {
-    await page.goto('/');
-    await page.locator('aside').getByText('API Keys').click();
-    await expect(page).toHaveURL(/\/api-keys/);
-    await expect(page.getByRole('heading', { name: /api keys/i })).toBeVisible();
-  });
-
   test('navigating to Audit Log loads the page', async ({ page }) => {
     await page.goto('/');
     await page.locator('aside').getByText('Audit Log').click();
@@ -118,7 +109,7 @@ test.describe('Sidebar Navigation', () => {
     const sidebar = page.locator('aside');
     // Check that material-symbols-outlined spans exist
     const icons = sidebar.locator('.material-symbols-outlined');
-    // At least 7 nav items + logo + logout = 9+
-    expect(await icons.count()).toBeGreaterThanOrEqual(8);
+    // At least 6 nav items + logo + logout = 8+
+    expect(await icons.count()).toBeGreaterThanOrEqual(7);
   });
 });
