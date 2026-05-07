@@ -398,18 +398,6 @@ async def _auth_via_jwt(request: Request, token: str) -> GatewayAuthContext:
     )
 
 
-def require_admin(
-    auth: GatewayAuthContext = Depends(get_auth_context),
-) -> GatewayAuthContext:
-    """Dependency that requires admin role."""
-    if not auth.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin role required",
-        )
-    return auth
-
-
 def require_tenant_access(
     tenant_id: UUID,
     auth: GatewayAuthContext = Depends(get_auth_context),
