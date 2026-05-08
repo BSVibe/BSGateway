@@ -14,10 +14,12 @@ shared ``Annotated[list[str], NoDecode]`` shape inherited from
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import structlog
 from bsvibe_fastapi import FastApiSettings
+from pydantic import model_validator
 from pydantic_settings import SettingsConfigDict
 
 _config_logger = structlog.get_logger(__name__)
@@ -48,6 +50,22 @@ class Settings(FastApiSettings):
     # ----------------------------------------------------------------------
     bsvibe_client_id: str = ""
     bsvibe_client_secret: str = ""
+
+    # ----------------------------------------------------------------------
+    # Phase 1 token-cutover — bsvibe-authz 3-way dispatch.
+    # `bootstrap_token` is the raw `bsv_admin_*` value; on read of
+    # `bootstrap_token_hash` (the canonical input the dispatcher sees),
+    # the SHA-256 digest is derived in-memory. Production may set
+    # `BOOTSTRAP_TOKEN_HASH` directly to keep the raw value out of
+    # process memory; that pre-hashed value wins. The introspection
+    # fields mirror :class:`bsvibe_authz.Settings` so a single ``.env``
+    # configures both classes.
+    # ----------------------------------------------------------------------
+    bootstrap_token: str = ""
+    bootstrap_token_hash: str = ""
+    introspection_url: str = ""
+    introspection_client_id: str = ""
+    introspection_client_secret: str = ""
 
     # ----------------------------------------------------------------------
     # Phase 0 P0.7 — BSupervisor preflight integration.
@@ -86,6 +104,12 @@ class Settings(FastApiSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _derive_bootstrap_hash(self) -> Settings:
+        if not self.bootstrap_token_hash and self.bootstrap_token:
+            self.bootstrap_token_hash = hashlib.sha256(self.bootstrap_token.encode()).hexdigest()
+        return self
 
     @property
     def encryption_key_bytes(self) -> bytes:

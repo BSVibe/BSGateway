@@ -31,7 +31,6 @@ from uuid import uuid4
 
 import pytest
 
-from bsgateway.apikey.service import ApiKeyService
 from bsgateway.chat.ratelimit import RateLimiter
 from bsgateway.core.cache import CacheManager
 from bsgateway.core.security import decrypt_value, encrypt_value
@@ -92,40 +91,10 @@ class TestEncryptionKeyRotationFailure:
 
 
 # ---------------------------------------------------------------------------
-# 2. Sprint 1 (H3): legacy SHA-256 hashes MUST never authenticate
+# 2. (Phase 1 token cutover): legacy ApiKeyService.verify_key tests removed.
+#    The self-hosted apikey module has been deleted — bsvibe-authz
+#    introspection + bootstrap tokens now own that surface.
 # ---------------------------------------------------------------------------
-
-
-class TestLegacyApiKeyHashRejected:
-    """Sprint 1 / H3 cumulative regression.
-
-    A pre-PBKDF2 row in the DB stored a 64-char hex SHA-256 digest of
-    the API key. Even if such a row survives a botched migration its
-    presence MUST NOT authenticate any request - otherwise the salt-less
-    hash table lookup vulnerability returns silently.
-    """
-
-    def test_unsalted_sha256_digest_rejected(self) -> None:
-        # Plain unsalted SHA-256 digest of the raw key.
-        import hashlib
-
-        raw_key = "bsg_live_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        legacy_digest = hashlib.sha256(raw_key.encode()).hexdigest()
-        # 64-char hex, no $ separators - the new verifier rejects it.
-        assert ApiKeyService.verify_key(raw_key, legacy_digest) is False
-
-    def test_pbkdf2_with_zero_iterations_rejected(self) -> None:
-        # Hand-craft a malicious "low-cost" pbkdf2 entry.
-        bogus = "pbkdf2_sha256$0$YWFhYQ$YmJiYg"
-        assert ApiKeyService.verify_key("anything", bogus) is False
-
-    def test_unknown_algo_prefix_rejected(self) -> None:
-        bogus = "md5$1$YWFh$YmJi"
-        assert ApiKeyService.verify_key("anything", bogus) is False
-
-    def test_garbled_hash_does_not_crash_verifier(self) -> None:
-        for bad in ["", "abc", "$$$$", "pbkdf2_sha256$abc$def", "pbkdf2_sha256$1$@@$@@"]:
-            assert ApiKeyService.verify_key("any", bad) is False
 
 
 # ---------------------------------------------------------------------------

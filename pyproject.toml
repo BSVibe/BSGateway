@@ -23,7 +23,7 @@ dependencies = [
     "bsvibe-core @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-core",
     "bsvibe-fastapi @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-fastapi",
     "bsvibe-sqlalchemy @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-sqlalchemy",
-    "bsvibe-authz @ git+https://github.com/BSVibe/bsvibe-python.git@84c393f6#subdirectory=packages/bsvibe-authz",
+    "bsvibe-authz @ git+https://github.com/BSVibe/bsvibe-python.git@67da60e#subdirectory=packages/bsvibe-authz",
     # Phase Audit Batch 2 — outbox-pattern audit emission for `gateway.*`
     # domain events. Lives only on ``integration/phase-audit-batch-2``
     # (the merge of ``feat/bsvibe-audit-impl`` + ``feat/bsvibe-llm-impl``

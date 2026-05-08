@@ -16,7 +16,7 @@ from bsgateway.demo.seed import seed_demo
 
 class TestSeedDemo:
     @pytest.mark.asyncio
-    async def test_seeds_api_keys_routing_logs_rules_for_tenant(self) -> None:
+    async def test_seeds_routing_logs_rules_for_tenant(self) -> None:
         conn = AsyncMock()
         tenant_id = uuid4()
 
@@ -26,7 +26,6 @@ class TestSeedDemo:
         executed_sql = " ".join(str(call.args[0]) for call in conn.execute.await_args_list)
 
         # Demo seed must populate at least these surfaces
-        assert "INSERT INTO api_keys" in executed_sql
         assert "INSERT INTO routing_rules" in executed_sql
         assert "INSERT INTO routing_logs" in executed_sql
 
@@ -56,16 +55,3 @@ class TestSeedDemo:
         await seed_demo(tenant_id=tenant_id, conn=conn)
         await seed_demo(tenant_id=tenant_id, conn=conn)
         # No exception → ok
-
-    @pytest.mark.asyncio
-    async def test_seed_does_not_log_secrets(self) -> None:
-        # Seed inserts api_keys but plaintext keys are NOT preserved —
-        # only key_hash + key_prefix go into the table.
-        conn = AsyncMock()
-        tenant_id = uuid4()
-
-        await seed_demo(tenant_id=tenant_id, conn=conn)
-
-        executed_sql = " ".join(str(call.args[0]) for call in conn.execute.await_args_list)
-        # Should reference key_hash, not raw key
-        assert "key_hash" in executed_sql

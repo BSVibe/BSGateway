@@ -5,7 +5,6 @@ is inserted. Populates realistic demo content so the visitor's dashboard
 renders immediately:
 
 - 4 tenant_models (gpt-4o-mini, claude-haiku, claude-sonnet, local-llama)
-- 3 API keys (2 active, 1 revoked)
 - 5 routing rules with proper conditions + 1 default fallback
 - 30 routing log entries spanning the past 7 days (multiple models)
 - 3 tenant intents with example utterances
@@ -17,7 +16,6 @@ existing FK ``ON DELETE CASCADE`` chain when the GC reaps the tenant.
 from __future__ import annotations
 
 import json
-import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -110,30 +108,6 @@ async def seed_demo(*, tenant_id: UUID, conn: asyncpg.Connection) -> None:
             litellm_model,
         )
 
-    # ─── API keys ──────────────────────────────────────────────────────────
-    # Three keys: two active (one prod-like, one dev-like), one revoked.
-    api_keys = [
-        ("Production", True, "demo_prod_"),
-        ("Development", True, "demo_dev_"),
-        ("Legacy (revoked)", False, "demo_old_"),
-    ]
-    for name, is_active, prefix in api_keys:
-        # key_hash is a random opaque value (visitor never sees the plaintext;
-        # they're shown the masked dashboard view)
-        await conn.execute(
-            """
-            INSERT INTO api_keys (id, tenant_id, name, key_hash, key_prefix,
-                                  scopes, is_active)
-            VALUES ($1, $2, $3, $4, $5, '["chat"]'::jsonb, $6)
-            """,
-            uuid4(),
-            tenant_id,
-            name,
-            secrets.token_hex(32),
-            prefix + secrets.token_hex(4),
-            is_active,
-        )
-
     # ─── Routing rules + their conditions ─────────────────────────────────
     # Without conditions, _match_rule returns True (empty AND-loop) for
     # every rule, so the lowest-priority rule wins unconditionally — that
@@ -215,7 +189,6 @@ async def seed_demo(*, tenant_id: UUID, conn: asyncpg.Connection) -> None:
         "demo_seed_complete",
         tenant_id=str(tenant_id),
         models=len(DEMO_MODELS),
-        api_keys=len(api_keys),
         rules=len(DEMO_RULES),
         routing_logs=30,
         intents=len(DEMO_INTENTS),

@@ -18,8 +18,9 @@ The BSGateway Dashboard is a multi-tenant LLM routing control panel built with R
 - **Location**: Fixed left column, 224px (w-56)
 - **Background**: Dark gray (bg-gray-900)
 - **Header**: Shows tenant name (or "LLM Routing Dashboard" if not logged in)
-- **Nav Items**: 7 main sections (Dashboard, Routing, Models, Routing Test, Analytics, API Keys, Audit Log).
+- **Nav Items**: 6 main sections (Dashboard, Routing, Models, Routing Test, Analytics, Audit Log).
   Intents are no longer a top-level page — they are managed inline as part of each routing rule.
+  Self-hosted API keys were retired in favor of central BSVibe-Auth tokens (Phase 1 token cutover).
 - **Active State**: Highlighted with bg-gray-800 + blue right border (border-r-2 border-blue-500)
 - **Footer**: Logout button
 

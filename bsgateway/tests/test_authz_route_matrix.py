@@ -114,14 +114,9 @@ class TestRouteMatrix:
     """
 
     MATRIX: ClassVar[list[tuple[str, str, str]]] = [
-        # API keys
-        ("/api/v1/tenants/{tenant_id}/api-keys", "POST", "bsgateway.api-keys.create"),
-        ("/api/v1/tenants/{tenant_id}/api-keys", "GET", "bsgateway.api-keys.read"),
-        (
-            "/api/v1/tenants/{tenant_id}/api-keys/{key_id}",
-            "DELETE",
-            "bsgateway.api-keys.delete",
-        ),
+        # API keys routes were removed in the Phase 1 token cutover —
+        # bsvibe-authz introspection + bootstrap tokens replace the
+        # self-hosted ``api_keys`` table and its CRUD router.
         # Routing rules
         ("/api/v1/tenants/{tenant_id}/rules", "GET", "bsgateway.routes.read"),
         ("/api/v1/tenants/{tenant_id}/rules", "POST", "bsgateway.routes.create"),

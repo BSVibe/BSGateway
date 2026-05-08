@@ -5,7 +5,13 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from bsgateway.api.deps import GatewayAuthContext, get_cache, get_pool, require_tenant_access
+from bsgateway.api.deps import (
+    GatewayAuthContext,
+    get_cache,
+    get_pool,
+    require_scope,
+    require_tenant_access,
+)
 from bsgateway.embedding.factory import build_service_for_tenant
 from bsgateway.embedding.service import EmbeddingService
 from bsgateway.rules.repository import RulesRepository
@@ -58,6 +64,7 @@ async def create_intent(
     body: IntentCreate,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:write")),
 ) -> IntentResponse:
     repo = _get_repo(request)
     row = await repo.create_intent(
@@ -93,6 +100,7 @@ async def list_intents(
     tenant_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:read")),
 ) -> list[IntentResponse]:
     repo = _get_repo(request)
     rows = await repo.list_intents(tenant_id)
@@ -105,6 +113,7 @@ async def get_intent(
     intent_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:read")),
 ) -> IntentResponse:
     repo = _get_repo(request)
     row = await repo.get_intent(intent_id, tenant_id)
@@ -120,6 +129,7 @@ async def update_intent(
     body: IntentUpdate,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:write")),
 ) -> IntentResponse:
     repo = _get_repo(request)
     existing = await repo.get_intent(intent_id, tenant_id)
@@ -144,6 +154,7 @@ async def delete_intent(
     intent_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:write")),
 ) -> None:
     repo = _get_repo(request)
     await repo.delete_intent(intent_id, tenant_id)
@@ -166,6 +177,7 @@ async def add_example(
     body: ExampleCreate,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:write")),
 ) -> ExampleResponse:
     repo = _get_repo(request)
     # Verify intent belongs to tenant
@@ -204,6 +216,7 @@ async def delete_example(
     example_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:write")),
 ) -> None:
     repo = _get_repo(request)
     intent = await repo.get_intent(intent_id, tenant_id)
@@ -218,6 +231,7 @@ async def list_examples(
     intent_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:read")),
 ) -> list[ExampleResponse]:
     repo = _get_repo(request)
     # Verify intent belongs to tenant
@@ -245,6 +259,7 @@ async def reembed(
     tenant_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    _scope: None = Depends(require_scope("gateway:routing:write")),
 ) -> ReembedResponse:
     """Backfill embeddings for examples that are missing one or were generated
     by a different model than the tenant's currently configured embedding model.

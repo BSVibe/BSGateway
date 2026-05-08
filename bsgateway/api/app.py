@@ -191,11 +191,6 @@ async def lifespan(app: FastAPI):
     audit_repo = AuditRepository(pool)
     await audit_repo.init_schema()
 
-    from bsgateway.apikey.repository import ApiKeyRepository
-
-    apikey_repo = ApiKeyRepository(pool)
-    await apikey_repo.init_schema()
-
     # Executor schema (workers + executor_tasks)
     from bsgateway.executor.sql_loader import ExecutorSqlLoader
 
@@ -289,7 +284,6 @@ def create_app() -> FastAPI:
     else:
         add_cors_middleware(app, settings)
 
-    from bsgateway.api.routers.apikeys import router as apikeys_router
     from bsgateway.api.routers.audit import router as audit_router
     from bsgateway.api.routers.chat import router as chat_router
     from bsgateway.api.routers.execute import router as execute_router
@@ -310,7 +304,6 @@ def create_app() -> FastAPI:
     app.include_router(feedback_router, prefix="/api/v1")
     app.include_router(usage_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")
-    app.include_router(apikeys_router, prefix="/api/v1")
     app.include_router(mcp_router, prefix="/api/v1")
     app.include_router(execute_router, prefix="/api/v1")
     app.include_router(workers_router, prefix="/api/v1")

@@ -11,11 +11,32 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from bsvibe_authz import User as AuthzUser
+from bsvibe_authz.deps import get_current_user as authz_get_current_user
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
 from bsgateway.api.deps import get_auth_context
 from bsgateway.tests.conftest import make_gateway_auth_context, make_mock_pool
+
+
+def _scopeless_authz_user() -> AuthzUser:
+    """Authz user without admin scopes — used to assert ``require_scope`` 403s.
+
+    The conftest auto-installs an ``authz_get_current_user`` override with
+    ``scope=["*"]`` so that scope-less tests stay green. Tests that
+    specifically exercise the scope gate clear that override and supply
+    this scope-empty principal instead.
+    """
+    return AuthzUser(
+        id="00000000-0000-0000-0000-000000000002",
+        email="member@test.com",
+        active_tenant_id="00000000-0000-0000-0000-0000000000aa",
+        tenants=[],
+        is_service=False,
+        scope=[],
+    )
+
 
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 ADMIN_TENANT_ID = uuid4()
@@ -76,17 +97,24 @@ class TestTenantAuth:
         assert resp.status_code == 401
 
     def test_non_admin_returns_403(self, mock_pool):
-        """Member role without admin → 403 on admin-only endpoints."""
+        """Token without ``gateway:tenants:read`` → 403 on admin-only endpoints.
+
+        Phase 1 token cutover replaced role-based gating (``require_admin``)
+        with scope-based gating (``require_scope("gateway:tenants:read")``).
+        A scopeless principal must hit 403 with the ``missing required scope``
+        detail from ``bsvibe_authz.require_scope``.
+        """
         app = create_app()
         app.state.db_pool = mock_pool
         app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
         app.state.redis = None
         member_ctx = make_gateway_auth_context(is_admin=False)
         app.dependency_overrides[get_auth_context] = lambda: member_ctx
+        app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.get("/api/v1/tenants")
         assert resp.status_code == 403
-        assert "Admin role required" in resp.json()["detail"]
+        assert "gateway:tenants:read" in resp.json()["detail"]
 
 
 class TestTenantCRUD:
@@ -194,7 +222,13 @@ class TestCrossTenantAccess:
         assert resp.status_code == 403
 
     def test_tenant_cannot_update_other_tenant(self, mock_pool):
-        """A non-admin tenant cannot PATCH another tenant (require_admin blocks)."""
+        """A scopeless principal cannot PATCH any tenant — ``require_scope`` blocks.
+
+        Post-cutover, cross-tenant write isolation is enforced by
+        ``require_scope("gateway:tenants:write")`` (only bootstrap or
+        explicitly-scoped service keys carry it). The legacy
+        ``require_admin`` gate is gone.
+        """
         own_tid = uuid4()
         other_tid = uuid4()
         app = create_app()
@@ -203,6 +237,7 @@ class TestCrossTenantAccess:
         app.state.redis = None
         member_ctx = make_gateway_auth_context(tenant_id=own_tid, is_admin=False)
         app.dependency_overrides[get_auth_context] = lambda: member_ctx
+        app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.patch(
             f"/api/v1/tenants/{other_tid}",

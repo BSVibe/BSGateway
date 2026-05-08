@@ -302,22 +302,10 @@ class TestRoutingLogsCompositeIndex:
             "every hot query filters by both"
         )
 
-    def test_api_keys_has_tenant_created_composite_index(self) -> None:
-        """list_api_keys_by_tenant filters tenant_id ORDER BY created_at DESC.
-
-        A composite (tenant_id, created_at DESC) lets PG read the index
-        in order without a separate sort.
-        """
-        apikey_schema = self._load("apikey_schema.sql")
-        assert "(tenant_id, created_at" in apikey_schema, (
-            "api_keys must have a composite index on (tenant_id, created_at); "
-            "list_api_keys_by_tenant filters by tenant_id and orders by created_at"
-        )
-
     def test_indexes_are_idempotent(self) -> None:
         """Schema files are re-executed on each collector startup — every
         CREATE INDEX must be IF NOT EXISTS to survive repeat runs."""
-        for name in ("schema.sql", "tenant_schema.sql", "apikey_schema.sql"):
+        for name in ("schema.sql", "tenant_schema.sql"):
             content = self._load(name)
             for line in content.splitlines():
                 line = line.strip()

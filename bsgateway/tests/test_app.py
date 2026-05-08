@@ -117,7 +117,6 @@ class TestLifespan:
             patch("bsgateway.api.app.RulesRepository") as mock_rules_repo_cls,
             patch("bsgateway.api.app.FeedbackRepository") as mock_feedback_repo_cls,
             patch("bsgateway.api.app.AuditRepository") as mock_audit_repo_cls,
-            patch("bsgateway.apikey.repository.ApiKeyRepository") as mock_apikey_repo_cls,
             patch("bsgateway.api.app.CacheManager"),
             patch("bsvibe_auth.BsvibeAuthProvider") as mock_auth_provider_cls,
         ):
@@ -132,7 +131,6 @@ class TestLifespan:
                 mock_rules_repo_cls,
                 mock_feedback_repo_cls,
                 mock_audit_repo_cls,
-                mock_apikey_repo_cls,
             ]
             for cls in repo_classes:
                 cls.return_value.init_schema = AsyncMock()
@@ -162,7 +160,6 @@ class TestLifespan:
             patch("bsgateway.api.app.RulesRepository") as mock_rules_repo_cls,
             patch("bsgateway.api.app.FeedbackRepository") as mock_feedback_repo_cls,
             patch("bsgateway.api.app.AuditRepository") as mock_audit_repo_cls,
-            patch("bsgateway.apikey.repository.ApiKeyRepository") as mock_apikey_repo_cls,
             patch("bsvibe_auth.BsvibeAuthProvider"),
         ):
             mock_settings.collector_database_url = "postgresql://test"
@@ -175,7 +172,6 @@ class TestLifespan:
                 mock_rules_repo_cls,
                 mock_feedback_repo_cls,
                 mock_audit_repo_cls,
-                mock_apikey_repo_cls,
             ]
             for cls in repo_classes:
                 cls.return_value.init_schema = AsyncMock()

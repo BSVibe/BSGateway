@@ -7,12 +7,16 @@ Covers the Phase Audit Batch 2 wiring:
 * Alembic ``0002_audit_outbox`` revision creating the ``audit_outbox`` table
   via ``register_audit_outbox_with`` (no autogenerate, raw DDL parity with
   ``AuditOutboxRecord.__table__`` per Audit Design §3.1).
-* Five emit sites:
+* Three live emit sites (post Phase 1 token cutover):
     - ``gateway.route.config_changed`` — POST/PATCH /tenants/{id}/rules
-    - ``gateway.api_key.issued`` — POST /tenants/{id}/api-keys
-    - ``gateway.api_key.revoked`` — DELETE /tenants/{id}/api-keys/{key_id}
     - ``gateway.classifier.cache_hit`` — sampled (1%) on hit
     - ``gateway.rate_limit.violated`` — only when fail-closed (Sprint 1 H1)
+
+  ``ApiKeyIssued`` / ``ApiKeyRevoked`` remain valid event types in
+  ``bsvibe_audit.events.gateway`` — they still serve as fixtures here for
+  exercising the outbox plumbing — but the BSGateway-side emit sites
+  were removed when the self-hosted ``api_keys`` router/table was
+  retired in favour of bsvibe-authz introspection.
 
 These tests use SQLite in-memory + the ``bsvibe-audit`` package's outbox
 schema directly (mirrors the conftest pattern in bsvibe-audit's own test
@@ -383,16 +387,6 @@ class TestRouteConfigChangedEmission:
                 "rules router must import emit_event from audit_publisher so "
                 "POST/PATCH /rules can fire RouteConfigChanged"
             )
-
-
-class TestApiKeyEmission:
-    async def test_apikeys_router_imports_emit_event(self) -> None:
-        from bsgateway.api.routers import apikeys as apikeys_router
-
-        assert hasattr(apikeys_router, "emit_event"), (
-            "apikeys router must import emit_event from audit_publisher so "
-            "POST/DELETE /api-keys can fire ApiKeyIssued/ApiKeyRevoked"
-        )
 
 
 class TestClassifierCacheHitEmission:

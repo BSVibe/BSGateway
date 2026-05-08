@@ -5,7 +5,6 @@
     "models": "모델",
     "routingTest": "라우팅 테스트",
     "usage": "사용량",
-    "apiKeys": "API 키",
     "audit": "감사 로그",
     "intents": "인텐트",
     "settings": "설정",
@@ -253,42 +252,6 @@
       "createFirst": "첫 규칙 만들기"
     }
   },
-  "apiKeys": {
-    "title": "API 키",
-    "subtitle": "애플리케이션의 액세스 키를 관리하세요.",
-    "generate": "새 키 생성",
-    "stats": {
-      "active": "활성 키",
-      "total": "전체 키",
-      "revoked": "폐기됨"
-    },
-    "form": {
-      "keyName": "키 이름",
-      "keyNamePlaceholder": "예: production, staging, ci-pipeline",
-      "keyNameHint": "이 키를 식별할 라벨",
-      "create": "키 생성",
-      "validation": "이름이 필요합니다"
-    },
-    "newKey": {
-      "banner": "API 키가 생성되었습니다. 지금 복사하세요 -- 다시 표시되지 않습니다.",
-      "usage": "사용:"
-    },
-    "table": {
-      "name": "이름",
-      "key": "키",
-      "created": "생성일",
-      "lastUsed": "마지막 사용",
-      "status": "상태",
-      "actions": "작업",
-      "never": "사용 안 함",
-      "revoked": "폐기됨",
-      "expired": "만료됨",
-      "active": "활성"
-    },
-    "empty": {
-      "noKeys": "생성된 API 키가 없습니다"
-    }
-  },
   "audit": {
     "title": "감사 로그",
     "subtitle": "모든 관리 작업과 변경 사항",
@@ -437,10 +400,6 @@
       "usage": {
         "title": "사용량",
         "description": "사용량과 비용을 확인합니다"
-      },
-      "apiKeys": {
-        "title": "API 키",
-        "description": "API 키를 생성/관리합니다"
       },
       "audit": {
         "title": "감사 로그",

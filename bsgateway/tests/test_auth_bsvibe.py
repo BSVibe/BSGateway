@@ -7,11 +7,25 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from bsvibe_authz import User as AuthzUser
+from bsvibe_authz.deps import get_current_user as authz_get_current_user
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
 from bsgateway.api.deps import get_auth_context
 from bsgateway.tests.conftest import make_bsvibe_user, make_gateway_auth_context, make_mock_pool
+
+
+def _scopeless_authz_user() -> AuthzUser:
+    return AuthzUser(
+        id="00000000-0000-0000-0000-000000000003",
+        email="member@test.com",
+        active_tenant_id=str(TENANT_ID),
+        tenants=[],
+        is_service=False,
+        scope=[],
+    )
+
 
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 TENANT_ID = uuid4()
@@ -158,9 +172,17 @@ class TestBSVibeAuth:
         assert resp.status_code == 200
 
     def test_non_admin_cannot_list_tenants(self):
+        """Phase 1 cutover: scopeless principal → 403 from ``require_scope``.
+
+        The legacy "member-role JWT can't list tenants" gate was role-based
+        (``require_admin``). Post-cutover the gate is scope-based; the
+        member's JWT carries no ``gateway:tenants:read`` so the
+        ``bsvibe_authz.require_scope`` chain rejects.
+        """
         app = _make_app()
         user = make_bsvibe_user(tenant_id=TENANT_ID, role="member")
         app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+        app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
 
         with patch(
             "bsgateway.tenant.repository.TenantRepository.get_tenant",
@@ -173,6 +195,7 @@ class TestBSVibeAuth:
                 headers={"Authorization": "Bearer valid-token"},
             )
         assert resp.status_code == 403
+        assert "gateway:tenants:read" in resp.json()["detail"]
 
     def test_tenant_access_own_data(self):
         app = _make_app()

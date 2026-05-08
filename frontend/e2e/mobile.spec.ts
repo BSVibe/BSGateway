@@ -8,7 +8,6 @@ import {
   MOCK_EXAMPLES,
   MOCK_MODELS,
   MOCK_USAGE,
-  MOCK_API_KEYS,
   MOCK_AUDIT_LOGS,
 } from './helpers';
 
@@ -36,7 +35,6 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
     await mockGet(page, '/intents/intent-1/examples', MOCK_EXAMPLES);
     await mockGet(page, '/models', MOCK_MODELS);
     await mockGet(page, '/embedding-settings', null);
-    await mockGet(page, '/api-keys', MOCK_API_KEYS);
     await page.route('**/api/v1/tenants/test-tenant-id/usage*', (route) => {
       if (route.request().method() === 'GET') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_USAGE) });
@@ -85,9 +83,9 @@ test.describe('Mobile viewport: BSGateway core flow', () => {
     await page.goto('/');
     await page.getByRole('button', { name: /open navigation/i }).click();
     await expect(page.getByTestId('bsvibe-sidebar-backdrop')).toBeVisible();
-    await page.locator('aside').getByRole('link', { name: /API Keys$/ }).click();
+    await page.locator('aside').getByRole('link', { name: /Audit Log$/ }).click();
     await expect(page.getByTestId('bsvibe-sidebar-backdrop')).toHaveCount(0);
-    await expect(page).toHaveURL(/\/api-keys/);
+    await expect(page).toHaveURL(/\/audit/);
   });
 
   test('backdrop click closes the drawer', async ({ page }) => {

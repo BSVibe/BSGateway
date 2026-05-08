@@ -140,24 +140,3 @@ class TestAutoProvision:
 
         assert resp.status_code == 200
         mock_create.assert_not_called()
-
-    def test_apikey_auth_does_not_auto_provision(self, mock_pool):
-        """API key auth for non-existent tenant returns 401 (no auto-create)."""
-        app = create_app()
-        app.state.db_pool = mock_pool
-        app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
-        app.state.redis = None
-        app.state.auth_provider = AsyncMock()
-        client = TestClient(app, raise_server_exceptions=False)
-
-        with patch(
-            "bsgateway.apikey.service.ApiKeyService.validate_key",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            resp = client.get(
-                f"/api/v1/tenants/{uuid4()}/api-keys",
-                headers={"Authorization": "Bearer bsg_live_" + "a" * 64},
-            )
-
-        assert resp.status_code == 401

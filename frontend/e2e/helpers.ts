@@ -278,42 +278,6 @@ export const MOCK_AUDIT_LOGS = [
   },
 ];
 
-export const MOCK_API_KEYS = [
-  {
-    id: 'key-1',
-    tenant_id: TENANT_ID,
-    name: 'production',
-    key_prefix: 'bsg_prod_abc',
-    scopes: ['*'],
-    is_active: true,
-    expires_at: null,
-    last_used_at: '2026-03-29T08:00:00Z',
-    created_at: '2026-03-01T00:00:00Z',
-  },
-  {
-    id: 'key-2',
-    tenant_id: TENANT_ID,
-    name: 'staging',
-    key_prefix: 'bsg_stag_xyz',
-    scopes: ['*'],
-    is_active: true,
-    expires_at: null,
-    last_used_at: null,
-    created_at: '2026-03-15T00:00:00Z',
-  },
-  {
-    id: 'key-3',
-    tenant_id: TENANT_ID,
-    name: 'revoked-key',
-    key_prefix: 'bsg_old_def',
-    scopes: ['*'],
-    is_active: false,
-    expires_at: null,
-    last_used_at: '2026-02-01T00:00:00Z',
-    created_at: '2026-01-01T00:00:00Z',
-  },
-];
-
 export const MOCK_TEST_RESULT = {
   matched_rule: { id: 'rule-1', name: 'High Priority Router', priority: 1 },
   target_model: 'openai/gpt-4o',
