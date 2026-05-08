@@ -72,9 +72,46 @@ def test_build_client_returns_configured_cli_http_client(tmp_path: Path) -> None
     client = build_client(ctx)
     assert isinstance(client, CliHttpClient)
     # CliHttpClient stores base_url + token internally; verify via the
-    # public httpx attribute it exposes.
-    assert client._base_url == "https://gateway.example.test"
+    # public httpx attribute it exposes. Routers are mounted under
+    # /api/v1 in app.py — the CLI commands call paths without the
+    # version prefix, so build_client appends it to base_url.
+    assert client._base_url == "https://gateway.example.test/api/v1"
     assert client._token == "bearer-abc"
+
+
+def test_build_client_does_not_double_append_api_v1(tmp_path: Path) -> None:
+    """If the operator already passed --url with /api/v1, leave it."""
+    from bsgateway.cli._client import build_client
+
+    formatter = OutputFormatter(format="json")
+    ctx = CliContext(
+        profile=None,
+        url="https://gateway.example.test/api/v1",
+        tenant_id=None,
+        token=None,
+        dry_run=False,
+        formatter=formatter,
+        profile_store=ProfileStore(path=tmp_path / "profiles.toml"),
+    )
+    client = build_client(ctx)
+    assert client._base_url == "https://gateway.example.test/api/v1"
+
+
+def test_build_client_handles_trailing_slash(tmp_path: Path) -> None:
+    from bsgateway.cli._client import build_client
+
+    formatter = OutputFormatter(format="json")
+    ctx = CliContext(
+        profile=None,
+        url="https://gateway.example.test/",
+        tenant_id=None,
+        token=None,
+        dry_run=False,
+        formatter=formatter,
+        profile_store=ProfileStore(path=tmp_path / "profiles.toml"),
+    )
+    client = build_client(ctx)
+    assert client._base_url == "https://gateway.example.test/api/v1"
 
 
 def test_build_client_rejects_empty_url(tmp_path: Path) -> None:
