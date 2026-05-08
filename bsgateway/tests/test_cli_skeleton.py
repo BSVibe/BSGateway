@@ -33,13 +33,16 @@ def test_main_app_is_typer_instance() -> None:
 
 
 def test_help_renders_with_global_flags(tmp_path: Path) -> None:
+    import re
+
     from bsgateway.cli.main import app
 
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0, result.output
-    out = result.output
-    # Sanity — top-level help must surface every global flag from cli_app.
+    # rich/Typer can split flags across ANSI color escapes, so strip them
+    # before matching to make the assertion hold in CI (non-TTY) too.
+    out = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     for flag in ("--profile", "--output", "--tenant", "--token", "--url", "--dry-run"):
         assert flag in out, f"missing global flag {flag} in --help output:\n{out}"
 

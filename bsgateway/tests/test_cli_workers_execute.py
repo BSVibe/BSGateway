@@ -254,13 +254,17 @@ def test_workers_403_friendly(runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 
 
 def test_execute_subapp_help(runner: CliRunner) -> None:
+    import re
+
     from bsgateway.cli.main import app
 
     result = runner.invoke(app, ["execute", "--help"])
     assert result.exit_code == 0, result.stderr
+    # Strip ANSI escapes so the flag match holds under both TTY and CI (non-TTY).
+    out = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
     # Single-action sub-app — Typer renders Options/Arguments not subcommands.
-    assert "--type" in result.stdout
-    assert "PROMPT" in result.stdout.upper()
+    assert "--type" in out
+    assert "PROMPT" in out.upper()
 
 
 def test_execute_no_wait(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
