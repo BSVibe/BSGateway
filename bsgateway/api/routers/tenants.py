@@ -10,6 +10,7 @@ from bsgateway.api.deps import (
     get_auth_context,
     get_cache,
     get_encryption_key,
+    get_model_registry,
     get_pool,
     require_permission,
     require_scope,
@@ -275,6 +276,7 @@ async def create_model(
     request: Request,
     _scope: None = Depends(require_scope("gateway:models:write")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    registry=Depends(get_model_registry),
 ) -> TenantModelResponse:
     svc = get_tenant_service(request)
     try:
@@ -283,6 +285,13 @@ async def create_model(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    # Phase 3 / TASK-005 — every model-mutation site invalidates the
+    # per-tenant registry cache. The registry currently reads only the
+    # new ``models`` table (yaml-union-DB merge), but we keep the
+    # invalidate here so future bridging of ``tenant_models`` → registry
+    # cannot leave stale 60s entries.
+    if registry is not None:
+        await registry.invalidate(tenant_id)
     audit = get_audit_service(request)
     provider = body.litellm_model.split("/")[0] if "/" in body.litellm_model else "unknown"
     await audit.record(
@@ -338,6 +347,7 @@ async def update_model(
     request: Request,
     _scope: None = Depends(require_scope("gateway:models:write")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    registry=Depends(get_model_registry),
 ) -> TenantModelResponse:
     svc = get_tenant_service(request)
     try:
@@ -346,6 +356,8 @@ async def update_model(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    if registry is not None:
+        await registry.invalidate(tenant_id)
     return model
 
 
@@ -360,9 +372,12 @@ async def delete_model(
     request: Request,
     _scope: None = Depends(require_scope("gateway:models:write")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    registry=Depends(get_model_registry),
 ) -> None:
     svc = get_tenant_service(request)
     await svc.delete_model(model_id, tenant_id)
+    if registry is not None:
+        await registry.invalidate(tenant_id)
     audit = get_audit_service(request)
     await audit.record(
         tenant_id,

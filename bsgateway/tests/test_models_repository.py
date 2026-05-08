@@ -146,3 +146,192 @@ async def test_list_for_tenant_invalid_jsonb_string_falls_back_to_none(
     rows = await ModelsRepository(pool).list_for_tenant(tenant)
 
     assert rows[0].litellm_params is None
+
+
+# ---------------------------------------------------------------------------
+# CRUD tests (TASK-005) — every write filters by tenant_id for isolation.
+# ---------------------------------------------------------------------------
+
+
+def _full_record(
+    *,
+    tenant: uuid4,
+    name: str = "custom/foo",
+    origin: str = "custom",
+    litellm_model: str | None = "ollama/foo",
+    litellm_params=None,
+    is_passthrough: bool = True,
+    model_id=None,
+) -> dict:
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    return {
+        "id": model_id or uuid4(),
+        "tenant_id": tenant,
+        "name": name,
+        "origin": origin,
+        "litellm_model": litellm_model,
+        "litellm_params": litellm_params,
+        "is_passthrough": is_passthrough,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_model_filters_by_tenant_id(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    tenant = uuid4()
+    model_id = uuid4()
+    conn.fetchrow = AsyncMock(return_value=_full_record(tenant=tenant, model_id=model_id))
+
+    row = await ModelsRepository(pool).get_model(model_id, tenant)
+
+    assert row is not None
+    assert row["id"] == model_id
+    sql, *args = conn.fetchrow.call_args[0]
+    assert "tenant_id = $2" in sql
+    assert args == [model_id, tenant]
+
+
+@pytest.mark.asyncio
+async def test_get_model_returns_none_when_missing(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    conn.fetchrow = AsyncMock(return_value=None)
+
+    row = await ModelsRepository(pool).get_model(uuid4(), uuid4())
+
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_create_model_serialises_params_to_json(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    tenant = uuid4()
+    expected = _full_record(tenant=tenant, litellm_params={"api_base": "http://x"})
+    conn.fetchrow = AsyncMock(return_value=expected)
+
+    row = await ModelsRepository(pool).create_model(
+        tenant_id=tenant,
+        name="custom/foo",
+        origin="custom",
+        litellm_model="ollama/foo",
+        litellm_params={"api_base": "http://x"},
+        is_passthrough=True,
+    )
+
+    assert row["name"] == "custom/foo"
+    args = conn.fetchrow.call_args[0]
+    # Args order: sql, tenant_id, name, origin, litellm_model, params_json, is_passthrough.
+    assert args[1] == tenant
+    assert args[5] == json.dumps({"api_base": "http://x"})
+
+
+@pytest.mark.asyncio
+async def test_create_model_passes_null_params_unchanged(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    tenant = uuid4()
+    conn.fetchrow = AsyncMock(
+        return_value=_full_record(
+            tenant=tenant, origin="hide_system", litellm_model=None, litellm_params=None
+        )
+    )
+
+    await ModelsRepository(pool).create_model(
+        tenant_id=tenant,
+        name="claude-haiku",
+        origin="hide_system",
+        litellm_model=None,
+        litellm_params=None,
+        is_passthrough=True,
+    )
+
+    assert conn.fetchrow.call_args[0][5] is None
+
+
+@pytest.mark.asyncio
+async def test_update_model_filters_by_tenant_and_handles_set_flags(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    tenant = uuid4()
+    model_id = uuid4()
+    conn.fetchrow = AsyncMock(
+        return_value=_full_record(tenant=tenant, model_id=model_id, litellm_model="ollama/bar")
+    )
+
+    row = await ModelsRepository(pool).update_model(
+        model_id=model_id,
+        tenant_id=tenant,
+        litellm_model="ollama/bar",
+        litellm_model_set=True,
+    )
+
+    assert row is not None
+    args = conn.fetchrow.call_args[0]
+    assert args[1] == model_id
+    assert args[2] == tenant
+    # _set flags at $7/$8 → True for litellm_model, False for litellm_params.
+    assert args[7] is True
+    assert args[8] is False
+
+
+@pytest.mark.asyncio
+async def test_update_model_returns_none_when_missing(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    conn.fetchrow = AsyncMock(return_value=None)
+
+    row = await ModelsRepository(pool).update_model(
+        model_id=uuid4(),
+        tenant_id=uuid4(),
+        name="renamed",
+    )
+
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_delete_model_returns_true_on_hit(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    conn.execute = AsyncMock(return_value="DELETE 1")
+
+    deleted = await ModelsRepository(pool).delete_model(uuid4(), uuid4())
+
+    assert deleted is True
+
+
+@pytest.mark.asyncio
+async def test_delete_model_returns_false_when_missing(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    conn.execute = AsyncMock(return_value="DELETE 0")
+
+    deleted = await ModelsRepository(pool).delete_model(uuid4(), uuid4())
+
+    assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_delete_model_falls_back_to_false_on_unexpected_status(
+    mock_pool_with_conn: tuple[MagicMock, AsyncMock],
+) -> None:
+    pool, conn = mock_pool_with_conn
+    conn.execute = AsyncMock(return_value="OOPS")
+
+    deleted = await ModelsRepository(pool).delete_model(uuid4(), uuid4())
+
+    assert deleted is False
