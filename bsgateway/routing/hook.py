@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from litellm.proxy._types import UserAPIKeyAuth
 
     from bsgateway.core.cache import CacheManager
+    from bsgateway.routing.registry import ModelRegistryService
 
 logger = structlog.get_logger(__name__)
 
@@ -96,10 +97,24 @@ def load_routing_config(config_path: str | None = None) -> RoutingConfig:
     passthrough_models: set[str] = set()
     for tier in tiers:
         passthrough_models.add(tier.model)
+    yaml_model_list: list[dict] = []
     for entry in raw.get("model_list", []):
         model_name = entry.get("model_name")
-        if model_name:
-            passthrough_models.add(model_name)
+        if not model_name:
+            continue
+        passthrough_models.add(model_name)
+        # Phase 3 / TASK-004 — keep the normalised yaml entries on the
+        # config so ``ModelRegistryService`` shares one source of truth
+        # with the routing hook. ``litellm_params`` may carry provider
+        # creds — pass it through but never log it.
+        litellm_params = entry.get("litellm_params") or {}
+        yaml_model_list.append(
+            {
+                "name": model_name,
+                "litellm_model": litellm_params.get("model"),
+                "litellm_params": entry.get("litellm_params"),
+            }
+        )
 
     # Parse classifier config
     classifier_raw = routing.get("classifier", {})
@@ -149,6 +164,7 @@ def load_routing_config(config_path: str | None = None) -> RoutingConfig:
         aliases=aliases,
         auto_route_patterns=auto_route_patterns,
         passthrough_models=passthrough_models,
+        yaml_model_list=yaml_model_list,
         classifier=classifier_config,
         fallback_tier=routing.get("fallback_tier", "medium"),
         classifier_strategy=classifier_strategy,
@@ -216,6 +232,11 @@ class BSGatewayRouter:
         # P0.7 — BSGateway absorbs run.pre/run.post. Set via ``attach_supervisor``
         # at lifespan time so the hook stays test-friendly.
         self.supervisor: object | None = supervisor
+        # Phase 3 / TASK-004 — per-tenant model registry. Wired in via
+        # ``attach_registry`` from the API lifespan once the DB pool exists.
+        # When None the router falls back to the yaml-only ``passthrough_models``
+        # so existing proxy-direct traffic keeps working.
+        self.registry: ModelRegistryService | None = None
 
         if self.config.collector.enabled:
             from bsgateway.core.config import settings
@@ -431,8 +452,13 @@ class BSGatewayRouter:
         user_api_key: UserAPIKeyAuth | None = None,
     ) -> RoutingDecision:
         """Determine the target model for a request."""
-        # 1. Passthrough: known direct model names
-        if requested_model in self.config.passthrough_models:
+        # 1. Passthrough: known direct model names. Phase 3 / TASK-004
+        # consults ``ModelRegistryService`` here so a tenant's per-tenant
+        # ``custom`` adds and ``hide_system`` subtractions take effect
+        # without a restart. The yaml-only set is the fallback when no
+        # registry is attached or the request lacks a tenant_id.
+        passthrough_set = await self._effective_passthrough_set(data, user_api_key=user_api_key)
+        if requested_model in passthrough_set:
             return RoutingDecision(
                 method="passthrough",
                 original_model=requested_model,
@@ -460,6 +486,32 @@ class BSGatewayRouter:
         return await self._auto_route(
             requested_model, data, nexus_metadata, user_api_key=user_api_key
         )
+
+    async def _effective_passthrough_set(
+        self,
+        data: dict,
+        user_api_key: UserAPIKeyAuth | None = None,
+    ) -> set[str]:
+        """Compute the passthrough set visible to the calling tenant.
+
+        * No registry attached → yaml baseline (operator-managed). This is
+          the pre-Phase-3 behavior and the safe default for proxy-direct
+          traffic that does not carry tenant context.
+        * Registry attached but no tenant_id resolvable from the request →
+          yaml baseline. We never block on a missing per-tenant view.
+        * Registry attached + tenant_id present → registry's effective set
+          (yaml + custom, minus hidden) unioned with tier models. Tier
+          models stay passthrough unconditionally because they are routing
+          targets — letting a tenant hide them would brick auto-routing.
+        """
+        if self.registry is None:
+            return self.config.passthrough_models
+        tenant_id = self._extract_tenant_id(data, user_api_key=user_api_key)
+        if tenant_id is None:
+            return self.config.passthrough_models
+        db_set = await self.registry.get_passthrough_set(tenant_id)
+        tier_models = {t.model for t in self.config.tiers}
+        return db_set | tier_models
 
     def _matches_auto_route_pattern(self, model: str) -> bool:
         """Check if a model name matches any auto_route_patterns."""
@@ -680,6 +732,16 @@ class BSGatewayRouter:
         if self.config.tiers:
             return self.config.tiers[0].model
         return "gpt-4o-mini"
+
+    def attach_registry(self, registry: ModelRegistryService | None) -> None:
+        """Wire a :class:`ModelRegistryService` into the hook (TASK-004).
+
+        Idempotent — passing ``None`` leaves any previously attached
+        registry in place so the API lifespan can be re-run during tests.
+        """
+        if registry is None:
+            return
+        self.registry = registry
 
     def attach_supervisor(self, supervisor: object | None) -> None:
         """Wire a :class:`BSupervisorClient` into the hook (P0.7).

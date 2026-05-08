@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from bsvibe_audit.events.base import AuditActor
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from bsgateway.api.deps import (
@@ -10,11 +11,27 @@ from bsgateway.api.deps import (
     get_auth_context,
     get_cache,
     get_encryption_key,
+    get_model_registry,
     get_pool,
     require_permission,
     require_scope,
     require_tenant_access,
 )
+from bsgateway.audit.events import (
+    ModelCreated as ModelCreatedEvent,
+)
+from bsgateway.audit.events import (
+    ModelDeleted as ModelDeletedEvent,
+)
+from bsgateway.audit.events import (
+    ModelUpdated as ModelUpdatedEvent,
+)
+from bsgateway.audit.events import (
+    TenantCreated,
+    TenantDeactivated,
+    TenantUpdated,
+)
+from bsgateway.audit_publisher import emit_event
 from bsgateway.core.exceptions import DuplicateError
 from bsgateway.embedding.provider import LiteLLMEmbeddingProvider
 from bsgateway.embedding.service import EmbeddingService
@@ -75,6 +92,18 @@ async def create_tenant(
         str(result.id),
         {"name": body.name, "slug": body.slug},
     )
+    await emit_event(
+        request.app.state,
+        TenantCreated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(result.id),
+            data={
+                "target_id": str(result.id),
+                "name": body.name,
+                "slug": body.slug,
+            },
+        ),
+    )
     return result
 
 
@@ -126,6 +155,17 @@ async def update_tenant(
     )
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    await emit_event(
+        request.app.state,
+        TenantUpdated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(tenant_id),
+                "changed_fields": sorted(body.model_dump(exclude_unset=True).keys()),
+            },
+        ),
+    )
     return tenant
 
 
@@ -145,6 +185,14 @@ async def deactivate_tenant(
         "tenant.deactivated",
         "tenant",
         str(tenant_id),
+    )
+    await emit_event(
+        request.app.state,
+        TenantDeactivated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={"target_id": str(tenant_id)},
+        ),
     )
 
 
@@ -275,6 +323,7 @@ async def create_model(
     request: Request,
     _scope: None = Depends(require_scope("gateway:models:write")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    registry=Depends(get_model_registry),
 ) -> TenantModelResponse:
     svc = get_tenant_service(request)
     try:
@@ -283,6 +332,13 @@ async def create_model(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    # Phase 3 / TASK-005 — every model-mutation site invalidates the
+    # per-tenant registry cache. The registry currently reads only the
+    # new ``models`` table (yaml-union-DB merge), but we keep the
+    # invalidate here so future bridging of ``tenant_models`` → registry
+    # cannot leave stale 60s entries.
+    if registry is not None:
+        await registry.invalidate(tenant_id)
     audit = get_audit_service(request)
     provider = body.litellm_model.split("/")[0] if "/" in body.litellm_model else "unknown"
     await audit.record(
@@ -292,6 +348,18 @@ async def create_model(
         "model",
         str(result.id),
         {"model_name": body.model_name, "provider": provider},
+    )
+    await emit_event(
+        request.app.state,
+        ModelCreatedEvent(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(result.id),
+                "model_name": body.model_name,
+                "provider": provider,
+            },
+        ),
     )
     return result
 
@@ -338,6 +406,7 @@ async def update_model(
     request: Request,
     _scope: None = Depends(require_scope("gateway:models:write")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    registry=Depends(get_model_registry),
 ) -> TenantModelResponse:
     svc = get_tenant_service(request)
     try:
@@ -346,6 +415,19 @@ async def update_model(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    if registry is not None:
+        await registry.invalidate(tenant_id)
+    await emit_event(
+        request.app.state,
+        ModelUpdatedEvent(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(model_id),
+                "changed_fields": sorted(body.model_dump(exclude_unset=True).keys()),
+            },
+        ),
+    )
     return model
 
 
@@ -360,9 +442,12 @@ async def delete_model(
     request: Request,
     _scope: None = Depends(require_scope("gateway:models:write")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
+    registry=Depends(get_model_registry),
 ) -> None:
     svc = get_tenant_service(request)
     await svc.delete_model(model_id, tenant_id)
+    if registry is not None:
+        await registry.invalidate(tenant_id)
     audit = get_audit_service(request)
     await audit.record(
         tenant_id,
@@ -370,4 +455,12 @@ async def delete_model(
         "model.deleted",
         "model",
         str(model_id),
+    )
+    await emit_event(
+        request.app.state,
+        ModelDeletedEvent(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={"target_id": str(model_id)},
+        ),
     )

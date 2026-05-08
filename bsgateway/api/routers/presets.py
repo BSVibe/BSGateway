@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from bsvibe_audit.events.base import AuditActor
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bsgateway.api.deps import (
@@ -12,6 +13,8 @@ from bsgateway.api.deps import (
     require_scope,
     require_tenant_access,
 )
+from bsgateway.audit.events import RoutingPresetApplied
+from bsgateway.audit_publisher import emit_event
 from bsgateway.embedding.factory import build_service_for_tenant
 from bsgateway.presets.models import PresetApplyRequest
 from bsgateway.presets.registry import PresetRegistry
@@ -78,6 +81,20 @@ async def apply_preset(
         from bsgateway.core.cache import cache_key_rules
 
         await cache.delete(cache_key_rules(str(tenant_id)))
+
+    await emit_event(
+        request.app.state,
+        RoutingPresetApplied(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "preset_name": result.preset_name,
+                "rules_created": result.rules_created,
+                "intents_created": result.intents_created,
+                "examples_created": result.examples_created,
+            },
+        ),
+    )
 
     return PresetApplyResponse(
         preset_name=result.preset_name,

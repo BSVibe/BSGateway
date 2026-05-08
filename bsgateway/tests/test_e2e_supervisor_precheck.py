@@ -88,12 +88,16 @@ def _make_router_with_supervisor(
     )
     sup_resp.raise_for_status = MagicMock(return_value=None)
 
-    async def _mocked_post(*, url, headers, **kw):
-        if url.endswith("/api/oauth/token"):
-            # New minter sends form-encoded body (data=), JSON elsewhere.
+    async def _mocked_post(*args, **kw):
+        # bsvibe-authz refactored ServiceTokenMinter onto HttpClientBase
+        # (post-67da60e), so ``url`` arrives positionally now. BSupervisor
+        # client still calls with ``url=...`` kwarg. Accept both shapes.
+        url = kw.pop("url", None) or (args[0] if args else None)
+        headers = kw.get("headers")
+        if url and url.endswith("/api/oauth/token"):
             auth_calls.append({"url": url, "data": kw.get("data"), "headers": headers})
             return auth_token_resp
-        if url.endswith("/api/events"):
+        if url and url.endswith("/api/events"):
             sup_calls.append({"url": url, "json": kw.get("json"), "headers": headers})
             return sup_resp
         raise AssertionError(f"unexpected URL {url!r}")

@@ -416,6 +416,20 @@ def require_tenant_access(
     return auth
 
 
+def get_model_registry(request: Request):
+    """Extract the process-wide :class:`ModelRegistryService` from app state.
+
+    Lifespan attaches the registry after the DB pool is up. Routes that
+    mutate the ``models`` table (TASK-005 admin router) call
+    ``registry.invalidate(tenant_id)`` so the next routing decision sees
+    the new catalog without a restart.
+
+    Returns ``None`` when registry attachment failed at boot — callers
+    should treat that as "skip cache invalidation" rather than 500ing.
+    """
+    return getattr(request.app.state, "model_registry", None)
+
+
 def get_audit_service(request: Request) -> AuditService:
     """Create an AuditService instance from the request."""
     from bsgateway.audit.repository import AuditRepository

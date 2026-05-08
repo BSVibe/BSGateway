@@ -23,12 +23,17 @@ dependencies = [
     "bsvibe-core @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-core",
     "bsvibe-fastapi @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-fastapi",
     "bsvibe-sqlalchemy @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-sqlalchemy",
-    "bsvibe-authz @ git+https://github.com/BSVibe/bsvibe-python.git@67da60e#subdirectory=packages/bsvibe-authz",
+    "bsvibe-authz @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-authz",
     # Phase Audit Batch 2 — outbox-pattern audit emission for `gateway.*`
     # domain events. Lives only on ``integration/phase-audit-batch-2``
     # (the merge of ``feat/bsvibe-audit-impl`` + ``feat/bsvibe-llm-impl``
     # on top of ``integration/phase-a``).
     "bsvibe-audit @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-audit",
+    # Phase 3 — Typer CLI base used by `bsgateway` admin CLI. Provides
+    # cli_app factory, ProfileStore, OutputFormatter, CliHttpClient with
+    # 401-refresh-retry, DeviceFlowClient. Pinned to ``main`` so the
+    # workspace [tool.uv.sources] override applies during local dev.
+    "bsvibe-cli-base @ git+https://github.com/BSVibe/bsvibe-python.git@main#subdirectory=packages/bsvibe-cli-base",
     # Demo stack helpers — JWT issuer, LLM mock guard, tenant GC. Lives
     # on feat/bsvibe-demo until published to main alongside the public
     # demo rollout. Override in ``[tool.uv.sources]`` (below) for local
@@ -47,6 +52,9 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.1.0",
 ]
+
+[project.scripts]
+bsgateway = "bsgateway.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]
