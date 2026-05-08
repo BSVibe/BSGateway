@@ -97,6 +97,32 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.warning("classifier_cache_attach_failed", exc_info=True)
 
+    # Phase 3 / TASK-004 — wire the per-tenant model registry into the
+    # routing hook. The yaml side comes from the already-loaded routing
+    # config; the DB side is read by ``ModelsRepository`` against the
+    # ``models`` table created in alembic 0004. A 60s LRU bounds the
+    # impact of a cold cache; admin mutations call ``invalidate`` so a
+    # newly added model becomes routable without a process restart.
+    try:
+        from bsgateway.routing.hook import proxy_handler_instance
+        from bsgateway.routing.models_repository import ModelsRepository
+        from bsgateway.routing.registry import ModelRegistryService
+
+        models_repo = ModelsRepository(pool)
+        registry = ModelRegistryService(
+            yaml_models=proxy_handler_instance.config.yaml_model_list,
+            repo=models_repo,
+        )
+        proxy_handler_instance.attach_registry(registry)
+        app.state.model_registry = registry
+        logger.info(
+            "model_registry_attached",
+            yaml_count=len(proxy_handler_instance.config.yaml_model_list),
+        )
+    except Exception:
+        logger.warning("model_registry_attach_failed", exc_info=True)
+        app.state.model_registry = None
+
     # Phase 0 P0.7 — attach BSupervisor client so the LiteLLM proxy hook
     # can fire run.pre/run.post directly. We only attach when the
     # operator opts in (``bsupervisor_audit_enabled``) and the

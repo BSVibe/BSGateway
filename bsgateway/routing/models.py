@@ -145,6 +145,11 @@ class RoutingConfig:
     aliases: dict[str, str] = field(default_factory=dict)
     auto_route_patterns: list[str] = field(default_factory=list)
     passthrough_models: set[str] = field(default_factory=set)
+    # Phase 3 / TASK-004 — raw yaml ``model_list`` entries normalised to
+    # ``{name, litellm_model, litellm_params}``. Feeds the per-tenant
+    # ``ModelRegistryService`` so the registry's "system" half stays in
+    # lock-step with whatever the operator put in ``gateway.yaml``.
+    yaml_model_list: list[dict] = field(default_factory=list)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     fallback_tier: str = "medium"
     classifier_strategy: str = "llm"
