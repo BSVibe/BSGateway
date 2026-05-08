@@ -231,8 +231,32 @@ async def lifespan(app: FastAPI):
     else:
         app.state.stream_manager = None
 
-    logger.info("api_server_started", port=settings.api_port)
-    yield
+    # Phase 7 / TASK-005 — boot the first-class MCP registry alongside
+    # the REST surface. Both the HTTP /mcp endpoint and the stdio
+    # launcher (`bsgateway mcp serve`) read from this same registry.
+    from bsgateway.mcp.lifespan import (
+        build_registry,
+        build_streamable_http_app,
+        make_loopback_caller,
+        make_service_factory,
+    )
+
+    app.state.mcp_registry = build_registry(
+        service_factory=make_service_factory(app),
+        loopback=make_loopback_caller(app),
+    )
+    logger.info("mcp_registry_booted", tool_count=len(app.state.mcp_registry))
+
+    mcp_manager, _mcp_asgi = build_streamable_http_app(
+        app.state.mcp_registry,
+        app_state=app.state,
+    )
+    app.state.mcp_manager = mcp_manager
+    app.state.mcp_asgi_app = _mcp_asgi
+
+    async with mcp_manager.run():
+        logger.info("api_server_started", port=settings.api_port)
+        yield
 
     # Drain background tasks before closing connections
     if app.state.background_tasks:
@@ -357,6 +381,50 @@ def create_app() -> FastAPI:
     # checks + per-dependency status keys) is BSGateway-specific and
     # stays inline — production probes already scrape its envelope.
     app.include_router(make_health_router())
+
+    @app.get("/mcp/health", tags=["mcp"])
+    async def mcp_health() -> JSONResponse:
+        """MCP server liveness + tool count.
+
+        Returns 200 with ``{"status": "ready", "tool_count": N}`` once
+        the lifespan has built the registry; 503 before then.
+        """
+        registry = getattr(app.state, "mcp_registry", None)
+        if registry is None:
+            return JSONResponse(
+                content={"status": "unavailable", "tool_count": 0},
+                status_code=503,
+            )
+        return JSONResponse(
+            content={"status": "ready", "tool_count": len(registry)},
+            status_code=200,
+        )
+
+    # Streamable-HTTP MCP transport — mounted AFTER /mcp/health so the
+    # explicit health route resolves first. The lifespan owns the
+    # session manager's run() context; this shim only forwards ASGI.
+    async def _mcp_transport(scope, receive, send):  # type: ignore[no-untyped-def]
+        asgi = getattr(app.state, "mcp_asgi_app", None)
+        if asgi is None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b'{"error":"mcp_unavailable"}',
+                }
+            )
+            return
+        await asgi(scope, receive, send)
+
+    from starlette.routing import Mount
+
+    app.router.routes.append(Mount("/mcp", app=_mcp_transport))
 
     @app.get("/health/ready", tags=["health"])
     async def health_ready() -> JSONResponse:
