@@ -27,6 +27,7 @@ from bsgateway.cli.commands.audit import app as audit_app
 from bsgateway.cli.commands.execute import app as execute_app
 from bsgateway.cli.commands.feedback import app as feedback_app
 from bsgateway.cli.commands.intents import app as intents_app
+from bsgateway.cli.commands.mcp import app as mcp_app
 from bsgateway.cli.commands.models import app as models_app
 from bsgateway.cli.commands.presets import app as presets_app
 from bsgateway.cli.commands.routes import app as routes_app
@@ -54,6 +55,7 @@ app.add_typer(usage_app, name="usage")
 app.add_typer(feedback_app, name="feedback")
 app.add_typer(workers_app, name="workers")
 app.add_typer(execute_app, name="execute")
+app.add_typer(mcp_app, name="mcp")
 
 
 __all__ = ["app"]
