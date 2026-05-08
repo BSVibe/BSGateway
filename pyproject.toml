@@ -53,6 +53,9 @@ dev = [
     "ruff>=0.1.0",
 ]
 
+[project.scripts]
+bsgateway = "bsgateway.cli.main:app"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -1,0 +1,35 @@
+"""Top-level Typer app for ``bsgateway`` admin CLI.
+
+Built on :func:`bsvibe_cli_base.cli_app` — the root callback resolves
+profile / token / tenant / output and stashes a
+:class:`bsvibe_cli_base.CliContext` on ``ctx.obj`` for sub-commands.
+
+Sub-apps land in TASK-008..011:
+
+* ``bsgateway models …``     — admin model registry CRUD
+* ``bsgateway routes test``  — route resolution probe
+* ``bsgateway rules …``      — routing rules CRUD
+* ``bsgateway intents …``    — intent examples CRUD
+* ``bsgateway presets …``    — preset apply
+* ``bsgateway tenants …``    — tenant CRUD
+* ``bsgateway audit …``      — audit log queries
+* ``bsgateway usage …``      — usage / cost reports
+* ``bsgateway feedback …``   — feedback submission
+* ``bsgateway workers …``    — executor worker registry
+* ``bsgateway execute …``    — async task dispatch
+"""
+
+from __future__ import annotations
+
+from bsvibe_cli_base import cli_app
+
+app = cli_app(
+    name="bsgateway",
+    help=(
+        "BSGateway admin CLI — manage tenant model registry, routing rules, "
+        "audit, usage, and executor workers from the terminal."
+    ),
+)
+
+
+__all__ = ["app"]
