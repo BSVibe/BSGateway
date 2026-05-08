@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
+from bsvibe_audit.events.base import AuditActor
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 
@@ -33,6 +34,13 @@ from bsgateway.api.deps import (
     get_pool,
     require_scope,
 )
+from bsgateway.audit.events import (
+    ModelCreated,
+    ModelDeleted,
+    ModelHidden,
+    ModelUpdated,
+)
+from bsgateway.audit_publisher import emit_event
 from bsgateway.routing.models_repository import ModelsRepository
 
 router = APIRouter(prefix="/admin/models", tags=["admin-models"])
@@ -208,6 +216,12 @@ async def create_model(
 
     await _invalidate(registry, auth.tenant_id)
 
+    payload = {
+        "name": body.name,
+        "origin": body.origin,
+        "is_passthrough": body.is_passthrough,
+        "has_litellm_params": body.litellm_params is not None,
+    }
     audit = get_audit_service(request)
     await audit.record(
         auth.tenant_id,
@@ -215,12 +229,16 @@ async def create_model(
         "model.created",
         "model",
         str(row["id"]),
-        {
-            "name": body.name,
-            "origin": body.origin,
-            "is_passthrough": body.is_passthrough,
-            "has_litellm_params": body.litellm_params is not None,
-        },
+        payload,
+    )
+    event_cls = ModelHidden if body.origin == "hide_system" else ModelCreated
+    await emit_event(
+        request.app.state,
+        event_cls(
+            actor=AuditActor(type="user", id=str(auth.identity.id), email=auth.identity.email),
+            tenant_id=str(auth.tenant_id),
+            data={"target_id": str(row["id"]), **payload},
+        ),
     )
     return _to_response(row)
 
@@ -269,6 +287,17 @@ async def update_model(
         str(model_id),
         {"changed_fields": sorted(fields.keys())},
     )
+    await emit_event(
+        request.app.state,
+        ModelUpdated(
+            actor=AuditActor(type="user", id=str(auth.identity.id), email=auth.identity.email),
+            tenant_id=str(auth.tenant_id),
+            data={
+                "target_id": str(model_id),
+                "changed_fields": sorted(fields.keys()),
+            },
+        ),
+    )
     return _to_response(row)
 
 
@@ -299,4 +328,12 @@ async def delete_model(
         "model.deleted",
         "model",
         str(model_id),
+    )
+    await emit_event(
+        request.app.state,
+        ModelDeleted(
+            actor=AuditActor(type="user", id=str(auth.identity.id), email=auth.identity.email),
+            tenant_id=str(auth.tenant_id),
+            data={"target_id": str(model_id)},
+        ),
     )

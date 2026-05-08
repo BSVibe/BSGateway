@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from bsvibe_audit.events.base import AuditActor
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from bsgateway.api.deps import (
@@ -16,6 +17,21 @@ from bsgateway.api.deps import (
     require_scope,
     require_tenant_access,
 )
+from bsgateway.audit.events import (
+    ModelCreated as ModelCreatedEvent,
+)
+from bsgateway.audit.events import (
+    ModelDeleted as ModelDeletedEvent,
+)
+from bsgateway.audit.events import (
+    ModelUpdated as ModelUpdatedEvent,
+)
+from bsgateway.audit.events import (
+    TenantCreated,
+    TenantDeactivated,
+    TenantUpdated,
+)
+from bsgateway.audit_publisher import emit_event
 from bsgateway.core.exceptions import DuplicateError
 from bsgateway.embedding.provider import LiteLLMEmbeddingProvider
 from bsgateway.embedding.service import EmbeddingService
@@ -76,6 +92,18 @@ async def create_tenant(
         str(result.id),
         {"name": body.name, "slug": body.slug},
     )
+    await emit_event(
+        request.app.state,
+        TenantCreated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(result.id),
+            data={
+                "target_id": str(result.id),
+                "name": body.name,
+                "slug": body.slug,
+            },
+        ),
+    )
     return result
 
 
@@ -127,6 +155,17 @@ async def update_tenant(
     )
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    await emit_event(
+        request.app.state,
+        TenantUpdated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(tenant_id),
+                "changed_fields": sorted(body.model_dump(exclude_unset=True).keys()),
+            },
+        ),
+    )
     return tenant
 
 
@@ -146,6 +185,14 @@ async def deactivate_tenant(
         "tenant.deactivated",
         "tenant",
         str(tenant_id),
+    )
+    await emit_event(
+        request.app.state,
+        TenantDeactivated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={"target_id": str(tenant_id)},
+        ),
     )
 
 
@@ -302,6 +349,18 @@ async def create_model(
         str(result.id),
         {"model_name": body.model_name, "provider": provider},
     )
+    await emit_event(
+        request.app.state,
+        ModelCreatedEvent(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(result.id),
+                "model_name": body.model_name,
+                "provider": provider,
+            },
+        ),
+    )
     return result
 
 
@@ -358,6 +417,17 @@ async def update_model(
         raise HTTPException(status_code=404, detail="Model not found")
     if registry is not None:
         await registry.invalidate(tenant_id)
+    await emit_event(
+        request.app.state,
+        ModelUpdatedEvent(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(model_id),
+                "changed_fields": sorted(body.model_dump(exclude_unset=True).keys()),
+            },
+        ),
+    )
     return model
 
 
@@ -385,4 +455,12 @@ async def delete_model(
         "model.deleted",
         "model",
         str(model_id),
+    )
+    await emit_event(
+        request.app.state,
+        ModelDeletedEvent(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={"target_id": str(model_id)},
+        ),
     )

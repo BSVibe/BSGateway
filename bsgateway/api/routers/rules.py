@@ -17,6 +17,11 @@ from bsgateway.api.deps import (
     require_scope,
     require_tenant_access,
 )
+from bsgateway.audit.events import (
+    RoutingRuleCreated,
+    RoutingRuleDeleted,
+    RoutingRuleUpdated,
+)
 from bsgateway.audit_publisher import emit_event
 from bsgateway.core.exceptions import DuplicateError
 from bsgateway.core.utils import parse_jsonb_value, safe_json_loads
@@ -176,21 +181,25 @@ async def create_rule(
     # Phase Audit Batch 2 — gateway.route.config_changed (action="created").
     # ``audit.record`` writes to the legacy in-DB audit_logs table; this
     # emit pushes the same event to the cross-product audit pipeline.
+    rule_data = {
+        "rule_id": str(row["id"]),
+        "target_id": str(row["id"]),
+        "action": "created",
+        "name": body.name,
+        "priority": body.priority,
+        "target_model": body.target_model,
+        "is_default": body.is_default,
+        "condition_count": len(body.conditions or []),
+    }
+    actor = AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email)
     await emit_event(
         request.app.state,
-        RouteConfigChanged(
-            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
-            tenant_id=str(tenant_id),
-            data={
-                "rule_id": str(row["id"]),
-                "action": "created",
-                "name": body.name,
-                "priority": body.priority,
-                "target_model": body.target_model,
-                "is_default": body.is_default,
-                "condition_count": len(body.conditions or []),
-            },
-        ),
+        RouteConfigChanged(actor=actor, tenant_id=str(tenant_id), data=rule_data),
+    )
+    # Phase 3 / TASK-006 — typed gateway.routing.rule.created mirror.
+    await emit_event(
+        request.app.state,
+        RoutingRuleCreated(actor=actor, tenant_id=str(tenant_id), data=rule_data),
     )
 
     return await _build_rule_response(repo, row, tenant_id)
@@ -427,21 +436,24 @@ async def update_rule(
         )
 
     # Phase Audit Batch 2 — gateway.route.config_changed (action="updated").
+    rule_data = {
+        "rule_id": str(rule_id),
+        "target_id": str(rule_id),
+        "action": "updated",
+        "name": row["name"],
+        "priority": row["priority"],
+        "target_model": row["target_model"],
+        "is_default": row["is_default"],
+        "condition_count": (len(body.conditions) if body.conditions is not None else None),
+    }
+    actor = AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email)
     await emit_event(
         request.app.state,
-        RouteConfigChanged(
-            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
-            tenant_id=str(tenant_id),
-            data={
-                "rule_id": str(rule_id),
-                "action": "updated",
-                "name": row["name"],
-                "priority": row["priority"],
-                "target_model": row["target_model"],
-                "is_default": row["is_default"],
-                "condition_count": (len(body.conditions) if body.conditions is not None else None),
-            },
-        ),
+        RouteConfigChanged(actor=actor, tenant_id=str(tenant_id), data=rule_data),
+    )
+    await emit_event(
+        request.app.state,
+        RoutingRuleUpdated(actor=actor, tenant_id=str(tenant_id), data=rule_data),
     )
 
     return await _build_rule_response(repo, row, tenant_id)
@@ -464,4 +476,12 @@ async def delete_rule(
         "rule.deleted",
         "rule",
         str(rule_id),
+    )
+    await emit_event(
+        request.app.state,
+        RoutingRuleDeleted(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={"target_id": str(rule_id), "rule_id": str(rule_id)},
+        ),
     )

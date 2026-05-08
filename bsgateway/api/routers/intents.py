@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import asyncpg
+from bsvibe_audit.events.base import AuditActor
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bsgateway.api.deps import (
@@ -12,6 +13,12 @@ from bsgateway.api.deps import (
     require_scope,
     require_tenant_access,
 )
+from bsgateway.audit.events import (
+    RoutingIntentCreated,
+    RoutingIntentDeleted,
+    RoutingIntentUpdated,
+)
+from bsgateway.audit_publisher import emit_event
 from bsgateway.embedding.factory import build_service_for_tenant
 from bsgateway.embedding.service import EmbeddingService
 from bsgateway.rules.repository import RulesRepository
@@ -92,6 +99,19 @@ async def create_intent(
         for example_text in body.examples:
             await repo.add_example(row["id"], example_text)
 
+    await emit_event(
+        request.app.state,
+        RoutingIntentCreated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(row["id"]),
+                "name": body.name,
+                "threshold": body.threshold,
+                "example_count": len(body.examples or []),
+            },
+        ),
+    )
     return _to_response(row)
 
 
@@ -145,6 +165,18 @@ async def update_intent(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Intent not found")
+    await emit_event(
+        request.app.state,
+        RoutingIntentUpdated(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={
+                "target_id": str(intent_id),
+                "name": row["name"],
+                "threshold": row["threshold"],
+            },
+        ),
+    )
     return _to_response(row)
 
 
@@ -158,6 +190,14 @@ async def delete_intent(
 ) -> None:
     repo = _get_repo(request)
     await repo.delete_intent(intent_id, tenant_id)
+    await emit_event(
+        request.app.state,
+        RoutingIntentDeleted(
+            actor=AuditActor(type="user", id=str(_auth.identity.id), email=_auth.identity.email),
+            tenant_id=str(tenant_id),
+            data={"target_id": str(intent_id)},
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
