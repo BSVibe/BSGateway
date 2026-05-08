@@ -23,7 +23,11 @@ from __future__ import annotations
 
 from bsvibe_cli_base import cli_app
 
+from bsgateway.cli.commands.intents import app as intents_app
 from bsgateway.cli.commands.models import app as models_app
+from bsgateway.cli.commands.presets import app as presets_app
+from bsgateway.cli.commands.routes import app as routes_app
+from bsgateway.cli.commands.rules import app as rules_app
 
 app = cli_app(
     name="bsgateway",
@@ -34,6 +38,10 @@ app = cli_app(
 )
 
 app.add_typer(models_app, name="models")
+app.add_typer(routes_app, name="routes")
+app.add_typer(rules_app, name="rules")
+app.add_typer(intents_app, name="intents")
+app.add_typer(presets_app, name="presets")
 
 
 __all__ = ["app"]
