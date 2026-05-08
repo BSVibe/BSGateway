@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from bsvibe_cli_base import cli_app
 
+from bsgateway.cli.commands.models import app as models_app
+
 app = cli_app(
     name="bsgateway",
     help=(
@@ -30,6 +32,8 @@ app = cli_app(
         "audit, usage, and executor workers from the terminal."
     ),
 )
+
+app.add_typer(models_app, name="models")
 
 
 __all__ = ["app"]
