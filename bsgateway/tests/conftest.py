@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-from bsvibe_auth import BSVibeUser
 from bsvibe_authz import User as AuthzUser
 from bsvibe_authz.cache import PermissionCache
 from bsvibe_authz.deps import (
@@ -59,19 +58,26 @@ def make_mock_pool() -> tuple[MagicMock, AsyncMock]:
     return pool, conn
 
 
-def make_bsvibe_user(
+def make_authz_user(
     tenant_id: UUID | None = None,
     role: str = "member",
     email: str = "test@test.com",
     user_id: str | None = None,
-) -> BSVibeUser:
-    """Build a fake BSVibeUser for testing."""
-    return BSVibeUser(
+) -> AuthzUser:
+    """Build a fake :class:`bsvibe_authz.User` for testing.
+
+    Mirrors what ``bsvibe_authz.deps.get_current_user`` returns for a
+    verified Supabase user JWT — ``app_metadata`` carries role +
+    tenant_id (lifted off the JWT payload by ``parse_user_token``).
+    """
+    tid = str(tenant_id or uuid4())
+    return AuthzUser(
         id=user_id or str(uuid4()),
         email=email,
-        role="authenticated",
-        app_metadata={"tenant_id": str(tenant_id or uuid4()), "role": role},
-        user_metadata={},
+        active_tenant_id=tid,
+        scope=[],
+        is_service=False,
+        app_metadata={"tenant_id": tid, "role": role},
     )
 
 

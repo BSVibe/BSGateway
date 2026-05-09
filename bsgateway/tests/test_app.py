@@ -118,12 +118,12 @@ class TestLifespan:
             patch("bsgateway.api.app.FeedbackRepository") as mock_feedback_repo_cls,
             patch("bsgateway.api.app.AuditRepository") as mock_audit_repo_cls,
             patch("bsgateway.api.app.CacheManager"),
-            patch("bsvibe_auth.BsvibeAuthProvider") as mock_auth_provider_cls,
         ):
             mock_settings.collector_database_url = "postgresql://test"
             mock_settings.encryption_key_bytes = b"x" * 32
             mock_settings.bsvibe_auth_url = "https://auth.bsvibe.dev"
             mock_settings.redis_host = "localhost"
+            mock_settings.bsupervisor_audit_fail_mode = "open"
 
             # Each repo class returns a mock with async init_schema
             repo_classes = [
@@ -136,9 +136,10 @@ class TestLifespan:
                 cls.return_value.init_schema = AsyncMock()
 
             async with lifespan(app):
-                # Verify state was set
+                # Verify state was set; the legacy auth_provider was removed
+                # in the full-delegate refactor — auth dispatch is now
+                # entirely inside bsvibe_authz.deps.get_current_user.
                 assert app.state.db_pool == mock_pool
-                assert app.state.auth_provider == mock_auth_provider_cls.return_value
 
             # Verify cleanup
             mock_redis.aclose.assert_awaited_once()
@@ -160,12 +161,12 @@ class TestLifespan:
             patch("bsgateway.api.app.RulesRepository") as mock_rules_repo_cls,
             patch("bsgateway.api.app.FeedbackRepository") as mock_feedback_repo_cls,
             patch("bsgateway.api.app.AuditRepository") as mock_audit_repo_cls,
-            patch("bsvibe_auth.BsvibeAuthProvider"),
         ):
             mock_settings.collector_database_url = "postgresql://test"
             mock_settings.encryption_key_bytes = b"x" * 32
             mock_settings.bsvibe_auth_url = "https://auth.bsvibe.dev"
             mock_settings.redis_host = ""
+            mock_settings.bsupervisor_audit_fail_mode = "open"
 
             repo_classes = [
                 mock_tenant_repo_cls,

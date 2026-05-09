@@ -43,7 +43,7 @@ from bsvibe_authz.deps import (
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
-from bsgateway.tests.conftest import make_bsvibe_user, make_mock_pool
+from bsgateway.tests.conftest import make_mock_pool
 
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 
@@ -289,29 +289,31 @@ def test_opaque_inactive_token_returns_401() -> None:
 
 
 def test_jwt_path_unchanged() -> None:
-    """Non-prefixed bearer tokens still flow through ``app.state.auth_provider``.
+    """Non-prefixed bearer tokens flow through bsvibe-authz's user-JWT path.
 
-    For the JWT branch we keep the autouse ``authz_get_current_user`` override
-    in place — bsvibe_authz JWT verification needs a real signing secret +
-    a parseable token, which is out of scope for a wiring smoke. The
-    BSGateway dispatch is what we're really validating here.
+    Post-PR-22 the lib supports JWKS-based verification, so the dispatch
+    is fully delegated. We stub ``_authz_get_current_user`` to return a
+    user (rather than wiring up a real signing key + token) and assert
+    the introspection path is *not* taken — JWTs must verify locally.
     """
+    from bsgateway.tests.conftest import _fake_authz_user, make_authz_user
+
     tid = uuid4()
-    user = make_bsvibe_user(tenant_id=tid, role="admin")
+    user = make_authz_user(tenant_id=tid, role="admin")
 
     def _never(_request: httpx.Request) -> httpx.Response:  # pragma: no cover
         raise AssertionError("introspection must not be called for JWT")
 
     app, transport = _build_app(introspection_handler=_never)
-    app.state.auth_provider.verify_token = AsyncMock(return_value=user)
-
-    # JWT path: re-install the conftest fake authz user so require_scope
-    # passes. (The autouse fixture is popped in _build_app.)
-    from bsgateway.tests.conftest import _fake_authz_user
-
+    # Re-install the conftest fake authz user for the require_scope chain
+    # (the autouse override is popped in _build_app).
     app.dependency_overrides[authz_get_current_user] = _fake_authz_user
 
     with (
+        patch(
+            "bsgateway.api.deps._authz_get_current_user",
+            new=AsyncMock(return_value=user),
+        ) as mock_authz,
         patch(
             "bsgateway.tenant.repository.TenantRepository.get_tenant",
             new_callable=AsyncMock,
@@ -330,5 +332,5 @@ def test_jwt_path_unchanged() -> None:
         )
 
     assert resp.status_code == 200, resp.text
-    app.state.auth_provider.verify_token.assert_called_once()
+    mock_authz.assert_called_once()
     assert transport.call_count == 0

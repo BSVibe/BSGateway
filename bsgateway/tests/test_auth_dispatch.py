@@ -25,7 +25,7 @@ from bsvibe_authz import IntrospectionResponse
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
-from bsgateway.tests.conftest import make_bsvibe_user, make_mock_pool
+from bsgateway.tests.conftest import make_mock_pool
 
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 
@@ -193,12 +193,21 @@ class TestOpaqueDispatch:
 
 class TestJwtPathPreserved:
     def test_jwt_path_unchanged(self, app):
-        """Non-prefixed bearer tokens still flow through auth_provider."""
+        """Non-prefixed bearer tokens flow through bsvibe-authz's user-JWT
+        path (now JWKS-based — see bsvibe-python #22). The legacy
+        ``app.state.auth_provider`` was removed in BSGateway #46-followup;
+        the dispatch is fully delegated to ``get_current_user``.
+        """
+        from bsgateway.tests.conftest import make_authz_user
+
         tid = uuid4()
-        user = make_bsvibe_user(tenant_id=tid, role="admin")
-        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
+        user = make_authz_user(tenant_id=tid, role="admin")
 
         with (
+            patch(
+                "bsgateway.api.deps._authz_get_current_user",
+                new=AsyncMock(return_value=user),
+            ) as mock_authz,
             patch(
                 "bsgateway.tenant.repository.TenantRepository.get_tenant",
                 new_callable=AsyncMock,
@@ -217,4 +226,4 @@ class TestJwtPathPreserved:
             )
 
         assert resp.status_code == 200
-        app.state.auth_provider.verify_token.assert_called_once()
+        mock_authz.assert_called_once()

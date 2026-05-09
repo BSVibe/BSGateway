@@ -68,6 +68,21 @@ class Settings(FastApiSettings):
     introspection_client_secret: str = ""
 
     # ----------------------------------------------------------------------
+    # User-JWT verification — fed straight into bsvibe_authz.Settings.
+    # ``user_jwt_jwks_url`` (preferred for prod, ES256/RS256 with key
+    # rotation), ``user_jwt_public_key`` (static PEM), or ``user_jwt_secret``
+    # (HS256 dev fallback). When unset the user-JWT verification path is
+    # disabled and only bootstrap / opaque / PAT-JWT-introspection tokens
+    # are accepted.
+    # ----------------------------------------------------------------------
+    user_jwt_jwks_url: str = ""
+    user_jwt_public_key: str = ""
+    user_jwt_secret: str = ""
+    user_jwt_algorithm: str = "ES256"
+    user_jwt_audience: str = "authenticated"
+    user_jwt_issuer: str = ""
+
+    # ----------------------------------------------------------------------
     # Phase 0 P0.7 — BSupervisor preflight integration.
     # ----------------------------------------------------------------------
     bsupervisor_url: str = ""

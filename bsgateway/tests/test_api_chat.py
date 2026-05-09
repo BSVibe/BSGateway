@@ -59,15 +59,17 @@ class TestChatAuth:
         assert resp.status_code == 401
 
     def test_invalid_key_returns_401(self, app, client: TestClient):
-        from bsvibe_auth import TokenInvalidError
+        from fastapi import HTTPException
 
-        app.state.auth_provider = MagicMock()
-        app.state.auth_provider.verify_token = AsyncMock(side_effect=TokenInvalidError("bad"))
-        resp = client.post(
-            "/api/v1/chat/completions",
-            json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-            headers={"Authorization": "Bearer bad-token"},
-        )
+        with patch(
+            "bsgateway.api.deps._authz_get_current_user",
+            new=AsyncMock(side_effect=HTTPException(status_code=401, detail="bad")),
+        ):
+            resp = client.post(
+                "/api/v1/chat/completions",
+                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+                headers={"Authorization": "Bearer bad-token"},
+            )
         assert resp.status_code == 401
 
 

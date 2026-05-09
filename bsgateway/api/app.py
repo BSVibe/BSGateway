@@ -58,10 +58,10 @@ async def lifespan(app: FastAPI):
     # Validate encryption key early — fail fast on misconfiguration
     encryption_key = settings.encryption_key_bytes
 
-    # Initialize BSVibe-Auth provider
-    from bsvibe_auth import BsvibeAuthProvider
-
-    app.state.auth_provider = BsvibeAuthProvider(auth_url=settings.bsvibe_auth_url)
+    # Auth dispatch is fully delegated to bsvibe_authz.deps.get_current_user
+    # (see bsgateway/api/deps.py). bsvibe-authz #22 added user_jwt_jwks_url
+    # support, so the legacy bsvibe_auth.BsvibeAuthProvider is no longer
+    # needed — Supabase user JWTs are verified inside the lib via JWKS.
 
     pool = await get_pool(settings.collector_database_url)
     app.state.db_pool = pool
