@@ -37,17 +37,11 @@ from typing import Any, ClassVar
 import structlog
 from bsvibe_audit.events.base import AuditActor, AuditEventBase
 from bsvibe_authz import (
-    AuthError as _AuthzAuthError,
-)
-from bsvibe_authz import (
-    Settings as _AuthzSettings,
-)
-from bsvibe_authz import (
     User,
-    verify_bootstrap_token,
-    verify_opaque_token,
 )
 from bsvibe_authz.deps import _scope_grants
+from bsvibe_authz.deps import get_current_user as _authz_get_current_user
+from fastapi import HTTPException
 from mcp.server import Server as McpServer
 from mcp.types import (
     Tool as McpTool,
@@ -55,9 +49,7 @@ from mcp.types import (
 from pydantic import BaseModel, ValidationError
 
 from bsgateway.api.deps import (
-    BOOTSTRAP_TOKEN_PREFIX,
-    OPAQUE_TOKEN_PREFIX,
-    _bootstrap_audit_hash,
+    _authz_settings,
     _get_introspection_cache,
     _get_introspection_client,
 )
@@ -303,70 +295,27 @@ async def resolve_tool_context(
 ) -> ToolContext:
     """Authenticate an MCP request from raw headers + return a :class:`ToolContext`.
 
-    Mirrors :func:`bsgateway.api.deps.get_auth_context`'s 3-way
-    dispatch but does not depend on FastAPI internals — both the
-    streamable-HTTP transport (TASK-005) and the stdio launcher feed
-    plain mappings here.
+    Delegates to :func:`bsvibe_authz.deps.get_current_user` — same
+    BSage-pattern shape used by REST. The lib runs the canonical
+    bootstrap → opaque → JWT → PAT-JWT-introspection-fallback dispatch
+    internally, so PAT JWTs from the device-authorization grant work
+    here automatically (an upgrade over the prior bootstrap-only path).
 
     Failure modes raise :class:`ToolError` with code ``unauthenticated``
-    (the dispatcher will translate to an MCP error response). The JWT
-    branch is intentionally not implemented in TASK-002 — agents
-    invoking MCP tools authenticate with bootstrap or opaque service
-    tokens; JWT will be added once a use case appears.
+    (the dispatcher will translate to an MCP error response).
     """
-    token = _extract_bearer_token(headers)
-    if not token:
-        raise ToolError(
-            code="unauthenticated",
-            message="Missing or invalid Authorization header",
-        )
-
-    if token.startswith(BOOTSTRAP_TOKEN_PREFIX):
-        return await _resolve_via_bootstrap(token, app_state=app_state)
-
-    if token.startswith(OPAQUE_TOKEN_PREFIX):
-        return await _resolve_via_introspection(token, app_state=app_state)
-
-    raise ToolError(
-        code="unauthenticated",
-        message="Unsupported token kind for MCP transport",
-    )
-
-
-async def _resolve_via_bootstrap(token: str, *, app_state: object | None) -> ToolContext:
-    if not gateway_settings.bootstrap_token_hash:
-        raise ToolError(
-            code="unauthenticated",
-            message="bootstrap token path is not configured",
-        )
-    authz_settings_stub = _AuthzSettings.model_construct(
-        bootstrap_token_hash=gateway_settings.bootstrap_token_hash,
-    )
+    auth_header = headers.get("authorization") or headers.get("Authorization")
     try:
-        user = verify_bootstrap_token(token, authz_settings_stub)
-    except _AuthzAuthError as exc:
-        logger.warning(
-            "mcp_auth_bootstrap_rejected",
-            token_sha12=_bootstrap_audit_hash(token),
+        user = await _authz_get_current_user(
+            authorization=auth_header,
+            settings=_authz_settings(),
+            introspection_client=_get_introspection_client(),
+            introspection_cache=_get_introspection_cache(),
         )
-        raise ToolError(code="unauthenticated", message=str(exc)) from exc
+    except HTTPException as exc:
+        raise ToolError(code="unauthenticated", message=str(exc.detail)) from exc
 
-    logger.info("mcp_auth_bootstrap_accepted")
     return _ctx_from_user(user, app_state=app_state)
-
-
-async def _resolve_via_introspection(token: str, *, app_state: object | None) -> ToolContext:
-    client = _get_introspection_client()
-    if client is None:
-        raise ToolError(
-            code="unauthenticated",
-            message="opaque token introspection is not configured",
-        )
-    cache = _get_introspection_cache()
-    try:
-        user = await verify_opaque_token(token, client, cache)
-    except _AuthzAuthError as exc:
-        raise ToolError(code="unauthenticated", message=str(exc)) from exc
 
     logger.info("mcp_auth_opaque_accepted", sub=user.id)
     return _ctx_from_user(user, app_state=app_state)

@@ -629,9 +629,7 @@ class TestResolveToolContextIntrospection:
         assert exc.value.code == "unauthenticated"
 
     async def test_opaque_token_active_yields_context(self, monkeypatch) -> None:
-        # Stub the introspection client lookup + verify_opaque_token to
-        # return a User. We replace the lookup wholesale so we don't need
-        # to populate client_id / client_secret.
+        # Resolve goes through bsvibe_authz.deps.get_current_user — stub it.
         stub_user = User(
             id="svc-1",
             email=None,
@@ -641,12 +639,10 @@ class TestResolveToolContextIntrospection:
             scope=["gateway:models:read"],
         )
 
-        async def _fake_verify(_token, _client, _cache):
+        async def _fake_get_current_user(**_kwargs):
             return stub_user
 
-        monkeypatch.setattr("bsgateway.mcp.api._get_introspection_client", lambda: MagicMock())
-        monkeypatch.setattr("bsgateway.mcp.api._get_introspection_cache", lambda: MagicMock())
-        monkeypatch.setattr("bsgateway.mcp.api.verify_opaque_token", _fake_verify)
+        monkeypatch.setattr("bsgateway.mcp.api._authz_get_current_user", _fake_get_current_user)
 
         ctx = await resolve_tool_context(
             headers={"authorization": "Bearer bsv_sk_" + "x" * 32},
@@ -656,14 +652,12 @@ class TestResolveToolContextIntrospection:
         assert ctx.user.is_service is True
 
     async def test_opaque_token_introspection_failure_rejected(self, monkeypatch) -> None:
-        from bsvibe_authz import AuthError
+        from fastapi import HTTPException
 
-        async def _fake_verify(_token, _client, _cache):
-            raise AuthError("inactive token")
+        async def _fake_get_current_user(**_kwargs):
+            raise HTTPException(status_code=401, detail="inactive token")
 
-        monkeypatch.setattr("bsgateway.mcp.api._get_introspection_client", lambda: MagicMock())
-        monkeypatch.setattr("bsgateway.mcp.api._get_introspection_cache", lambda: MagicMock())
-        monkeypatch.setattr("bsgateway.mcp.api.verify_opaque_token", _fake_verify)
+        monkeypatch.setattr("bsgateway.mcp.api._authz_get_current_user", _fake_get_current_user)
 
         with pytest.raises(ToolError) as exc:
             await resolve_tool_context(
