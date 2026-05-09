@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
@@ -8,9 +7,6 @@ from uuid import UUID
 
 import asyncpg
 import structlog
-from bsvibe_authz import (
-    AuthError as _AuthzAuthError,
-)
 from bsvibe_authz import (
     CurrentUser as _AuthzCurrentUser,
 )
@@ -41,12 +37,6 @@ from bsvibe_authz import (
 )
 from bsvibe_authz import (
     require_scope as _authz_require_scope,
-)
-from bsvibe_authz import (
-    verify_bootstrap_token as _verify_bootstrap_token,
-)
-from bsvibe_authz import (
-    verify_opaque_token as _verify_opaque_token,
 )
 from fastapi import Depends, HTTPException, Request, status
 
@@ -145,13 +135,18 @@ class GatewayAuthContext:
 
 
 async def get_auth_context(request: Request) -> GatewayAuthContext:
-    """Authenticate via the bsvibe-authz 3-way dispatch.
+    """Authenticate the request and resolve a :class:`GatewayAuthContext`.
 
-    1. ``bsv_admin_*`` → bootstrap path (constant-time hash compare).
-    2. ``bsv_sk_*`` → RFC 7662 introspection (cached) when
-       ``introspection_url`` is configured; otherwise rejected.
-    3. else → existing BSVibe JWT path (via ``app.state.auth_provider``).
-    4. Verify tenant is active (and auto-provision for JWT users).
+    Token resolution:
+
+    1. ``bsv_admin_*`` / ``bsv_sk_*`` / PAT-JWT → delegate to
+       :func:`bsvibe_authz.deps.get_current_user` (canonical bootstrap →
+       opaque → JWT → introspection-fallback dispatch). Library changes
+       cascade automatically — same shape as BSage's ``combined_principal``.
+    2. Plain Supabase user JWT → legacy ``app.state.auth_provider`` so
+       ``app_metadata.role`` and ``app_metadata.tenant_id`` are extracted.
+       The lib's ``parse_user_token`` intentionally drops these.
+    3. Tenant active-check + JWT-path tenant auto-provisioning.
     """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -162,18 +157,14 @@ async def get_auth_context(request: Request) -> GatewayAuthContext:
 
     token = auth_header[7:]
 
-    if token.startswith(BOOTSTRAP_TOKEN_PREFIX):
-        return await _auth_via_bootstrap(token)
+    # Bootstrap and opaque tokens go through bsvibe-authz directly.
+    if token.startswith(BOOTSTRAP_TOKEN_PREFIX) or token.startswith(OPAQUE_TOKEN_PREFIX):
+        return await _auth_via_authz(request, auth_header)
 
-    if token.startswith(OPAQUE_TOKEN_PREFIX):
-        return await _auth_via_introspection(request, token)
-
-    # BSVibe-Auth's device-authorization grant mints PAT JWTs signed with
-    # SERVICE_TOKEN_SIGNING_SECRET (not the user JWT secret), so the
-    # legacy auth_provider.verify_token raises AuthError. The
-    # /api/tokens/introspect endpoint accepts PAT JWTs by jti — fall
-    # through to introspection on JWT failure when the introspection
-    # client is configured.
+    # Plain Supabase user JWT → legacy auth_provider.
+    # PAT JWTs (device grant, signed with SERVICE_TOKEN_SIGNING_SECRET)
+    # fail the legacy provider; the lib's introspection endpoint
+    # accepts them by jti — fall through.
     try:
         return await _auth_via_jwt(request, token)
     except HTTPException as exc:
@@ -182,7 +173,7 @@ async def get_auth_context(request: Request) -> GatewayAuthContext:
             and _looks_like_jwt(token)
             and _get_introspection_client() is not None
         ):
-            return await _auth_via_introspection(request, token)
+            return await _auth_via_authz(request, auth_header)
         raise
 
 
@@ -250,65 +241,34 @@ def _get_introspection_cache() -> IntrospectionCache:
     return _introspection_cache_singleton
 
 
-def _bootstrap_audit_hash(token: str) -> str:
-    """Short SHA-256 prefix for audit logs — never log the raw token."""
-    return hashlib.sha256(token.encode()).hexdigest()[:12]
+async def _auth_via_authz(request: Request, auth_header: str) -> GatewayAuthContext:
+    """Delegate to :func:`bsvibe_authz.deps.get_current_user`.
 
-
-async def _auth_via_bootstrap(token: str) -> GatewayAuthContext:
-    """Verify a ``bsv_admin_*`` bootstrap token via bsvibe-authz."""
-    if not gateway_settings.bootstrap_token_hash:
-        # Path is intentionally disabled — never accept any bsv_admin_ token.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="bootstrap token path is not configured",
-        )
-    # `verify_bootstrap_token` only reads `settings.bootstrap_token_hash`,
-    # so we hand it a stub that skips bsvibe_authz Settings' required
-    # fields (auth_url, openfga_*, …) which are irrelevant here.
-    authz_settings_stub = _AuthzSettings.model_construct(
-        bootstrap_token_hash=gateway_settings.bootstrap_token_hash,
-    )
+    Handles bootstrap, opaque, and PAT-JWT (device-grant) tokens. The lib
+    runs the canonical bootstrap → opaque → JWT → introspection-fallback
+    dispatch internally; we only translate the resulting ``User`` into a
+    :class:`GatewayAuthContext` and verify the tenant is active.
+    """
     try:
-        user = _verify_bootstrap_token(token, authz_settings_stub)
-    except _AuthzAuthError as exc:
-        logger.warning("auth_bootstrap_rejected", token_sha12=_bootstrap_audit_hash(token))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        ) from exc
-
-    logger.info("auth_bootstrap_accepted")
-    return _context_from_user(user, kind="bootstrap")
-
-
-async def _auth_via_introspection(request: Request, token: str) -> GatewayAuthContext:
-    """Verify an opaque ``bsv_sk_*`` token via RFC 7662 introspection."""
-    client = _get_introspection_client()
-    if client is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="opaque token introspection is not configured",
+        user = await _authz_get_current_user(
+            authorization=auth_header,
+            settings=_authz_settings(),
+            introspection_client=_get_introspection_client(),
+            introspection_cache=_get_introspection_cache(),
         )
-    cache = _get_introspection_cache()
-    try:
-        user = await _verify_opaque_token(token, client, cache)
-    except _AuthzAuthError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        ) from exc
+    except HTTPException:
+        # bsvibe-authz already shapes 401.
+        raise
 
-    # Opaque tokens carry tenant scope inside the introspection payload —
-    # if the token names a tenant, verify it's active. Tokens with no
-    # tenant claim are treated as cross-tenant admin/service tokens.
+    # Tokens carrying a tenant claim must reference an active tenant.
+    # Bootstrap and "*"-scope tokens are tenant-less by design.
     if user.active_tenant_id:
         try:
             tenant_uuid = UUID(user.active_tenant_id)
         except ValueError as err:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid tenant_id in opaque token",
+                detail="Invalid tenant_id in token",
             ) from err
         from bsgateway.tenant.repository import TenantRepository
 
@@ -317,8 +277,29 @@ async def _auth_via_introspection(request: Request, token: str) -> GatewayAuthCo
         repo = TenantRepository(pool, cache=cache_mgr)
         await _verify_tenant_active(repo, tenant_uuid)
 
-    logger.info("auth_opaque_accepted", sub=user.id)
-    return _context_from_user(user, kind="opaque")
+    logger.info("auth_authz_accepted", sub=user.id, scopes=list(user.scope))
+    kind = "bootstrap" if user.is_service and "*" in user.scope else "opaque"
+    return _context_from_user(user, kind=kind)
+
+
+def _authz_settings() -> _AuthzSettings:
+    """Build a :class:`bsvibe_authz.Settings` from BSGateway config.
+
+    Constructed per-call so test patches against ``gateway_settings`` take
+    effect without a process restart. OpenFGA fields are placeholders —
+    BSGateway does not call OpenFGA from this dispatch.
+    """
+    return _AuthzSettings.model_construct(
+        bsvibe_auth_url=gateway_settings.bsvibe_auth_url or "",
+        openfga_api_url="",
+        openfga_store_id="",
+        openfga_auth_model_id="",
+        service_token_signing_secret="",
+        bootstrap_token_hash=gateway_settings.bootstrap_token_hash,
+        introspection_url=gateway_settings.introspection_url,
+        introspection_client_id=gateway_settings.introspection_client_id,
+        introspection_client_secret=gateway_settings.introspection_client_secret,
+    )
 
 
 def _context_from_user(user: _AuthzUser, *, kind: str) -> GatewayAuthContext:
