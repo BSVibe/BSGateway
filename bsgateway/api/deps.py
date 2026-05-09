@@ -168,7 +168,22 @@ async def get_auth_context(request: Request) -> GatewayAuthContext:
     if token.startswith(OPAQUE_TOKEN_PREFIX):
         return await _auth_via_introspection(request, token)
 
-    return await _auth_via_jwt(request, token)
+    # BSVibe-Auth's device-authorization grant mints PAT JWTs signed with
+    # SERVICE_TOKEN_SIGNING_SECRET (not the user JWT secret), so the
+    # legacy auth_provider.verify_token raises AuthError. The
+    # /api/tokens/introspect endpoint accepts PAT JWTs by jti — fall
+    # through to introspection on JWT failure when the introspection
+    # client is configured.
+    try:
+        return await _auth_via_jwt(request, token)
+    except HTTPException as exc:
+        if (
+            exc.status_code == status.HTTP_401_UNAUTHORIZED
+            and _looks_like_jwt(token)
+            and _get_introspection_client() is not None
+        ):
+            return await _auth_via_introspection(request, token)
+        raise
 
 
 async def _verify_tenant_active(
@@ -195,6 +210,16 @@ async def _verify_tenant_active(
 # ---------------------------------------------------------------------------
 _introspection_client_singleton: IntrospectionClient | None = None
 _introspection_cache_singleton: IntrospectionCache | None = None
+
+
+def _looks_like_jwt(token: str) -> bool:
+    """Cheap structural check: three base64url segments separated by dots.
+
+    Gates the introspection fallback so a stray garbage string doesn't
+    trigger a network round-trip to the auth server.
+    """
+    parts = token.split(".")
+    return len(parts) == 3 and all(p for p in parts)
 
 
 def _reset_dispatch_singletons() -> None:
