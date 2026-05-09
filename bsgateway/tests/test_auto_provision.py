@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsgateway.api.app import create_app
-from bsgateway.tests.conftest import make_bsvibe_user, make_mock_pool
+from bsgateway.tests.conftest import make_authz_user, make_mock_pool
 
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 
@@ -40,19 +40,26 @@ def _make_tenant_row(
     }
 
 
+def _patch_authz_user(user):
+    """Stub the lib's ``get_current_user`` (called directly, not via Depends)
+    so ``_auth_via_authz`` runs the auto-provision branch on a known user."""
+    return patch(
+        "bsgateway.api.deps._authz_get_current_user",
+        new=AsyncMock(return_value=user),
+    )
+
+
 class TestAutoProvision:
     """Tenant should be auto-created on first JWT access."""
 
     def test_new_tenant_auto_created(self, mock_pool):
         """JWT with unknown tenant_id auto-creates the tenant."""
         tid = uuid4()
-        user = make_bsvibe_user(tenant_id=tid, role="admin")
+        user = make_authz_user(tenant_id=tid, role="admin")
         app = create_app()
         app.state.db_pool = mock_pool
         app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
         app.state.redis = None
-        app.state.auth_provider = AsyncMock()
-        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
         client = TestClient(app, raise_server_exceptions=False)
 
         # get_tenant returns None (new tenant)
@@ -61,6 +68,7 @@ class TestAutoProvision:
         created_row = _make_tenant_row(tenant_id=tid, name=str(tid)[:8], slug=str(tid)[:8])
 
         with (
+            _patch_authz_user(user),
             patch(
                 "bsgateway.tenant.repository.TenantRepository.get_tenant",
                 new_callable=AsyncMock,
@@ -84,21 +92,22 @@ class TestAutoProvision:
     def test_deactivated_tenant_still_blocked(self, mock_pool):
         """Explicitly deactivated tenant still gets 403."""
         tid = uuid4()
-        user = make_bsvibe_user(tenant_id=tid, role="admin")
+        user = make_authz_user(tenant_id=tid, role="admin")
         app = create_app()
         app.state.db_pool = mock_pool
         app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
         app.state.redis = None
-        app.state.auth_provider = AsyncMock()
-        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
         client = TestClient(app, raise_server_exceptions=False)
 
         deactivated_row = _make_tenant_row(tenant_id=tid, is_active=False)
 
-        with patch(
-            "bsgateway.tenant.repository.TenantRepository.get_tenant",
-            new_callable=AsyncMock,
-            return_value=deactivated_row,
+        with (
+            _patch_authz_user(user),
+            patch(
+                "bsgateway.tenant.repository.TenantRepository.get_tenant",
+                new_callable=AsyncMock,
+                return_value=deactivated_row,
+            ),
         ):
             resp = client.get(
                 f"/api/v1/tenants/{tid}",
@@ -111,18 +120,17 @@ class TestAutoProvision:
     def test_existing_active_tenant_no_create(self, mock_pool):
         """Existing active tenant does not trigger create."""
         tid = uuid4()
-        user = make_bsvibe_user(tenant_id=tid, role="admin")
+        user = make_authz_user(tenant_id=tid, role="admin")
         app = create_app()
         app.state.db_pool = mock_pool
         app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
         app.state.redis = None
-        app.state.auth_provider = AsyncMock()
-        app.state.auth_provider.verify_token = AsyncMock(return_value=user)
         client = TestClient(app, raise_server_exceptions=False)
 
         existing_row = _make_tenant_row(tenant_id=tid)
 
         with (
+            _patch_authz_user(user),
             patch(
                 "bsgateway.tenant.repository.TenantRepository.get_tenant",
                 new_callable=AsyncMock,

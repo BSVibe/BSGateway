@@ -95,7 +95,6 @@ def require_scope(scope: str) -> Callable[..., Awaitable[None]]:
 
 if TYPE_CHECKING:
     from bsgateway.audit.service import AuditService
-    from bsgateway.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -137,58 +136,15 @@ class GatewayAuthContext:
 async def get_auth_context(request: Request) -> GatewayAuthContext:
     """Authenticate the request and resolve a :class:`GatewayAuthContext`.
 
-    Token resolution:
-
-    1. ``bsv_admin_*`` / ``bsv_sk_*`` / PAT-JWT → delegate to
-       :func:`bsvibe_authz.deps.get_current_user` (canonical bootstrap →
-       opaque → JWT → introspection-fallback dispatch). Library changes
-       cascade automatically — same shape as BSage's ``combined_principal``.
-    2. Plain Supabase user JWT → legacy ``app.state.auth_provider`` so
-       ``app_metadata.role`` and ``app_metadata.tenant_id`` are extracted.
-       The lib's ``parse_user_token`` intentionally drops these.
-    3. Tenant active-check + JWT-path tenant auto-provisioning.
+    Fully delegated to :func:`bsvibe_authz.deps.get_current_user` — same
+    BSage pattern. The lib runs bootstrap → opaque → JWT (via JWKS) →
+    PAT-JWT-introspection fallback, returning a :class:`User` with
+    ``app_metadata`` lifted off the verified JWT payload (bsvibe-authz
+    PR #22). BSGateway's job is only to translate that User into a
+    :class:`GatewayAuthContext` and run the tenant active-check +
+    auto-provisioning.
     """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header",
-        )
-
-    token = auth_header[7:]
-
-    # Bootstrap and opaque tokens go through bsvibe-authz directly.
-    if token.startswith(BOOTSTRAP_TOKEN_PREFIX) or token.startswith(OPAQUE_TOKEN_PREFIX):
-        return await _auth_via_authz(request, auth_header)
-
-    # Plain Supabase user JWT → legacy auth_provider.
-    # PAT JWTs (device grant, signed with SERVICE_TOKEN_SIGNING_SECRET)
-    # fail the legacy provider; the lib's introspection endpoint
-    # accepts them by jti — fall through.
-    try:
-        return await _auth_via_jwt(request, token)
-    except HTTPException as exc:
-        if (
-            exc.status_code == status.HTTP_401_UNAUTHORIZED
-            and _looks_like_jwt(token)
-            and _get_introspection_client() is not None
-        ):
-            return await _auth_via_authz(request, auth_header)
-        raise
-
-
-async def _verify_tenant_active(
-    repo: TenantRepository,
-    tenant_id: UUID,
-) -> None:
-    """Verify that a tenant exists and is active. Raises HTTPException if not."""
-    tenant_row = await repo.get_tenant(tenant_id)
-    if not tenant_row or not tenant_row["is_active"]:
-        logger.warning("auth_failed", reason="tenant_inactive", tenant_id=str(tenant_id))
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant is deactivated",
-        )
+    return await _auth_via_authz(request)
 
 
 # ---------------------------------------------------------------------------
@@ -201,16 +157,6 @@ async def _verify_tenant_active(
 # ---------------------------------------------------------------------------
 _introspection_client_singleton: IntrospectionClient | None = None
 _introspection_cache_singleton: IntrospectionCache | None = None
-
-
-def _looks_like_jwt(token: str) -> bool:
-    """Cheap structural check: three base64url segments separated by dots.
-
-    Gates the introspection fallback so a stray garbage string doesn't
-    trigger a network round-trip to the auth server.
-    """
-    parts = token.split(".")
-    return len(parts) == 3 and all(p for p in parts)
 
 
 def _reset_dispatch_singletons() -> None:
@@ -241,27 +187,27 @@ def _get_introspection_cache() -> IntrospectionCache:
     return _introspection_cache_singleton
 
 
-async def _auth_via_authz(request: Request, auth_header: str) -> GatewayAuthContext:
-    """Delegate to :func:`bsvibe_authz.deps.get_current_user`.
+async def _auth_via_authz(request: Request) -> GatewayAuthContext:
+    """Delegate to :func:`bsvibe_authz.deps.get_current_user` + tenant ops.
 
-    Handles bootstrap, opaque, and PAT-JWT (device-grant) tokens. The lib
-    runs the canonical bootstrap → opaque → JWT → introspection-fallback
-    dispatch internally; we only translate the resulting ``User`` into a
-    :class:`GatewayAuthContext` and verify the tenant is active.
+    The lib runs the canonical 4-way dispatch (bootstrap → opaque →
+    user-JWT-via-JWKS → PAT-JWT-introspection-fallback) and returns a
+    :class:`User` with ``app_metadata`` / ``user_metadata`` lifted from
+    the verified JWT payload (bsvibe-authz #22). We only:
+
+    * translate it into a :class:`GatewayAuthContext`,
+    * verify the tenant is active, and
+    * auto-provision the tenant row on first access for user JWTs.
     """
-    try:
-        user = await _authz_get_current_user(
-            authorization=auth_header,
-            settings=_authz_settings(),
-            introspection_client=_get_introspection_client(),
-            introspection_cache=_get_introspection_cache(),
-        )
-    except HTTPException:
-        # bsvibe-authz already shapes 401.
-        raise
+    auth_header = request.headers.get("Authorization") or ""
+    user = await _authz_get_current_user(
+        authorization=auth_header,
+        settings=_authz_settings(),
+        introspection_client=_get_introspection_client(),
+        introspection_cache=_get_introspection_cache(),
+    )
 
-    # Tokens carrying a tenant claim must reference an active tenant.
-    # Bootstrap and "*"-scope tokens are tenant-less by design.
+    # Bootstrap / "*"-scope tokens are tenant-less by design.
     if user.active_tenant_id:
         try:
             tenant_uuid = UUID(user.active_tenant_id)
@@ -270,16 +216,35 @@ async def _auth_via_authz(request: Request, auth_header: str) -> GatewayAuthCont
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid tenant_id in token",
             ) from err
+
         from bsgateway.tenant.repository import TenantRepository
 
         pool: asyncpg.Pool = request.app.state.db_pool
         cache_mgr = getattr(request.app.state, "cache", None)
         repo = TenantRepository(pool, cache=cache_mgr)
-        await _verify_tenant_active(repo, tenant_uuid)
+        tenant_row = await repo.get_tenant(tenant_uuid)
 
-    logger.info("auth_authz_accepted", sub=user.id, scopes=list(user.scope))
-    kind = "bootstrap" if user.is_service and "*" in user.scope else "opaque"
-    return _context_from_user(user, kind=kind)
+        if tenant_row and not tenant_row["is_active"]:
+            logger.warning("auth_failed", reason="tenant_inactive", tenant_id=str(tenant_uuid))
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant is deactivated",
+            )
+
+        # User-JWT path: auto-provision the tenant on first access.
+        # Bootstrap / opaque service-key tokens never trigger this — the
+        # tenant must already exist (provisioned out-of-band).
+        if not tenant_row and not user.is_service:
+            short_id = str(tenant_uuid)[:8]
+            await repo.provision_tenant(
+                tenant_id=tenant_uuid,
+                name=short_id,
+                slug=short_id,
+            )
+            logger.info("tenant_auto_provisioned", tenant_id=str(tenant_uuid))
+
+    logger.info("auth_accepted", sub=user.id, scopes=list(user.scope))
+    return _context_from_user(user)
 
 
 def _authz_settings() -> _AuthzSettings:
@@ -299,17 +264,32 @@ def _authz_settings() -> _AuthzSettings:
         introspection_url=gateway_settings.introspection_url,
         introspection_client_id=gateway_settings.introspection_client_id,
         introspection_client_secret=gateway_settings.introspection_client_secret,
+        # User-JWT verification (Supabase / BSVibe-Auth). JWKS preferred;
+        # falls back to static public_key, then symmetric secret.
+        user_jwt_jwks_url=gateway_settings.user_jwt_jwks_url or None,
+        user_jwt_public_key=gateway_settings.user_jwt_public_key or None,
+        user_jwt_secret=gateway_settings.user_jwt_secret or None,
+        user_jwt_algorithm=gateway_settings.user_jwt_algorithm,
+        user_jwt_audience=gateway_settings.user_jwt_audience,
+        user_jwt_issuer=gateway_settings.user_jwt_issuer or None,
     )
 
 
-def _context_from_user(user: _AuthzUser, *, kind: str) -> GatewayAuthContext:
+def _context_from_user(user: _AuthzUser) -> GatewayAuthContext:
     """Translate a bsvibe-authz :class:`User` into a BSGateway context.
 
-    Bootstrap users have no tenant — we use the all-zeros UUID so callers
-    that read ``ctx.tenant_id`` don't blow up. ``is_admin`` is true when
-    the user holds the ``"*"`` super-scope (only bootstrap by design).
+    ``is_admin`` is true when (a) the user holds the ``"*"`` super-scope
+    (bootstrap) or (b) ``app_metadata.role == "admin"`` (Supabase
+    admin claim — bsvibe-authz #22 lifts ``app_metadata`` off the
+    verified JWT). Bootstrap / service-key tokens without a tenant
+    claim get the all-zeros UUID so callers that read ``ctx.tenant_id``
+    don't blow up.
+
+    ``identity.kind`` reflects the token shape: ``user`` for verified
+    user JWTs (carry ``app_metadata``), ``apikey`` for bootstrap,
+    opaque, and PAT JWTs (introspection response).
     """
-    is_admin = "*" in user.scope
+    is_admin = "*" in user.scope or user.app_metadata.get("role") == "admin"
     if user.active_tenant_id:
         try:
             tenant_id = UUID(user.active_tenant_id)
@@ -320,84 +300,17 @@ def _context_from_user(user: _AuthzUser, *, kind: str) -> GatewayAuthContext:
             ) from err
     else:
         tenant_id = UUID(int=0)
+
+    # Distinguish a real user JWT (carries Supabase app_metadata) from
+    # a service token (bootstrap / opaque introspection / PAT).
+    kind = "user" if user.app_metadata and not user.is_service else "apikey"
+
     return GatewayAuthContext(
         identity=AuthIdentity(
-            kind="apikey" if kind != "user" else "user",
+            kind=kind,
             id=user.id,
             email=user.email,
             scopes=list(user.scope),
-        ),
-        tenant_id=tenant_id,
-        is_admin=is_admin,
-    )
-
-
-async def _auth_via_jwt(request: Request, token: str) -> GatewayAuthContext:
-    """Authenticate using BSVibe JWT."""
-    from bsvibe_auth import AuthError
-
-    auth_provider = request.app.state.auth_provider
-
-    try:
-        user = await auth_provider.verify_token(token)
-    except AuthError as e:
-        logger.debug("auth_failed", error=e.message)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=e.message,
-        ) from e
-
-    # Extract tenant_id from app_metadata
-    tenant_id_str = user.app_metadata.get("tenant_id")
-    if not tenant_id_str:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No tenant_id in user metadata",
-        )
-
-    try:
-        tenant_id = UUID(tenant_id_str)
-    except ValueError as err:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid tenant_id format",
-        ) from err
-
-    # Verify tenant exists — auto-provision on first access
-    from bsgateway.tenant.repository import TenantRepository
-
-    pool: asyncpg.Pool = request.app.state.db_pool
-    cache = getattr(request.app.state, "cache", None)
-    repo = TenantRepository(pool, cache=cache)
-    tenant_row = await repo.get_tenant(tenant_id)
-
-    if tenant_row and not tenant_row["is_active"]:
-        logger.warning("auth_failed", reason="tenant_inactive", tenant_id=str(tenant_id))
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant is deactivated",
-        )
-
-    if not tenant_row:
-        # Auto-provision: BSVibe auth is source of truth
-        short_id = str(tenant_id)[:8]
-        tenant_row = await repo.provision_tenant(
-            tenant_id=tenant_id,
-            name=short_id,
-            slug=short_id,
-        )
-        logger.info("tenant_auto_provisioned", tenant_id=str(tenant_id))
-
-    role = user.app_metadata.get("role", "member")
-    is_admin = role == "admin"
-
-    logger.info("auth_success", tenant_id=str(tenant_id), user_id=user.id, is_admin=is_admin)
-
-    return GatewayAuthContext(
-        identity=AuthIdentity(
-            kind="user",
-            id=user.id,
-            email=user.email,
         ),
         tenant_id=tenant_id,
         is_admin=is_admin,
