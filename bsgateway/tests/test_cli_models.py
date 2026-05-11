@@ -522,3 +522,45 @@ def test_remove_dry_run_skips_http(runner: CliRunner, fake_client: MagicMock) ->
     payload = json.loads(result.stdout)
     assert payload["method"] == "DELETE"
     assert payload["path"] == "/admin/models/55555555-5555-5555-5555-555555555555"
+
+
+def test_remove_rejects_empty_string_before_http(runner: CliRunner, fake_client: MagicMock) -> None:
+    """Phase 8 dogfood (2026-05-11) finding #9: `models remove ""` used
+    to send DELETE /admin/models/, hit FastAPI's redirect_slashes 307,
+    and be misinterpreted as success (`{deleted: true, id: ""}`) while
+    the row remained. The CLI must reject empty / non-UUID arguments
+    at the boundary instead of letting them flow through to the wire."""
+    from bsgateway.cli.main import app
+
+    result = runner.invoke(app, _base_args("models", "remove", ""))
+    assert result.exit_code != 0
+    # CLI must not have even attempted the HTTP call.
+    fake_client.delete.assert_not_awaited()
+
+
+def test_remove_rejects_non_uuid(runner: CliRunner, fake_client: MagicMock) -> None:
+    """The argument help says 'uuid'; the implementation enforces it.
+    Stops `models remove dogfood-gpt5-mini` from going to the wire and
+    producing a confusing 422."""
+    from bsgateway.cli.main import app
+
+    result = runner.invoke(app, _base_args("models", "remove", "dogfood-gpt5-mini"))
+    assert result.exit_code != 0
+    fake_client.delete.assert_not_awaited()
+
+
+def test_remove_treats_3xx_redirect_as_error(runner: CliRunner, fake_client: MagicMock) -> None:
+    """A 3xx response (e.g. FastAPI's redirect_slashes 307) must not
+    masquerade as success. With the empty-string guard above this
+    shouldn't fire in practice for the CLI, but the same defensive
+    check protects against any other path-arity edge that returns a
+    3xx."""
+    from bsgateway.cli.main import app
+
+    fake_client.delete.return_value = _resp(307, None)
+    result = runner.invoke(
+        app,
+        _base_args("models", "remove", "22222222-2222-2222-2222-222222222222"),
+    )
+    assert result.exit_code != 0
+    fake_client.delete.assert_awaited_once()
