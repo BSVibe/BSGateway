@@ -98,17 +98,16 @@ def make_loopback_caller(
     * Forwards the resolved tenant id on ``X-Tenant-ID`` so tenant-
       scoped REST routes pick up the same active tenant the MCP
       caller has.
+    * Forwards the user's original ``Authorization`` header from the
+      MCP request context-var so admin REST routes (which `Depends`
+      on ``get_current_user``) see the same principal the MCP layer
+      already verified. Without this, every admin tool 401s on its
+      own loopback hop (Round 4 Finding 15).
     * Forwards explicit headers from the handler (e.g. workers-register
       passes ``X-Install-Token`` here, never in the body).
     * Re-raises non-2xx responses as :class:`httpx.HTTPStatusError`
       so the dispatcher's audit emit step never fires on REST
       failures.
-
-    NOTE: this caller does NOT re-mint a bearer token on the loopback —
-    the REST surface and MCP transport share the same FastAPI app, so
-    auth has already been verified on the way in. Per-route auth deps
-    that demand a JWT can opt out by accepting service-token semantics,
-    which is how TASK-005 keeps the contract simple.
     """
 
     async def caller(
@@ -125,6 +124,14 @@ def make_loopback_caller(
         active_tenant = getattr(getattr(ctx, "user", None), "active_tenant_id", None)
         if active_tenant is not None:
             merged_headers["X-Tenant-ID"] = str(active_tenant)
+        # Forward the user's Authorization so admin REST routes that
+        # Depends(get_current_user) authenticate as the same principal
+        # the MCP transport already verified. The header is captured by
+        # the streamable-HTTP ASGI shim into _request_headers_var.
+        incoming = _request_headers_var.get() or {}
+        incoming_auth = incoming.get("authorization") or incoming.get("Authorization")
+        if incoming_auth:
+            merged_headers["Authorization"] = incoming_auth
         if headers:
             merged_headers.update(headers)
 
