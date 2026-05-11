@@ -507,9 +507,14 @@ class TestBuildMcpServer:
         )
         result = await handler(req)
         assert isinstance(result, ServerResult)
-        # Successful call: not an error, structuredContent carries the dict.
+        # Successful call: not an error. The result dict is JSON-serialized
+        # into the wire-required TextContent block (Round 4 Finding 22).
         assert result.root.isError is False
-        assert result.root.structuredContent == {"sum": 5}
+        import json
+
+        text_blocks = [c for c in result.root.content if c.type == "text"]
+        assert text_blocks, "expected a text content block"
+        assert json.loads(text_blocks[0].text) == {"sum": 5}
 
     async def test_call_tool_handler_translates_tool_error(self) -> None:
         reg = ToolRegistry()

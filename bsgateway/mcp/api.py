@@ -44,6 +44,9 @@ from bsvibe_authz.deps import get_current_user as _authz_get_current_user
 from fastapi import HTTPException
 from mcp.server import Server as McpServer
 from mcp.types import (
+    TextContent,
+)
+from mcp.types import (
     Tool as McpTool,
 )
 from pydantic import BaseModel, ValidationError
@@ -365,13 +368,23 @@ def build_mcp_server(
         return registry.list_tools()
 
     @server.call_tool()
-    async def _call_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def _call_tool(tool_name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # In-process callers (TASK-005 will plumb the HTTP request
         # headers via a contextvar). We pass an empty mapping today;
         # tests inject a resolver that returns a pre-built context.
+        #
+        # Wrap the registry's dict/list result into [TextContent] —
+        # the MCP SDK's CallToolResult.content must be a list of
+        # typed ContentBlocks (TextContent, ImageContent, ...). Round 4
+        # Finding 22 surfaced this once F15 unblocked the loopback auth
+        # path: every list-returning tool failed with 72 validation
+        # errors trying to fit a plain dict into the ContentBlock union.
         try:
+            import json
+
             ctx = await context_resolver({})
-            return await registry.call_tool(tool_name, arguments, ctx)
+            result = await registry.call_tool(tool_name, arguments, ctx)
+            return [TextContent(type="text", text=json.dumps(result, default=str))]
         except ToolError as exc:
             # The SDK turns a raised exception into a CallToolResult
             # with isError=True whose first text block carries
