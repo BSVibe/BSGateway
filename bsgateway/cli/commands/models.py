@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
+from uuid import UUID
 
 import structlog
 import typer
@@ -329,8 +330,26 @@ def remove_cmd(
         help="Treat 404 as success (idempotent delete).",
     ),
 ) -> None:
+    # Validate up-front so empty / non-UUID arguments fail at the CLI
+    # boundary instead of producing a misleading 'deleted: true' caused
+    # by a trailing-slash 307 redirect from FastAPI's redirect_slashes.
+    # Phase 8 dogfood (2026-05-11) finding #9: `bsgateway models remove
+    # ""` sent DELETE /admin/models/, got a 307 (< 400), and the CLI
+    # reported success while the row was still present.
+    stripped = model_id.strip()
+    if not stripped:
+        raise typer.BadParameter("model_id must not be empty.", param_hint="MODEL_ID")
+    try:
+        UUID(stripped)
+    except ValueError as exc:
+        raise typer.BadParameter(
+            f"model_id must be a UUID (got {model_id!r}). "
+            "Tip: `bsgateway models list` shows each row's id.",
+            param_hint="MODEL_ID",
+        ) from exc
+
     obj = ctx.obj
-    path = f"/admin/models/{model_id}"
+    path = f"/admin/models/{stripped}"
 
     if obj.dry_run:
         _emit_dry_run(obj, {"method": "DELETE", "path": path})
@@ -345,13 +364,21 @@ def remove_cmd(
 
     resp = _run(_go)
     if resp.status_code == 404 and if_exists:
-        obj.formatter.emit({"deleted": False, "id": model_id, "reason": "not_found"})
+        obj.formatter.emit({"deleted": False, "id": stripped, "reason": "not_found"})
         return
     if resp.status_code >= 400:
         _emit_http_error(resp)
         raise typer.Exit(code=1)
+    # Defensive: 3xx redirects (e.g. trailing-slash 307 when the path
+    # parameter was empty) are not success. Treat as an error too.
+    if resp.status_code >= 300:
+        typer.echo(
+            f"Error: unexpected {resp.status_code} response from DELETE {path}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
-    obj.formatter.emit({"deleted": True, "id": model_id})
+    obj.formatter.emit({"deleted": True, "id": stripped})
 
 
 __all__ = ["app"]
