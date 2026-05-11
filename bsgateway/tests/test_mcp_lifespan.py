@@ -150,6 +150,55 @@ class TestMakeLoopbackCaller:
         result = await caller(ctx, "DELETE", "/empty")
         assert result is None
 
+    async def test_forwards_authorization_from_request_headers_var(self):
+        """Round 4 Finding 15: loopback caller must forward the MCP
+        request's Authorization header so the inner admin REST hop
+        authenticates as the same principal the MCP transport already
+        verified. Without this, every admin tool 401s on its own loopback."""
+        from bsgateway.mcp.lifespan import _request_headers_var
+
+        captured: dict[str, str] = {}
+        app = FastAPI()
+
+        @app.get("/api/v1/auth-probe")
+        async def auth_probe(request: Request) -> dict[str, str]:
+            captured["auth"] = request.headers.get("authorization", "")
+            return {"ok": "yes"}
+
+        caller = make_loopback_caller(app)
+        ctx = MagicMock()
+        ctx.user.scope = ["*"]
+        ctx.user.is_service = False
+        ctx.user.active_tenant_id = None
+
+        token = _request_headers_var.set({"authorization": "Bearer the-user-pat"})
+        try:
+            await caller(ctx, "GET", "/auth-probe")
+        finally:
+            _request_headers_var.reset(token)
+        assert captured["auth"] == "Bearer the-user-pat"
+
+    async def test_no_authorization_when_context_var_empty(self):
+        """Outside an MCP request (no headers stashed), the loopback
+        caller does not invent an Authorization header — the REST hop
+        will 401 normally, which is the desired failure mode."""
+        captured: dict[str, str] = {}
+        app = FastAPI()
+
+        @app.get("/api/v1/auth-probe2")
+        async def auth_probe2(request: Request) -> dict[str, str]:
+            captured["auth"] = request.headers.get("authorization", "<missing>")
+            return {"ok": "yes"}
+
+        caller = make_loopback_caller(app)
+        ctx = MagicMock()
+        ctx.user.scope = ["*"]
+        ctx.user.is_service = False
+        ctx.user.active_tenant_id = None
+
+        await caller(ctx, "GET", "/auth-probe2")
+        assert captured["auth"] == "<missing>"
+
     async def test_propagates_query_params(self):
         captured: dict[str, str] = {}
         app = FastAPI()
