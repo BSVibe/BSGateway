@@ -40,6 +40,7 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from bsgateway.mcp.admin_tools import LoopbackCaller, register_admin_tools
 from bsgateway.mcp.api import (
     ToolContext,
+    ToolError,
     ToolRegistry,
     build_mcp_server,
     resolve_tool_context,
@@ -105,9 +106,12 @@ def make_loopback_caller(
       own loopback hop (Round 4 Finding 15).
     * Forwards explicit headers from the handler (e.g. workers-register
       passes ``X-Install-Token`` here, never in the body).
-    * Re-raises non-2xx responses as :class:`httpx.HTTPStatusError`
-      so the dispatcher's audit emit step never fires on REST
-      failures.
+    * Translates non-2xx responses into typed :class:`ToolError` with
+      stable wire codes (``not_found``, ``unauthenticated``,
+      ``permission_denied``, ``invalid_input``, ``internal_error``)
+      and a redacted message — never the raw ``httpx.HTTPStatusError``
+      string, which carries the internal ``http://mcp-loopback/...``
+      URL and the MDN docs link. Round 4 Finding 20.
     """
 
     async def caller(
@@ -146,7 +150,8 @@ def make_loopback_caller(
                 params=params,
                 headers=merged_headers or None,
             )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            raise _translate_loopback_error(resp, method, path)
         if resp.status_code == 204 or not resp.content:
             return None
         try:
@@ -155,6 +160,60 @@ def make_loopback_caller(
             return resp.text
 
     return caller
+
+
+# ---------------------------------------------------------------------------
+# Loopback error translation — never leak http://mcp-loopback URL or raw
+# httpx error formatting onto the wire (Round 4 Finding 20).
+# ---------------------------------------------------------------------------
+
+
+# Map REST status codes → stable ToolError wire codes. Anything outside this
+# table falls back to ``internal_error``.
+_LOOPBACK_STATUS_TO_TOOL_CODE: dict[int, str] = {
+    400: "invalid_input",
+    401: "unauthenticated",
+    403: "permission_denied",
+    404: "not_found",
+    409: "conflict",
+    422: "invalid_input",
+    429: "rate_limited",
+}
+
+
+def _translate_loopback_error(resp: httpx.Response, method: str, path: str) -> ToolError:
+    """Build a redacted ToolError for a non-2xx loopback response.
+
+    Two requirements:
+    1. The wire message MUST NOT include the internal ``http://mcp-loopback``
+       URL or the MDN docs hint that ``httpx.HTTPStatusError`` would
+       otherwise carry. Surface the upstream status + (when JSON) the
+       backend's own ``detail`` string — never the raw httpx string.
+    2. The structured log keeps the full context (status, path, body)
+       for operators, but the wire log keeps only the status + tool code.
+    """
+    code = _LOOPBACK_STATUS_TO_TOOL_CODE.get(resp.status_code, "internal_error")
+    # Try to lift the backend's ``detail`` field (FastAPI's standard error
+    # body) for the wire message. Fall back to a generic phrase that
+    # preserves the status code but no internal URL.
+    detail: str | None = None
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        raw_detail = body.get("detail")
+        if isinstance(raw_detail, str) and raw_detail:
+            detail = raw_detail
+    message = detail or f"upstream returned HTTP {resp.status_code}"
+    logger.info(
+        "mcp_loopback_error",
+        status=resp.status_code,
+        method=method,
+        path=path,
+        code=code,
+    )
+    return ToolError(code=code, message=message)
 
 
 # ---------------------------------------------------------------------------

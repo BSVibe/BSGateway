@@ -315,3 +315,105 @@ def _no_real_introspection(monkeypatch):
 
     monkeypatch.setattr(deps, "_get_introspection_client", lambda: None)
     monkeypatch.setattr(deps, "_get_introspection_cache", lambda: None)
+
+
+# ---------------------------------------------------------------------------
+# Round 4 Finding 20 — loopback errors never leak internal URL on the wire
+# ---------------------------------------------------------------------------
+
+
+class TestLoopbackErrorTranslation:
+    async def test_404_becomes_toolerror_not_found_without_internal_url(self):
+        from bsgateway.mcp.api import ToolError
+
+        app = FastAPI()
+
+        @app.delete("/api/v1/models/00000000-0000-0000-0000-000000000000")
+        async def gone() -> dict[str, str]:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="Model not found")
+
+        caller = make_loopback_caller(app)
+        ctx = MagicMock()
+        ctx.user.scope = ["*"]
+        ctx.user.is_service = False
+        ctx.user.active_tenant_id = None
+
+        with pytest.raises(ToolError) as excinfo:
+            await caller(ctx, "DELETE", "/models/00000000-0000-0000-0000-000000000000")
+        assert excinfo.value.code == "not_found"
+        # Wire message preserves the backend's user-facing detail …
+        assert "Model not found" in excinfo.value.message
+        # … but NEVER the internal loopback URL or the MDN docs link
+        # that httpx.HTTPStatusError would otherwise carry.
+        assert "mcp-loopback" not in excinfo.value.message
+        assert "developer.mozilla.org" not in excinfo.value.message
+
+    async def test_401_becomes_toolerror_unauthenticated(self):
+        from bsgateway.mcp.api import ToolError
+
+        app = FastAPI()
+
+        @app.get("/api/v1/protected")
+        async def protected() -> dict[str, str]:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=401, detail="bad token")
+
+        caller = make_loopback_caller(app)
+        ctx = MagicMock()
+        ctx.user.scope = ["*"]
+        ctx.user.is_service = False
+        ctx.user.active_tenant_id = None
+
+        with pytest.raises(ToolError) as excinfo:
+            await caller(ctx, "GET", "/protected")
+        assert excinfo.value.code == "unauthenticated"
+        assert "mcp-loopback" not in excinfo.value.message
+
+    async def test_500_becomes_toolerror_internal_error_with_status_only(self):
+        from bsgateway.mcp.api import ToolError
+
+        app = FastAPI()
+
+        @app.get("/api/v1/broken")
+        async def broken() -> dict[str, str]:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=500, detail="boom")
+
+        caller = make_loopback_caller(app)
+        ctx = MagicMock()
+        ctx.user.scope = ["*"]
+        ctx.user.is_service = False
+        ctx.user.active_tenant_id = None
+
+        with pytest.raises(ToolError) as excinfo:
+            await caller(ctx, "GET", "/broken")
+        assert excinfo.value.code == "internal_error"
+        assert "mcp-loopback" not in excinfo.value.message
+
+    async def test_non_json_error_body_falls_back_to_status_message(self):
+        from fastapi.responses import PlainTextResponse
+
+        from bsgateway.mcp.api import ToolError
+
+        app = FastAPI()
+
+        @app.get("/api/v1/text-error")
+        async def text_error() -> PlainTextResponse:
+            return PlainTextResponse("rate limited", status_code=429)
+
+        caller = make_loopback_caller(app)
+        ctx = MagicMock()
+        ctx.user.scope = ["*"]
+        ctx.user.is_service = False
+        ctx.user.active_tenant_id = None
+
+        with pytest.raises(ToolError) as excinfo:
+            await caller(ctx, "GET", "/text-error")
+        assert excinfo.value.code == "rate_limited"
+        assert "mcp-loopback" not in excinfo.value.message
+        # Generic fallback message — preserves status but no URL
+        assert "429" in excinfo.value.message
