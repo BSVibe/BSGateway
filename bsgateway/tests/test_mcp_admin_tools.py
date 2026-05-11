@@ -690,3 +690,55 @@ async def test_every_admin_tool_dispatches(tool_name: str) -> None:
     reg = _build_registry(lb)
     await reg.call_tool(tool_name, _smoke_args(tool_name), _make_ctx())
     assert len(lb.calls) == 1, f"{tool_name}: handler must call loopback exactly once"
+
+
+# ---------------------------------------------------------------------------
+# Round 4 Finding 18 — auto-derive tenant_id from PAT JWT when omitted
+# ---------------------------------------------------------------------------
+
+
+class TestAutoDeriveTenant:
+    async def test_models_list_uses_ctx_active_tenant_when_tenant_id_omitted(self):
+        """When the LLM omits ``tenant_id``, the handler resolves it from
+        ``ctx.user.active_tenant_id`` (carried in the PAT JWT). The CLI does
+        the same — MCP must match. Round 4 Finding 18."""
+        from uuid import uuid4
+
+        from bsgateway.mcp.admin_tools import ModelsListInput, _resolve_tenant_id
+
+        tenant = uuid4()
+        ctx = MagicMock()
+        ctx.user.active_tenant_id = tenant
+
+        args = ModelsListInput()  # no tenant_id
+        assert _resolve_tenant_id(args, ctx) == tenant
+
+    async def test_explicit_tenant_id_overrides_active(self):
+        """When the LLM passes ``tenant_id`` explicitly, that wins."""
+        from uuid import uuid4
+
+        from bsgateway.mcp.admin_tools import ModelsListInput, _resolve_tenant_id
+
+        active = uuid4()
+        explicit = uuid4()
+        ctx = MagicMock()
+        ctx.user.active_tenant_id = active
+
+        args = ModelsListInput(tenant_id=explicit)
+        assert _resolve_tenant_id(args, ctx) == explicit
+
+    async def test_neither_explicit_nor_active_raises_invalid_input(self):
+        """When tenant_id is missing AND the caller has no active tenant
+        claim, raise a ToolError with a clear message instead of silently
+        falling back to a wrong tenant."""
+        from bsgateway.mcp.admin_tools import ModelsListInput, _resolve_tenant_id
+        from bsgateway.mcp.api import ToolError
+
+        ctx = MagicMock()
+        ctx.user.active_tenant_id = None
+
+        args = ModelsListInput()
+        with pytest.raises(ToolError) as excinfo:
+            _resolve_tenant_id(args, ctx)
+        assert excinfo.value.code == "invalid_input"
+        assert "tenant_id" in excinfo.value.message

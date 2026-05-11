@@ -35,7 +35,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, RootModel
 
-from bsgateway.mcp.api import Tool, ToolContext, ToolRegistry
+from bsgateway.mcp.api import Tool, ToolContext, ToolError, ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Loopback caller — injected by lifespan wiring (TASK-005); stubbed in tests.
@@ -77,15 +77,49 @@ def _ok(data: Any) -> AdminToolResponse:
     return AdminToolResponse(data)
 
 
+def _resolve_tenant_id(args: BaseModel, ctx: ToolContext) -> UUID:
+    """Return the tenant the handler should target.
+
+    Round 4 Finding 18: schemas now declare ``tenant_id: UUID | None``;
+    when omitted the active tenant from the caller's PAT JWT is used
+    (mirrors the CLI). Raises :class:`ToolError`(``invalid_input``) when
+    neither source is available so the LLM gets a clear error instead
+    of a silent fallback to a wrong tenant.
+    """
+    explicit = getattr(args, "tenant_id", None)
+    if explicit is not None:
+        return explicit  # type: ignore[no-any-return]
+    active = getattr(ctx.user, "active_tenant_id", None)
+    if active is None:
+        raise ToolError(
+            code="invalid_input",
+            message=(
+                "tenant_id is required and the caller's PAT does not carry an "
+                "active tenant claim — pass tenant_id explicitly or re-login "
+                "with --tenant-id."
+            ),
+        )
+    return active if isinstance(active, UUID) else UUID(str(active))
+
+
 # ---------------------------------------------------------------------------
 # Input schemas — explicit Pydantic v2 models per tool.
 # ---------------------------------------------------------------------------
 
 
 class _TenantPath(BaseModel):
-    """Mixin: tools whose REST path includes ``{tenant_id}``."""
+    """Mixin: tools whose REST path includes ``{tenant_id}``.
 
-    tenant_id: UUID
+    Round 4 Finding 18: ``tenant_id`` is optional. When omitted, the
+    handler resolves it from ``ctx.user.active_tenant_id`` (the tenant
+    embedded in the caller's PAT JWT, same as the CLI). LLM callers no
+    longer need to pass the tenant UUID for every operation on their
+    active tenant. Tools that operate on tenants other than the active
+    one (Tenants CRUD) keep their own required ``tenant_id`` and do
+    NOT inherit this mixin.
+    """
+
+    tenant_id: UUID | None = None
 
 
 # audit ----------------------------------------------------------------------
@@ -335,11 +369,12 @@ EXPECTED_ADMIN_TOOL_NAMES: tuple[str, ...] = (
 
 def _h_audit_list(lb: LoopbackCaller):
     async def handler(args: AuditListInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         return _ok(
             await lb(
                 ctx,
                 "GET",
-                f"/tenants/{args.tenant_id}/audit",
+                f"/tenants/{tenant_id}/audit",
                 params={"limit": args.limit, "offset": args.offset},
             )
         )
@@ -362,23 +397,25 @@ def _h_execute(lb: LoopbackCaller):
 
 def _h_feedback_add(lb: LoopbackCaller):
     async def handler(args: FeedbackAddInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         body = {
             "routing_id": args.routing_id,
             "rating": args.rating,
             "comment": args.comment,
         }
-        return _ok(await lb(ctx, "POST", f"/tenants/{args.tenant_id}/feedback", body=body))
+        return _ok(await lb(ctx, "POST", f"/tenants/{tenant_id}/feedback", body=body))
 
     return handler
 
 
 def _h_feedback_list(lb: LoopbackCaller):
     async def handler(args: FeedbackListInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         return _ok(
             await lb(
                 ctx,
                 "GET",
-                f"/tenants/{args.tenant_id}/feedback",
+                f"/tenants/{tenant_id}/feedback",
                 params={"limit": args.limit, "offset": args.offset},
             )
         )
@@ -388,32 +425,35 @@ def _h_feedback_list(lb: LoopbackCaller):
 
 def _h_intents_list(lb: LoopbackCaller):
     async def handler(args: IntentsListInput, ctx: ToolContext) -> AdminToolResponse:
-        return _ok(await lb(ctx, "GET", f"/tenants/{args.tenant_id}/intents"))
+        tenant_id = _resolve_tenant_id(args, ctx)
+        return _ok(await lb(ctx, "GET", f"/tenants/{tenant_id}/intents"))
 
     return handler
 
 
 def _h_intents_add(lb: LoopbackCaller):
     async def handler(args: IntentsAddInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         body = {
             "name": args.name,
             "description": args.description,
             "threshold": args.threshold,
             "examples": list(args.examples),
         }
-        return _ok(await lb(ctx, "POST", f"/tenants/{args.tenant_id}/intents", body=body))
+        return _ok(await lb(ctx, "POST", f"/tenants/{tenant_id}/intents", body=body))
 
     return handler
 
 
 def _h_intents_update(lb: LoopbackCaller):
     async def handler(args: IntentsUpdateInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         body = args.model_dump(exclude_unset=True, exclude={"tenant_id", "intent_id"}, mode="json")
         return _ok(
             await lb(
                 ctx,
                 "PATCH",
-                f"/tenants/{args.tenant_id}/intents/{args.intent_id}",
+                f"/tenants/{tenant_id}/intents/{args.intent_id}",
                 body=body,
             )
         )
@@ -423,11 +463,12 @@ def _h_intents_update(lb: LoopbackCaller):
 
 def _h_intents_delete(lb: LoopbackCaller):
     async def handler(args: IntentsDeleteInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         return _ok(
             await lb(
                 ctx,
                 "DELETE",
-                f"/tenants/{args.tenant_id}/intents/{args.intent_id}",
+                f"/tenants/{tenant_id}/intents/{args.intent_id}",
             )
         )
 
@@ -507,6 +548,7 @@ def _h_presets_list(lb: LoopbackCaller):
 
 def _h_presets_apply(lb: LoopbackCaller):
     async def handler(args: PresetsApplyInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         body = {
             "preset_name": args.preset,
             "model_mapping": {
@@ -515,32 +557,35 @@ def _h_presets_apply(lb: LoopbackCaller):
                 "premium": args.premium,
             },
         }
-        return _ok(await lb(ctx, "POST", f"/tenants/{args.tenant_id}/presets/apply", body=body))
+        return _ok(await lb(ctx, "POST", f"/tenants/{tenant_id}/presets/apply", body=body))
 
     return handler
 
 
 def _h_routes_test(lb: LoopbackCaller):
     async def handler(args: RoutesTestInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         messages: list[dict[str, Any]] = []
         if args.profile_context:
             messages.extend(args.profile_context)
         messages.append({"role": "user", "content": args.prompt})
         body = {"messages": messages, "model": args.model}
-        return _ok(await lb(ctx, "POST", f"/tenants/{args.tenant_id}/rules/test", body=body))
+        return _ok(await lb(ctx, "POST", f"/tenants/{tenant_id}/rules/test", body=body))
 
     return handler
 
 
 def _h_rules_list(lb: LoopbackCaller):
     async def handler(args: RulesListInput, ctx: ToolContext) -> AdminToolResponse:
-        return _ok(await lb(ctx, "GET", f"/tenants/{args.tenant_id}/rules"))
+        tenant_id = _resolve_tenant_id(args, ctx)
+        return _ok(await lb(ctx, "GET", f"/tenants/{tenant_id}/rules"))
 
     return handler
 
 
 def _h_rules_add(lb: LoopbackCaller):
     async def handler(args: RulesAddInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         body = {
             "name": args.name,
             "priority": args.priority,
@@ -548,19 +593,20 @@ def _h_rules_add(lb: LoopbackCaller):
             "is_default": args.is_default,
             "conditions": list(args.conditions),
         }
-        return _ok(await lb(ctx, "POST", f"/tenants/{args.tenant_id}/rules", body=body))
+        return _ok(await lb(ctx, "POST", f"/tenants/{tenant_id}/rules", body=body))
 
     return handler
 
 
 def _h_rules_update(lb: LoopbackCaller):
     async def handler(args: RulesUpdateInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         body = args.model_dump(exclude_unset=True, exclude={"tenant_id", "rule_id"}, mode="json")
         return _ok(
             await lb(
                 ctx,
                 "PATCH",
-                f"/tenants/{args.tenant_id}/rules/{args.rule_id}",
+                f"/tenants/{tenant_id}/rules/{args.rule_id}",
                 body=body,
             )
         )
@@ -570,11 +616,12 @@ def _h_rules_update(lb: LoopbackCaller):
 
 def _h_rules_delete(lb: LoopbackCaller):
     async def handler(args: RulesDeleteInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         return _ok(
             await lb(
                 ctx,
                 "DELETE",
-                f"/tenants/{args.tenant_id}/rules/{args.rule_id}",
+                f"/tenants/{tenant_id}/rules/{args.rule_id}",
             )
         )
 
@@ -631,23 +678,25 @@ def _h_tenants_delete(lb: LoopbackCaller):
 
 def _h_usage_report(lb: LoopbackCaller):
     async def handler(args: UsageReportInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         params: dict[str, Any] = {"period": args.period}
         if args.from_date is not None:
             params["from"] = args.from_date
         if args.to_date is not None:
             params["to"] = args.to_date
-        return _ok(await lb(ctx, "GET", f"/tenants/{args.tenant_id}/usage", params=params))
+        return _ok(await lb(ctx, "GET", f"/tenants/{tenant_id}/usage", params=params))
 
     return handler
 
 
 def _h_usage_sparklines(lb: LoopbackCaller):
     async def handler(args: UsageSparklinesInput, ctx: ToolContext) -> AdminToolResponse:
+        tenant_id = _resolve_tenant_id(args, ctx)
         return _ok(
             await lb(
                 ctx,
                 "GET",
-                f"/tenants/{args.tenant_id}/usage/sparklines",
+                f"/tenants/{tenant_id}/usage/sparklines",
                 params={"days": args.days},
             )
         )
