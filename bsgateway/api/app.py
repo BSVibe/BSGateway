@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 import structlog
 from bsvibe_fastapi import add_cors_middleware, make_health_router
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -422,9 +422,32 @@ def create_app() -> FastAPI:
             return
         await asgi(scope, receive, send)
 
+    # RFC 9728 protected-resource discovery: unauth requests to /mcp get a
+    # 401 + WWW-Authenticate referencing /.well-known/oauth-protected-resource.
+    from bsgateway.mcp.oauth_protected_resource import (
+        build_protected_resource_metadata,
+        wrap_mcp_with_oauth_401,
+    )
+
+    _mcp_transport_with_401 = wrap_mcp_with_oauth_401(_mcp_transport)
+
+    @app.get("/.well-known/oauth-protected-resource", tags=["mcp"])
+    async def oauth_protected_resource(request: Request) -> JSONResponse:
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        resource_url = f"{proto}://{host}" if host else str(request.base_url).rstrip("/")
+        return JSONResponse(
+            content=build_protected_resource_metadata(
+                resource_url=resource_url,
+                authorization_server=settings.bsvibe_auth_url.rstrip("/"),
+                scopes_supported=["gateway:*"],
+            ),
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+
     from starlette.routing import Mount
 
-    app.router.routes.append(Mount("/mcp", app=_mcp_transport))
+    app.router.routes.append(Mount("/mcp", app=_mcp_transport_with_401))
 
     @app.get("/health/ready", tags=["health"])
     async def health_ready() -> JSONResponse:
