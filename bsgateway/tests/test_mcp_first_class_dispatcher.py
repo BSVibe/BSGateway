@@ -9,16 +9,16 @@ These tests pin the contract that ``bsgateway/mcp/api.py`` must satisfy:
   per registered tool.
 * ``ToolRegistry.call_tool()`` validates input against ``input_schema``,
   enforces every entry in ``required_scopes`` against the caller's
-  scope list (with ``"*"`` and ``"prefix:*"`` semantics), runs the
-  handler, validates output, and emits a single audit event when
-  ``audit_event`` is set AND the handler returned successfully.
+  scope list (with ``"prefix:*"`` semantics), runs the handler, validates
+  output, and emits a single audit event when ``audit_event`` is set AND
+  the handler returned successfully.
 * Errors translate to a typed :class:`ToolError` with a stable code
   (``invalid_input``, ``permission_denied``, ``tool_not_found``,
   ``invalid_output``); handler-raised :class:`ToolError` propagates
   unchanged. Failed calls do NOT trigger audit emission.
-* ``resolve_tool_context`` mirrors :mod:`bsgateway.api.deps` 3-way
-  dispatch (bootstrap → opaque → JWT) but consumes a plain header
-  mapping rather than a FastAPI ``Request``.
+* ``resolve_tool_context`` mirrors :mod:`bsgateway.api.deps` dispatch
+  (opaque → JWT) but consumes a plain header mapping rather than a
+  FastAPI ``Request``.
 
 Per memory ``mcp-python-sdk-testing``, the in-process pattern (no
 subprocesses) is enforced by exercising the registry directly and via
@@ -27,7 +27,6 @@ the ``server.request_handlers`` map for the integration sanity check.
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -253,22 +252,6 @@ class TestCallToolScopeEnforcement:
         with pytest.raises(ToolError) as exc:
             await reg.call_tool("echo", {"message": "hi"}, ctx)
         assert exc.value.code == "permission_denied"
-
-    async def test_admin_super_scope_grants_anything(self) -> None:
-        reg = ToolRegistry()
-        reg.register(
-            Tool(
-                name="echo",
-                description="x",
-                input_schema=_EchoIn,
-                output_schema=_EchoOut,
-                handler=_echo_handler,
-                required_scopes=["gateway:models:write"],
-            )
-        )
-        ctx = _make_ctx(_make_user(scopes=["*"]))
-        result = await reg.call_tool("echo", {"message": "hi"}, ctx)
-        assert result == {"echoed": "hi"}
 
     async def test_prefix_wildcard_grants_subscope(self) -> None:
         reg = ToolRegistry()
@@ -548,55 +531,14 @@ class TestBuildMcpServer:
 
 
 # ---------------------------------------------------------------------------
-# resolve_tool_context — bsvibe-authz 3-way dispatch over plain headers
+# resolve_tool_context — bsvibe-authz dispatch over plain headers
 # ---------------------------------------------------------------------------
 
 
-class TestResolveToolContextBootstrap:
-    async def test_bootstrap_token_match_yields_context(self, monkeypatch) -> None:
-        from bsgateway.api import deps as _deps
-
-        token = "bsv_admin_" + "a" * 32
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        monkeypatch.setattr(_deps.gateway_settings, "bootstrap_token_hash", token_hash)
-
-        ctx = await resolve_tool_context(
-            headers={"authorization": f"Bearer {token}"},
-            app_state=MagicMock(),
-        )
-        assert ctx.user is not None
-        assert "*" in ctx.user.scope
-
+class TestResolveToolContextHeaderValidation:
     async def test_missing_authorization_header_raises_tool_error(self) -> None:
         with pytest.raises(ToolError) as exc:
             await resolve_tool_context(headers={}, app_state=MagicMock())
-        assert exc.value.code == "unauthenticated"
-
-    async def test_bootstrap_disabled_when_hash_unset(self, monkeypatch) -> None:
-        from bsgateway.api import deps as _deps
-
-        monkeypatch.setattr(_deps.gateway_settings, "bootstrap_token_hash", "")
-        with pytest.raises(ToolError) as exc:
-            await resolve_tool_context(
-                headers={"authorization": "Bearer bsv_admin_anything"},
-                app_state=MagicMock(),
-            )
-        assert exc.value.code == "unauthenticated"
-
-    async def test_bootstrap_token_mismatch_raises(self, monkeypatch) -> None:
-        from bsgateway.api import deps as _deps
-
-        # Hash is set, but the supplied token doesn't match.
-        monkeypatch.setattr(
-            _deps.gateway_settings,
-            "bootstrap_token_hash",
-            hashlib.sha256(b"different").hexdigest(),
-        )
-        with pytest.raises(ToolError) as exc:
-            await resolve_tool_context(
-                headers={"authorization": "Bearer bsv_admin_" + "y" * 32},
-                app_state=MagicMock(),
-            )
         assert exc.value.code == "unauthenticated"
 
     async def test_non_bearer_authorization_rejected(self) -> None:
@@ -608,8 +550,7 @@ class TestResolveToolContextBootstrap:
         assert exc.value.code == "unauthenticated"
 
     async def test_unsupported_token_kind_rejected(self) -> None:
-        # Neither bsv_admin_ nor bsv_sk_ prefix — JWT branch isn't wired
-        # in TASK-002, so the resolver must explicitly reject.
+        # Neither bsv_sk_ prefix nor JWT — the resolver must reject.
         with pytest.raises(ToolError) as exc:
             await resolve_tool_context(
                 headers={"authorization": "Bearer some.jwt.token"},

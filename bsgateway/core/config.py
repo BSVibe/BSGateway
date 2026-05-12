@@ -14,12 +14,11 @@ shared ``Annotated[list[str], NoDecode]`` shape inherited from
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 import structlog
 from bsvibe_fastapi import FastApiSettings
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field
 from pydantic_settings import SettingsConfigDict
 
 _config_logger = structlog.get_logger(__name__)
@@ -52,24 +51,12 @@ class Settings(FastApiSettings):
     bsvibe_client_secret: str = ""
 
     # ----------------------------------------------------------------------
-    # Phase 1 token-cutover — bsvibe-authz 3-way dispatch.
-    # `bootstrap_token` is the raw `bsv_admin_*` value; on read of
-    # `bootstrap_token_hash` (the canonical input the dispatcher sees),
-    # the SHA-256 digest is derived in-memory. Production may set
-    # `BOOTSTRAP_TOKEN_HASH` directly to keep the raw value out of
-    # process memory; that pre-hashed value wins. The introspection
-    # fields mirror :class:`bsvibe_authz.Settings` so a single ``.env``
-    # configures both classes.
+    # bsvibe-authz dispatch — opaque (`bsv_sk_*`) introspection + JWT.
+    # The introspection fields mirror :class:`bsvibe_authz.Settings` so a
+    # single ``.env`` configures both classes. ``BSV_*``-prefixed aliases
+    # let prod operators use one consistent naming scheme across every
+    # product Settings class.
     # ----------------------------------------------------------------------
-    bootstrap_token: str = ""
-    # ``BSV_*``-prefixed aliases let prod operators use one consistent
-    # naming scheme across every product Settings class — matches the
-    # alias set on :class:`bsvibe_authz.Settings` (bsvibe-python PR #21)
-    # so a single ``.env`` configures the lib + product layers.
-    bootstrap_token_hash: str = Field(
-        default="",
-        validation_alias=AliasChoices("bootstrap_token_hash", "bsv_bootstrap_token_hash"),
-    )
     introspection_url: str = Field(
         default="",
         validation_alias=AliasChoices("introspection_url", "bsv_introspection_url"),
@@ -90,8 +77,7 @@ class Settings(FastApiSettings):
     # ``user_jwt_jwks_url`` (preferred for prod, ES256/RS256 with key
     # rotation), ``user_jwt_public_key`` (static PEM), or ``user_jwt_secret``
     # (HS256 dev fallback). When unset the user-JWT verification path is
-    # disabled and only bootstrap / opaque / PAT-JWT-introspection tokens
-    # are accepted.
+    # disabled and only opaque / PAT-JWT-introspection tokens are accepted.
     # ----------------------------------------------------------------------
     user_jwt_jwks_url: str = ""
     user_jwt_public_key: str = ""
@@ -137,12 +123,6 @@ class Settings(FastApiSettings):
         case_sensitive=False,
         extra="ignore",
     )
-
-    @model_validator(mode="after")
-    def _derive_bootstrap_hash(self) -> Settings:
-        if not self.bootstrap_token_hash and self.bootstrap_token:
-            self.bootstrap_token_hash = hashlib.sha256(self.bootstrap_token.encode()).hexdigest()
-        return self
 
     @property
     def encryption_key_bytes(self) -> bytes:

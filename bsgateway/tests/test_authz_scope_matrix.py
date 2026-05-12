@@ -1,10 +1,8 @@
 """TASK-006 — pin the ``require_scope`` matrix for admin routers.
 
-Phase 1 token cutover replaces role-based gating (``require_admin`` and
-ad-hoc role checks) with ``bsvibe_authz.require_scope`` so opaque service
-keys can be issued with narrow scopes (``gateway:models:read``,
-``gateway:routing:write``, …) and bootstrap tokens (``"*"``) keep working
-as a wildcard admin grant.
+Role-based gating (``require_admin`` and ad-hoc role checks) was replaced
+with ``bsvibe_authz.require_scope`` so opaque service keys can be issued
+with narrow scopes (``gateway:models:read``, ``gateway:routing:write``, …).
 
 The matrix below mirrors ``docs/scopes.md``. New admin endpoints must
 extend both — adding a route to the matrix keeps the gate in place after
@@ -146,7 +144,7 @@ class TestScopeMatrix:
 
 
 # ---------------------------------------------------------------------------
-# Functional dispatch tests — bootstrap=admin / narrow scope=403 / in-scope=200
+# Functional dispatch tests — narrow scope=403 / in-scope=200
 # ---------------------------------------------------------------------------
 
 
@@ -175,10 +173,10 @@ def client_with_scope(monkeypatch):
         pool, _ = make_mock_pool()
         app.state.db_pool = pool
 
-        # Legacy chain — bootstrap path emulation: scope=['*'] lands here.
+        # Legacy chain — is_admin derived from Supabase app_metadata role.
         app.dependency_overrides[get_auth_context] = lambda: make_gateway_auth_context(
             tenant_id=tid,
-            is_admin=("*" in scope),
+            is_admin=False,
         )
         # bsvibe-authz scope chain.
         app.dependency_overrides[authz_get_current_user] = lambda: _user_with_scope(scope, tid)
@@ -188,31 +186,7 @@ def client_with_scope(monkeypatch):
 
 
 class TestScopeEnforcementGetTenants:
-    """Bootstrap (``"*"``) wins; narrow scope on the wrong action 403s."""
-
-    def test_bootstrap_wildcard_allows_post_tenants(self, client_with_scope) -> None:
-        client, _ = client_with_scope(["*"])
-        with patch("bsgateway.api.routers.tenants.get_tenant_service") as svc_factory:
-            svc = svc_factory.return_value
-            svc.create_tenant = pytest.importorskip("unittest.mock").AsyncMock(
-                return_value=pytest.importorskip("bsgateway.tenant.models").TenantResponse(
-                    id=uuid4(),
-                    name="t",
-                    slug="t",
-                    is_active=True,
-                    settings={},
-                    created_at="2026-01-01T00:00:00Z",
-                    updated_at="2026-01-01T00:00:00Z",
-                )
-            )
-            with patch("bsgateway.api.routers.tenants.get_audit_service") as audit_factory:
-                audit_factory.return_value.record = pytest.importorskip("unittest.mock").AsyncMock()
-                resp = client.post(
-                    "/api/v1/tenants",
-                    json={"name": "t", "slug": "t"},
-                    headers={"Authorization": "Bearer bsv_admin_x"},
-                )
-        assert resp.status_code in (200, 201), resp.text
+    """Narrow scope on the wrong action 403s; in-scope reads 200."""
 
     def test_narrow_read_scope_blocks_post_tenants(self, client_with_scope) -> None:
         client, _ = client_with_scope(["gateway:tenants:read"])

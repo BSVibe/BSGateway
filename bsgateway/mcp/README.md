@@ -133,11 +133,10 @@ authenticate the caller.
 # Health check — exposes ready=true + tool_count
 curl http://localhost:8000/mcp/health
 
-# Auth: bsvibe-authz 3-way dispatch — pick one:
-#   bootstrap_token (server-only, prefix BSV_BOOT_)
-#   opaque token   (introspected, prefix bsv_)
-#   JWT            (from BSVibe-Auth)
-curl -H "Authorization: Bearer ${BSV_BOOTSTRAP_TOKEN}" \
+# Auth: bsvibe-authz dispatch — pick one:
+#   opaque token   (introspected, prefix bsv_sk_)
+#   JWT            (from BSVibe-Auth, including PAT JWTs from the device flow)
+curl -H "Authorization: Bearer ${BSV_OPAQUE_TOKEN}" \
      -H "Content-Type: application/json" \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
      http://localhost:8000/mcp/
@@ -150,7 +149,7 @@ curl -H "Authorization: Bearer ${BSV_BOOTSTRAP_TOKEN}" \
 bsgateway mcp list-tools                    # text, one name per line
 bsgateway mcp list-tools --output json      # JSON: [{name, description, scopes}, ...]
 
-# Run as an MCP stdio server (env: BSV_BOOTSTRAP_TOKEN required)
+# Run as an MCP stdio server (env: BSGATEWAY_PAT required for downstream auth)
 bsgateway mcp serve --transport stdio
 
 # HTTP — the gateway already serves /mcp; the CLI prints a hint
@@ -164,13 +163,11 @@ client at the gateway's `/mcp` endpoint.
 
 ## Auth resolution
 
-`resolve_tool_context(headers)` mirrors `bsgateway/api/deps.py` 3-way
-dispatch:
+`resolve_tool_context(headers)` mirrors `bsgateway/api/deps.py` dispatch:
 
-1. `Authorization: Bearer BSV_BOOT_…` → `verify_bootstrap_token` (in-process).
-2. `Authorization: Bearer bsv_…` → `verify_opaque_token` against the
+1. `Authorization: Bearer bsv_sk_…` → `verify_opaque_token` against the
    introspection endpoint (cached).
-3. Otherwise → JWT via the bsvibe-authz JWT verifier.
+2. Otherwise → JWT via the bsvibe-authz JWT verifier.
 
 The resolver returns a `ToolContext` carrying the authenticated `User`,
 DB handle (when wired), audit app-state, and a structlog binder. Tokens

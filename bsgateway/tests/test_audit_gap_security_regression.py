@@ -93,7 +93,7 @@ class TestEncryptionKeyRotationFailure:
 # ---------------------------------------------------------------------------
 # 2. (Phase 1 token cutover): legacy ApiKeyService.verify_key tests removed.
 #    The self-hosted apikey module has been deleted — bsvibe-authz
-#    introspection + bootstrap tokens now own that surface.
+#    introspection + JWT tokens now own that surface.
 # ---------------------------------------------------------------------------
 
 

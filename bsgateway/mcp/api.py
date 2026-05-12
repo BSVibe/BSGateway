@@ -300,9 +300,9 @@ async def resolve_tool_context(
 
     Delegates to :func:`bsvibe_authz.deps.get_current_user` — same
     BSage-pattern shape used by REST. The lib runs the canonical
-    bootstrap → opaque → JWT → PAT-JWT-introspection-fallback dispatch
-    internally, so PAT JWTs from the device-authorization grant work
-    here automatically (an upgrade over the prior bootstrap-only path).
+    opaque → JWT → PAT-JWT-introspection-fallback dispatch internally,
+    so PAT JWTs from the device-authorization grant work here
+    automatically.
 
     Failure modes raise :class:`ToolError` with code ``unauthenticated``
     (the dispatcher will translate to an MCP error response).

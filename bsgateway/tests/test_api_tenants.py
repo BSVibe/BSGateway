@@ -225,7 +225,7 @@ class TestCrossTenantAccess:
         """A scopeless principal cannot PATCH any tenant — ``require_scope`` blocks.
 
         Post-cutover, cross-tenant write isolation is enforced by
-        ``require_scope("gateway:tenants:write")`` (only bootstrap or
+        ``require_scope("gateway:tenants:write")`` (only
         explicitly-scoped service keys carry it). The legacy
         ``require_admin`` gate is gone.
         """
