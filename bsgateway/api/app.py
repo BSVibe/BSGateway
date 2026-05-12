@@ -146,8 +146,11 @@ async def lifespan(app: FastAPI):
                 auth_url=settings.bsvibe_auth_url,
                 client_id=settings.bsvibe_client_id,
                 client_secret=settings.bsvibe_client_secret,
-                audience="bsupervisor",
-                scope=["bsupervisor.write"],
+                # Round 5 Step 3: flipped from legacy ``bsupervisor`` audience
+                # to the MCP-aligned bare name ``supervisor``. Pair with
+                # bsvibe-authz 0.9.1 which accepts both during the cutover.
+                audience="supervisor",
+                scope=["supervisor:audit.write"],
             )
             client = BSupervisorClient(
                 base_url=settings.bsupervisor_url,
