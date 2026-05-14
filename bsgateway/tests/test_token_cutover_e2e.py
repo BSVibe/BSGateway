@@ -1,18 +1,14 @@
-"""TASK-007 — token cutover end-to-end auth smoke.
+"""Token-dispatch end-to-end auth smoke.
 
-Drives the four 3-way dispatch branches end-to-end through real
+Drives the dispatch branches end-to-end through real
 ``bsvibe_authz.get_current_user`` + BSGateway ``get_auth_context`` instead
 of dependency_overrides shortcuts:
 
-- (a) ``Bearer bsv_admin_*`` — bootstrap path. Admin route 200. The
-  introspection endpoint must NOT be hit (asserted via MockTransport
-  call counter).
-- (b) ``Bearer bsv_sk_*`` — opaque token, introspection returns
+- (a) ``Bearer bsv_sk_*`` — opaque token, introspection returns
   ``active=true scope=['gateway:models:read']``. ``GET .../models``
   → 200. ``POST .../models`` → 403 (scope mismatch).
-- (c) ``Bearer bsv_sk_*`` with ``active=false`` — 401.
-- (d) ``Bearer <jwt>`` — existing BSVibe JWT path through
-  ``app.state.auth_provider``. Stays green.
+- (b) ``Bearer bsv_sk_*`` with ``active=false`` — 401.
+- (c) ``Bearer <jwt>`` — BSVibe JWT path through ``bsvibe_authz``. Stays green.
 
 Coverage gate (>=80%) is enforced by the suite-level pytest run, not by
 this module.
@@ -20,7 +16,6 @@ this module.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from datetime import UTC, datetime
@@ -99,7 +94,6 @@ def _reset_singletons():
 def _build_app(
     *,
     introspection_handler,
-    bootstrap_token_hash: str = "",
     introspection_url: str = "https://auth.example/oauth/introspect",
 ):
     """Construct an app wired to a shared MockTransport-backed
@@ -123,12 +117,12 @@ def _build_app(
     app.state.redis = None
 
     # Drop the autouse fake bsvibe-authz user so the real dispatch
-    # (header → introspect / bootstrap / JWT) drives ``require_scope``.
+    # (header → introspect / JWT) drives ``require_scope``.
     app.dependency_overrides.pop(authz_get_current_user, None)
 
     # bsvibe-authz Settings + introspection client overrides — these
     # feed ``bsvibe_authz.deps.get_current_user`` exactly the same
-    # introspection_url / bootstrap hash the BSGateway dispatch sees.
+    # introspection_url the BSGateway dispatch sees.
     authz_settings = AuthzSettings.model_construct(
         bsvibe_auth_url="https://auth.example",
         openfga_api_url="https://fga.example",
@@ -136,7 +130,6 @@ def _build_app(
         openfga_auth_model_id="model",
         openfga_auth_token=None,
         service_token_signing_secret="x",
-        bootstrap_token_hash=bootstrap_token_hash,
         introspection_url=introspection_url,
         introspection_client_id="bsgateway",
         introspection_client_secret="shh",
@@ -145,11 +138,10 @@ def _build_app(
     app.dependency_overrides[authz_get_introspection_client] = lambda: intro_client
 
     # BSGateway dispatch reads ``gateway_settings`` directly. Patch the
-    # singleton's two relevant fields and pin the introspection client
-    # so call counts coalesce on a single transport.
+    # singleton's relevant fields and pin the introspection client so
+    # call counts coalesce on a single transport.
     from bsgateway.api import deps as gw_deps
 
-    gw_deps.gateway_settings.bootstrap_token_hash = bootstrap_token_hash
     gw_deps.gateway_settings.introspection_url = introspection_url
     gw_deps.gateway_settings.introspection_client_id = "bsgateway"
     gw_deps.gateway_settings.introspection_client_secret = "shh"
@@ -159,52 +151,7 @@ def _build_app(
 
 
 # ---------------------------------------------------------------------------
-# (a) bootstrap admin path
-# ---------------------------------------------------------------------------
-
-
-def test_bootstrap_admin_grants_access_without_introspection_call() -> None:
-    """Bootstrap (``"*"`` scope, ``is_admin=True``) bypasses
-    ``require_tenant_access`` and never reaches the introspection endpoint.
-
-    Hits ``GET /tenants/{tid}/models`` instead of the tenant list — the
-    list route additionally gates on ``require_permission`` (an OpenFGA
-    tenant-wide check), which legitimately rejects bootstrap principals
-    that carry no ``active_tenant_id``.
-    """
-    token = "bsv_admin_" + "a" * 32
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    tid = uuid4()
-
-    def _never(_request: httpx.Request) -> httpx.Response:  # pragma: no cover
-        raise AssertionError("introspection endpoint must not be called for bootstrap")
-
-    app, transport = _build_app(
-        introspection_handler=_never,
-        bootstrap_token_hash=token_hash,
-    )
-    client = TestClient(app, raise_server_exceptions=False)
-
-    with (
-        patch(
-            "bsgateway.tenant.repository.TenantRepository.get_tenant",
-            new_callable=AsyncMock,
-            return_value=_tenant_row(tid),
-        ),
-        patch("bsgateway.api.routers.tenants.get_tenant_service") as svc_factory,
-    ):
-        svc_factory.return_value.list_models = AsyncMock(return_value=[])
-        resp = client.get(
-            f"/api/v1/tenants/{tid}/models",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-
-    assert resp.status_code == 200, resp.text
-    assert transport.call_count == 0
-
-
-# ---------------------------------------------------------------------------
-# (b) opaque token — scope enforcement via real introspection
+# (a) opaque token — scope enforcement via real introspection
 # ---------------------------------------------------------------------------
 
 
@@ -264,7 +211,7 @@ def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
 
 
 # ---------------------------------------------------------------------------
-# (c) opaque token — inactive
+# (b) opaque token — inactive
 # ---------------------------------------------------------------------------
 
 
@@ -284,7 +231,7 @@ def test_opaque_inactive_token_returns_401() -> None:
 
 
 # ---------------------------------------------------------------------------
-# (d) JWT path preserved
+# (c) JWT path preserved
 # ---------------------------------------------------------------------------
 
 

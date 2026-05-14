@@ -6,7 +6,7 @@ Two subcommands:
   prints every registered tool name (one per line, or as JSON when
   ``--output json``). No HTTP, no env required.
 * ``bsgateway mcp serve [--transport stdio|http]`` — boots the MCP
-  server. ``stdio`` reads BSV_BOOTSTRAP_TOKEN from env and runs the
+  server. ``stdio`` reads BSGATEWAY_PAT from env and runs the
   in-process stdio transport. ``http`` prints a hint pointing the
   operator at the running gateway's ``/mcp`` endpoint.
 
@@ -78,17 +78,17 @@ def test_mcp_serve_invalid_transport_rejected() -> None:
     assert "transport" in out.lower()
 
 
-def test_mcp_serve_stdio_requires_bootstrap_token(monkeypatch) -> None:
-    """``serve --transport stdio`` fails fast when BSV_BOOTSTRAP_TOKEN is unset."""
+def test_mcp_serve_stdio_requires_pat(monkeypatch) -> None:
+    """``serve --transport stdio`` fails fast when BSGATEWAY_PAT is unset."""
     from bsgateway.cli.main import app
 
-    monkeypatch.delenv("BSV_BOOTSTRAP_TOKEN", raising=False)
+    monkeypatch.delenv("BSGATEWAY_PAT", raising=False)
 
     runner = CliRunner()
     result = runner.invoke(app, ["mcp", "serve", "--transport", "stdio"])
     assert result.exit_code != 0
     out = _strip_ansi(result.output)
-    assert "BSV_BOOTSTRAP_TOKEN" in out
+    assert "BSGATEWAY_PAT" in out
 
 
 def test_mcp_list_tools_json_output() -> None:

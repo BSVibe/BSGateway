@@ -54,7 +54,7 @@ def _make_user(scopes: list[str] | None = None) -> User:
         active_tenant_id=str(TENANT_ID),
         tenants=[],
         is_service=False,
-        scope=["*"] if scopes is None else scopes,
+        scope=["gateway:*"] if scopes is None else scopes,
     )
 
 

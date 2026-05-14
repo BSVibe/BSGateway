@@ -76,7 +76,7 @@ def registry() -> _StubRegistry:
 
 @pytest.fixture
 def app(tenant_id: UUID, registry: _StubRegistry):
-    """FastAPI app with bootstrap-style admin context targeting `tenant_id`."""
+    """FastAPI app with admin context targeting `tenant_id`."""
     pool, _conn = make_mock_pool()
     app = create_app()
     app.state.db_pool = pool

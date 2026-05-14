@@ -129,7 +129,7 @@ class TestBSVibeAuth:
         zero-UUID tenant_id, admin flag derives from app_metadata.role.
 
         The legacy "no tenant_id → 401" behavior was a forced check; the
-        delegate model lets bootstrap / cross-tenant admins pass through.
+        delegate model lets cross-tenant admins pass through.
         """
         app = _make_app()
         user = AuthzUser(

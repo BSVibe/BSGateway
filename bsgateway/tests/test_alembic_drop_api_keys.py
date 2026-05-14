@@ -1,7 +1,7 @@
 """Phase 1 token-cutover — Alembic ``0003_drop_api_keys`` revision.
 
 The PR retires the self-hosted ``api_keys`` table; bsvibe-authz
-introspection + bootstrap tokens take over. This test pins the
+introspection + JWT tokens take over. This test pins the
 structural shape of the new revision so a regression is caught at PR
 time:
 

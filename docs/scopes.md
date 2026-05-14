@@ -1,9 +1,8 @@
 # BSGateway Scope Catalog
 
-Phase 1 token cutover replaces role-based gating with **scope strings**
-carried by bsvibe-authz tokens. Bootstrap tokens (`bsv_admin_*`) carry the
-wildcard `*` and pass every check; opaque service keys (`bsv_sk_*`) issued
-through bsvibe-authz introspection carry the narrow scopes below.
+Role-based gating was replaced with **scope strings** carried by
+bsvibe-authz tokens. Opaque service keys (`bsv_sk_*`) issued through
+bsvibe-authz introspection carry the narrow scopes below.
 
 The scope check is implemented by
 [`bsvibe_authz.require_scope`](https://github.com/BSVibe/bsvibe-python/tree/main/packages/bsvibe-authz)
@@ -11,7 +10,6 @@ and re-exported as `bsgateway.api.deps.require_scope` (tagged with
 `_bsvibe_scope` so `tests/test_authz_scope_matrix.py` can pin the catalog).
 
 Match rules:
-- `*` grants any scope.
 - exact match.
 - prefix wildcard: `gateway:*` grants `gateway:models:write`,
   `gateway:routing:read`, etc.
@@ -20,7 +18,6 @@ Match rules:
 
 | Scope                     | Grants                                                              |
 | ------------------------- | ------------------------------------------------------------------- |
-| `*`                       | bootstrap super-admin — every endpoint                              |
 | `gateway:*`               | every BSGateway admin endpoint (any resource, any action)           |
 | `gateway:tenants:read`    | `GET /tenants`, `GET /tenants/{id}`                                 |
 | `gateway:tenants:write`   | `POST /tenants`, `PATCH /tenants/{id}`, `DELETE /tenants/{id}`      |

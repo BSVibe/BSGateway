@@ -43,7 +43,6 @@ from fastapi import Depends, HTTPException, Request, status
 from bsgateway.core.cache import CacheManager
 from bsgateway.core.config import settings as gateway_settings
 
-BOOTSTRAP_TOKEN_PREFIX = "bsv_admin_"
 OPAQUE_TOKEN_PREFIX = "bsv_sk_"
 _INTROSPECTION_CACHE_TTL_S = 60
 
@@ -80,9 +79,8 @@ def require_permission(
 def require_scope(scope: str) -> Callable[..., Awaitable[None]]:
     """Wrap ``bsvibe_authz.require_scope`` and tag the closure.
 
-    Phase 1 token cutover gates admin routes on scope strings carried by
-    bootstrap / opaque service-key tokens (``"*"`` for bootstrap, narrow
-    ``gateway:<resource>:<action>`` for service keys). The tag
+    Admin routes gate on narrow ``gateway:<resource>:<action>`` scope
+    strings carried by opaque service-key tokens. The tag
     (``_bsvibe_scope``) lets ``test_authz_scope_matrix.py`` pin the
     catalog so future refactors cannot silently downgrade a gate.
 
@@ -137,7 +135,7 @@ async def get_auth_context(request: Request) -> GatewayAuthContext:
     """Authenticate the request and resolve a :class:`GatewayAuthContext`.
 
     Fully delegated to :func:`bsvibe_authz.deps.get_current_user` — same
-    BSage pattern. The lib runs bootstrap → opaque → JWT (via JWKS) →
+    BSage pattern. The lib runs opaque → JWT (via JWKS) →
     PAT-JWT-introspection fallback, returning a :class:`User` with
     ``app_metadata`` lifted off the verified JWT payload (bsvibe-authz
     PR #22). BSGateway's job is only to translate that User into a
@@ -190,7 +188,7 @@ def _get_introspection_cache() -> IntrospectionCache:
 async def _auth_via_authz(request: Request) -> GatewayAuthContext:
     """Delegate to :func:`bsvibe_authz.deps.get_current_user` + tenant ops.
 
-    The lib runs the canonical 4-way dispatch (bootstrap → opaque →
+    The lib runs the canonical 3-way dispatch (opaque →
     user-JWT-via-JWKS → PAT-JWT-introspection-fallback) and returns a
     :class:`User` with ``app_metadata`` / ``user_metadata`` lifted from
     the verified JWT payload (bsvibe-authz #22). We only:
@@ -260,7 +258,6 @@ def _authz_settings() -> _AuthzSettings:
         openfga_store_id="",
         openfga_auth_model_id="",
         service_token_signing_secret="",
-        bootstrap_token_hash=gateway_settings.bootstrap_token_hash,
         introspection_url=gateway_settings.introspection_url,
         introspection_client_id=gateway_settings.introspection_client_id,
         introspection_client_secret=gateway_settings.introspection_client_secret,
@@ -278,18 +275,16 @@ def _authz_settings() -> _AuthzSettings:
 def _context_from_user(user: _AuthzUser) -> GatewayAuthContext:
     """Translate a bsvibe-authz :class:`User` into a BSGateway context.
 
-    ``is_admin`` is true when (a) the user holds the ``"*"`` super-scope
-    (bootstrap) or (b) ``app_metadata.role == "admin"`` (Supabase
+    ``is_admin`` mirrors ``app_metadata.role == "admin"`` (Supabase
     admin claim — bsvibe-authz #22 lifts ``app_metadata`` off the
-    verified JWT). Bootstrap / service-key tokens without a tenant
-    claim get the all-zeros UUID so callers that read ``ctx.tenant_id``
-    don't blow up.
+    verified JWT). Service-key tokens without a tenant claim get the
+    all-zeros UUID so callers that read ``ctx.tenant_id`` don't blow up.
 
     ``identity.kind`` reflects the token shape: ``user`` for verified
-    user JWTs (carry ``app_metadata``), ``apikey`` for bootstrap,
-    opaque, and PAT JWTs (introspection response).
+    user JWTs (carry ``app_metadata``), ``apikey`` for opaque and PAT
+    JWTs (introspection response).
     """
-    is_admin = "*" in user.scope or user.app_metadata.get("role") == "admin"
+    is_admin = user.app_metadata.get("role") == "admin"
     if user.active_tenant_id:
         try:
             tenant_id = UUID(user.active_tenant_id)
@@ -302,7 +297,7 @@ def _context_from_user(user: _AuthzUser) -> GatewayAuthContext:
         tenant_id = UUID(int=0)
 
     # Distinguish a real user JWT (carries Supabase app_metadata) from
-    # a service token (bootstrap / opaque introspection / PAT).
+    # a service token (opaque introspection / PAT).
     kind = "user" if user.app_metadata and not user.is_service else "apikey"
 
     return GatewayAuthContext(

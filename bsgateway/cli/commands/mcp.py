@@ -6,7 +6,7 @@ Two subcommands:
   (no HTTP) and print the catalog. Honours the global ``--output``
   flag (``text`` default, ``json`` for agents).
 * ``serve`` — boot the MCP server. ``--transport stdio`` (default)
-  reads ``BSV_BOOTSTRAP_TOKEN`` from env and runs the in-process
+  reads ``BSGATEWAY_PAT`` from env and runs the in-process
   stdio transport. ``--transport http`` prints a hint pointing the
   operator at the running gateway's ``/mcp`` endpoint and exits
   (the HTTP transport is mounted by the gateway's lifespan, not by
@@ -135,14 +135,14 @@ def serve(
         return
 
     # stdio
-    bootstrap_token = os.environ.get("BSV_BOOTSTRAP_TOKEN")
-    if not bootstrap_token:
-        raise typer.BadParameter("stdio transport requires BSV_BOOTSTRAP_TOKEN in the environment.")
+    pat = os.environ.get("BSGATEWAY_PAT")
+    if not pat:
+        raise typer.BadParameter("stdio transport requires BSGATEWAY_PAT in the environment.")
 
-    asyncio.run(_run_stdio(_build_local_registry(), bootstrap_token))
+    asyncio.run(_run_stdio(_build_local_registry(), pat))
 
 
-async def _run_stdio(registry: ToolRegistry, bootstrap_token: str) -> None:  # pragma: no cover
+async def _run_stdio(registry: ToolRegistry, pat: str) -> None:  # pragma: no cover
     """Run the MCP server bound to stdio.
 
     Excluded from coverage because it depends on real stdin/stdout —
@@ -152,7 +152,7 @@ async def _run_stdio(registry: ToolRegistry, bootstrap_token: str) -> None:  # p
     """
     from mcp.server.stdio import stdio_server
 
-    headers = {"Authorization": f"Bearer {bootstrap_token}"}
+    headers = {"Authorization": f"Bearer {pat}"}
 
     async def resolver(_unused: Any) -> Any:
         return await resolve_tool_context(headers)

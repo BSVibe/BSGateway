@@ -58,7 +58,7 @@ def _make_user(scopes: list[str] | None = None, tenant_id: str | None = None) ->
         active_tenant_id=tenant_id or str(TENANT_ID),
         tenants=[],
         is_service=False,
-        scope=scopes or ["*"],
+        scope=scopes or ["gateway:*"],
     )
 
 
@@ -426,10 +426,10 @@ class TestScopeEnforcement:
         assert exc.value.code == "permission_denied"
         mock_service.create_rule.assert_not_awaited()
 
-    async def test_admin_super_scope_works(
+    async def test_gateway_prefix_wildcard_grants_subscopes(
         self, registry: ToolRegistry, mock_service: MagicMock
     ) -> None:
-        ctx = _make_ctx(_make_user(scopes=["*"]))
+        ctx = _make_ctx(_make_user(scopes=["gateway:*"]))
         result = await registry.call_tool(
             "bsgateway_mcp_list_models",
             {"tenant_id": str(TENANT_ID)},

@@ -126,16 +126,17 @@ class _AlwaysAllowFGA:
 
 
 def _fake_authz_user() -> AuthzUser:
-    # ``scope=["*"]`` short-circuits the ``require_scope`` chain added in
-    # the Phase 1 token cutover (TASK-006). Tests that explicitly exercise
-    # scope enforcement override ``authz_get_current_user`` themselves.
+    # ``scope=["gateway:*"]`` grants any narrow gateway scope via the
+    # bsvibe-authz prefix-wildcard rule. Tests that explicitly exercise
+    # scope enforcement (or other audiences) override
+    # ``authz_get_current_user`` themselves.
     return AuthzUser(
         id="00000000-0000-0000-0000-000000000001",
         email="test@test.com",
         active_tenant_id="00000000-0000-0000-0000-0000000000aa",
         tenants=[],
         is_service=False,
-        scope=["*"],
+        scope=["gateway:*"],
     )
 
 

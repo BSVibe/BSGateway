@@ -6,10 +6,10 @@ Create Date: 2026-05-08
 
 Removes the self-hosted ``api_keys`` table introduced in
 ``0001_baseline``. As of the BSVibe Phase 1 token cutover (decisions
-2026-05-07) authentication runs through bsvibe-authz: bootstrap tokens
-(``bsv_admin_*``) and RFC 7662 introspection of opaque bearer tokens
-(``bsv_sk_*``). The table, repository, service, and router that backed
-the old self-hosted flow are deleted in the same PR.
+2026-05-07) authentication runs through bsvibe-authz with RFC 7662
+introspection of opaque bearer tokens (``bsv_sk_*``). The table,
+repository, service, and router that backed the old self-hosted flow
+are deleted in the same PR.
 
 Lockin decision #3 still applies — prod is stamped at ``head``, then
 ``alembic upgrade head`` runs forward. The CASCADE on ``DROP TABLE`` is
