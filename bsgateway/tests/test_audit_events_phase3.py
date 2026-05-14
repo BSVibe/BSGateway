@@ -54,13 +54,16 @@ ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 
 
 def _admin_authz(tenant_id: UUID) -> AuthzUser:
+    # ``app_metadata.role == "admin"`` so the principal passes
+    # ``require_admin()`` on tenant-administration routes (Phase 2b).
     return AuthzUser(
         id="00000000-0000-0000-0000-000000000099",
         email="admin@test.com",
         active_tenant_id=str(tenant_id),
         tenants=[],
         is_service=False,
-        scope=["gateway:*"],
+        scope=["bsgateway:*"],
+        app_metadata={"role": "admin"},
     )
 
 

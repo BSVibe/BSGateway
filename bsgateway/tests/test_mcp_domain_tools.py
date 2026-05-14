@@ -10,7 +10,7 @@ Phase-7 first-class registry from TASK-002:
   ``.agent/mcp-inventory.md`` so they don't collide with the admin
   catalog (``bsgateway_<subapp>_<action>``) coming in TASK-004.
 * Required scopes mirror the equivalent REST routes
-  (``gateway:routing:*``, ``gateway:models:*``, ``gateway:usage:read``).
+  (``gateway:routing:*``, ``gateway:models:*``, ``bsgateway:usage:read``).
 * Mutating tools carry the matching ``audit_event`` literal so the
   registry's audit step fires the same gateway.* events REST does.
 * Each tool's handler delegates to an :class:`MCPService` built from the
@@ -58,7 +58,7 @@ def _make_user(scopes: list[str] | None = None, tenant_id: str | None = None) ->
         active_tenant_id=tenant_id or str(TENANT_ID),
         tenants=[],
         is_service=False,
-        scope=scopes or ["gateway:*"],
+        scope=scopes or ["bsgateway:*"],
     )
 
 
@@ -137,39 +137,39 @@ def registry(mock_service: MagicMock) -> ToolRegistry:
 
 EXPECTED_TOOLS: dict[str, dict[str, Any]] = {
     "bsgateway_mcp_list_rules": {
-        "scopes": ["gateway:routing:read"],
+        "scopes": ["bsgateway:routing:read"],
         "audit": None,
     },
     "bsgateway_mcp_create_rule": {
-        "scopes": ["gateway:routing:write"],
+        "scopes": ["bsgateway:routing:write"],
         "audit": "gateway.routing.rule.created",
     },
     "bsgateway_mcp_update_rule": {
-        "scopes": ["gateway:routing:write"],
+        "scopes": ["bsgateway:routing:write"],
         "audit": "gateway.routing.rule.updated",
     },
     "bsgateway_mcp_delete_rule": {
-        "scopes": ["gateway:routing:write"],
+        "scopes": ["bsgateway:routing:write"],
         "audit": "gateway.routing.rule.deleted",
     },
     "bsgateway_mcp_list_models": {
-        "scopes": ["gateway:models:read"],
+        "scopes": ["bsgateway:models:read"],
         "audit": None,
     },
     "bsgateway_mcp_register_model": {
-        "scopes": ["gateway:models:write"],
+        "scopes": ["bsgateway:models:write"],
         "audit": "gateway.model.created",
     },
     "bsgateway_mcp_simulate_routing": {
-        "scopes": ["gateway:routing:read"],
+        "scopes": ["bsgateway:routing:read"],
         "audit": None,
     },
     "bsgateway_mcp_get_cost_report": {
-        "scopes": ["gateway:usage:read"],
+        "scopes": ["bsgateway:usage:read"],
         "audit": None,
     },
     "bsgateway_mcp_get_usage_stats": {
-        "scopes": ["gateway:usage:read"],
+        "scopes": ["bsgateway:usage:read"],
         "audit": None,
     },
 }
@@ -398,7 +398,7 @@ class TestScopeEnforcement:
     async def test_list_rules_denied_without_routing_read(
         self, registry: ToolRegistry, mock_service: MagicMock
     ) -> None:
-        ctx = _make_ctx(_make_user(scopes=["gateway:models:read"]))
+        ctx = _make_ctx(_make_user(scopes=["bsgateway:models:read"]))
         with pytest.raises(ToolError) as exc:
             await registry.call_tool(
                 "bsgateway_mcp_list_rules",
@@ -411,7 +411,7 @@ class TestScopeEnforcement:
     async def test_create_rule_denied_without_routing_write(
         self, registry: ToolRegistry, mock_service: MagicMock
     ) -> None:
-        ctx = _make_ctx(_make_user(scopes=["gateway:routing:read"]))
+        ctx = _make_ctx(_make_user(scopes=["bsgateway:routing:read"]))
         with pytest.raises(ToolError) as exc:
             await registry.call_tool(
                 "bsgateway_mcp_create_rule",
@@ -429,7 +429,7 @@ class TestScopeEnforcement:
     async def test_gateway_prefix_wildcard_grants_subscopes(
         self, registry: ToolRegistry, mock_service: MagicMock
     ) -> None:
-        ctx = _make_ctx(_make_user(scopes=["gateway:*"]))
+        ctx = _make_ctx(_make_user(scopes=["bsgateway:*"]))
         result = await registry.call_tool(
             "bsgateway_mcp_list_models",
             {"tenant_id": str(TENANT_ID)},

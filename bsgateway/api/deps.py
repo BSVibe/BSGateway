@@ -33,6 +33,9 @@ from bsvibe_authz import (
     get_current_user as _authz_get_current_user,
 )
 from bsvibe_authz import (
+    require_admin as _authz_require_admin,
+)
+from bsvibe_authz import (
     require_permission as _authz_require_permission,
 )
 from bsvibe_authz import (
@@ -79,15 +82,32 @@ def require_permission(
 def require_scope(scope: str) -> Callable[..., Awaitable[None]]:
     """Wrap ``bsvibe_authz.require_scope`` and tag the closure.
 
-    Admin routes gate on narrow ``gateway:<resource>:<action>`` scope
-    strings carried by opaque service-key tokens. The tag
-    (``_bsvibe_scope``) lets ``test_authz_scope_matrix.py`` pin the
-    catalog so future refactors cannot silently downgrade a gate.
+    CLI/PAT-only routes (the org-level model registry) gate on narrow
+    ``bsgateway:<resource>:<action>`` scope strings carried by opaque
+    service-key tokens / real-scope PATs. Frontend-hit routes use
+    ``require_permission`` / ``require_admin`` instead — see Phase 2b.
+    The tag (``_bsvibe_scope``) lets ``test_authz_scope_matrix.py`` pin
+    the catalog so future refactors cannot silently downgrade a gate.
 
     See ``docs/scopes.md`` for the active catalog.
     """
     dep = _authz_require_scope(scope)
     dep._bsvibe_scope = scope  # type: ignore[attr-defined]
+    return dep
+
+
+def require_admin() -> Callable[..., Awaitable[None]]:
+    """Wrap ``bsvibe_authz.require_admin`` and tag the closure.
+
+    Genuine tenant-administration routes (tenant create/update/delete,
+    per-tenant model CRUD) gate on ``app_metadata.role in (owner, admin)``
+    — a REAL enforced check in prod (demo + service principals also
+    pass). Unlike ``require_permission`` this is *not* permissive when
+    OpenFGA is unconfigured. The tag (``_bsvibe_admin``) lets the authz
+    route-matrix test pin which routes are admin-only.
+    """
+    dep = _authz_require_admin()
+    dep._bsvibe_admin = True  # type: ignore[attr-defined]
     return dep
 
 

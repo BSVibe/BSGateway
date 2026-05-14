@@ -1,18 +1,25 @@
-"""TASK-006 — pin the ``require_scope`` matrix for admin routers.
+"""Pin the ``require_scope`` matrix for CLI/PAT-only admin routers.
 
-Role-based gating (``require_admin`` and ad-hoc role checks) was replaced
-with ``bsvibe_authz.require_scope`` so opaque service keys can be issued
-with narrow scopes (``gateway:models:read``, ``gateway:routing:write``, …).
+Phase 2b — frontend-hit routes (intent/rule/preset/audit/tenant CRUD)
+were swapped off pure ``require_scope`` to ``require_permission`` /
+``require_admin`` (see ``test_authz_route_matrix.py``). The session JWT
+the frontend carries has ``scope=[]`` so any pure ``require_scope`` gate
+403s every browser request.
 
-The matrix below mirrors ``docs/scopes.md``. New admin endpoints must
-extend both — adding a route to the matrix keeps the gate in place after
-future refactors.
+What stays on ``require_scope`` is the **org-level model registry** —
+``/api/v1/admin/models/*`` — hit by the ``bsgateway`` CLI with a
+real-scope PAT, never by the browser. The scope grammar is also
+re-prefixed ``gateway:`` → ``bsgateway:`` to match the bsXXX audience
+flip (bsvibe-authz 1.2.0 ``SERVICE_AUDIENCES``).
+
+The matrix below mirrors ``docs/scopes.md``. New CLI/PAT-only admin
+endpoints must extend both — adding a route to the matrix keeps the gate
+in place after future refactors.
 """
 
 from __future__ import annotations
 
 from typing import ClassVar
-from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -71,68 +78,29 @@ class TestRequireScopeReExport:
     route enforces without binding to closure cell internals."""
 
     def test_dep_callable(self) -> None:
-        dep = require_scope("gateway:tenants:read")
+        dep = require_scope("bsgateway:models:read")
         assert callable(dep)
 
     def test_dep_carries_scope_attr(self) -> None:
-        dep = require_scope("gateway:tenants:write")
-        assert getattr(dep, "_bsvibe_scope", None) == "gateway:tenants:write"
+        dep = require_scope("bsgateway:models:write")
+        assert getattr(dep, "_bsvibe_scope", None) == "bsgateway:models:write"
 
 
 class TestScopeMatrix:
-    """Pin the ``gateway:<resource>:<action>`` scope per admin route."""
+    """Pin the ``bsgateway:<resource>:<action>`` scope per CLI/PAT-only route.
+
+    Only the org-level model registry stays on ``require_scope`` — every
+    other former ``require_scope`` route is now ``require_permission`` or
+    ``require_admin`` (see ``test_authz_route_matrix.py``).
+    """
 
     MATRIX: ClassVar[list[tuple[str, str, str]]] = [
-        # Tenants
-        ("/api/v1/tenants", "POST", "gateway:tenants:write"),
-        ("/api/v1/tenants", "GET", "gateway:tenants:read"),
-        ("/api/v1/tenants/{tenant_id}", "GET", "gateway:tenants:read"),
-        ("/api/v1/tenants/{tenant_id}", "PATCH", "gateway:tenants:write"),
-        ("/api/v1/tenants/{tenant_id}", "DELETE", "gateway:tenants:write"),
-        # Models (under /tenants/{tenant_id}/models)
-        ("/api/v1/tenants/{tenant_id}/models", "POST", "gateway:models:write"),
-        ("/api/v1/tenants/{tenant_id}/models", "GET", "gateway:models:read"),
-        (
-            "/api/v1/tenants/{tenant_id}/models/{model_id}",
-            "GET",
-            "gateway:models:read",
-        ),
-        (
-            "/api/v1/tenants/{tenant_id}/models/{model_id}",
-            "PATCH",
-            "gateway:models:write",
-        ),
-        (
-            "/api/v1/tenants/{tenant_id}/models/{model_id}",
-            "DELETE",
-            "gateway:models:write",
-        ),
-        # Routing — rules
-        ("/api/v1/tenants/{tenant_id}/rules", "GET", "gateway:routing:read"),
-        ("/api/v1/tenants/{tenant_id}/rules", "POST", "gateway:routing:write"),
-        ("/api/v1/tenants/{tenant_id}/rules/{rule_id}", "GET", "gateway:routing:read"),
-        (
-            "/api/v1/tenants/{tenant_id}/rules/{rule_id}",
-            "PATCH",
-            "gateway:routing:write",
-        ),
-        (
-            "/api/v1/tenants/{tenant_id}/rules/{rule_id}",
-            "DELETE",
-            "gateway:routing:write",
-        ),
-        # Routing — intents
-        ("/api/v1/tenants/{tenant_id}/intents", "GET", "gateway:routing:read"),
-        ("/api/v1/tenants/{tenant_id}/intents", "POST", "gateway:routing:write"),
-        # Routing — presets
-        ("/api/v1/presets", "GET", "gateway:routing:read"),
-        (
-            "/api/v1/tenants/{tenant_id}/presets/apply",
-            "POST",
-            "gateway:routing:write",
-        ),
-        # Audit (read-only)
-        ("/api/v1/tenants/{tenant_id}/audit", "GET", "gateway:audit:read"),
+        # Org-level effective-model registry — hit by the `bsgateway` CLI
+        # with a real-scope PAT, never by the browser session JWT.
+        ("/api/v1/admin/models", "GET", "bsgateway:models:read"),
+        ("/api/v1/admin/models", "POST", "bsgateway:models:write"),
+        ("/api/v1/admin/models/{model_id}", "PATCH", "bsgateway:models:write"),
+        ("/api/v1/admin/models/{model_id}", "DELETE", "bsgateway:models:write"),
     ]
 
     @pytest.mark.parametrize("path,method,scope", MATRIX)
@@ -141,6 +109,32 @@ class TestScopeMatrix:
         assert _has_require_scope(route, scope), (
             f"{method} {path} must depend on require_scope({scope!r})"
         )
+
+
+class TestFrontendRoutesNoLongerRequireScope:
+    """Routes the browser session JWT (scope=[]) hits must NOT carry a
+    pure ``require_scope`` gate — otherwise every dashboard request 403s."""
+
+    FRONTEND_ROUTES: ClassVar[list[tuple[str, str]]] = [
+        ("/api/v1/tenants", "GET"),
+        ("/api/v1/tenants/{tenant_id}", "GET"),
+        ("/api/v1/tenants/{tenant_id}/rules", "GET"),
+        ("/api/v1/tenants/{tenant_id}/rules", "POST"),
+        ("/api/v1/tenants/{tenant_id}/intents", "GET"),
+        ("/api/v1/tenants/{tenant_id}/intents", "POST"),
+        ("/api/v1/tenants/{tenant_id}/audit", "GET"),
+        ("/api/v1/presets", "GET"),
+        ("/api/v1/tenants/{tenant_id}/presets/apply", "POST"),
+    ]
+
+    @pytest.mark.parametrize("path,method", FRONTEND_ROUTES)
+    def test_no_bare_require_scope_on_frontend_route(self, app, path, method) -> None:
+        route = _find_route(app, path, method)
+        for dep in _route_dependencies(route):
+            assert getattr(dep, "_bsvibe_scope", None) is None, (
+                f"{method} {path} still carries require_scope — frontend "
+                f"session JWTs (scope=[]) would 403"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -185,35 +179,38 @@ def client_with_scope(monkeypatch):
     return _factory
 
 
-class TestScopeEnforcementGetTenants:
-    """Narrow scope on the wrong action 403s; in-scope reads 200."""
+class TestScopeEnforcementAdminModels:
+    """Narrow scope on the wrong action 403s; in-scope reads 200.
 
-    def test_narrow_read_scope_blocks_post_tenants(self, client_with_scope) -> None:
-        client, _ = client_with_scope(["gateway:tenants:read"])
+    Exercised against ``/api/v1/admin/models`` — the surviving
+    ``require_scope`` route after the Phase 2b swap.
+    """
+
+    def test_narrow_read_scope_blocks_post_admin_models(self, client_with_scope) -> None:
+        client, _ = client_with_scope(["bsgateway:models:read"])
         resp = client.post(
-            "/api/v1/tenants",
-            json={"name": "t", "slug": "t"},
+            "/api/v1/admin/models",
+            json={"model_name": "m", "litellm_model": "openai/gpt-4"},
             headers={"Authorization": "Bearer bsv_sk_x"},
         )
         assert resp.status_code == 403, resp.text
-        assert "gateway:tenants:write" in resp.text
+        assert "bsgateway:models:write" in resp.text
 
-    def test_in_scope_read_allows_get_tenants(self, client_with_scope) -> None:
-        client, _ = client_with_scope(["gateway:tenants:read"])
-        with patch("bsgateway.api.routers.tenants.get_tenant_service") as svc_factory:
-            svc_factory.return_value.list_tenants = pytest.importorskip("unittest.mock").AsyncMock(
-                return_value=[]
-            )
-            resp = client.get(
-                "/api/v1/tenants",
-                headers={"Authorization": "Bearer bsv_sk_x"},
-            )
+    def test_in_scope_read_allows_get_admin_models(self, client_with_scope) -> None:
+        client, _ = client_with_scope(["bsgateway:models:read"])
+        # The mock app has no model_registry attached, so the route
+        # returns an empty effective list — the point here is the scope
+        # gate passes (200, not 403).
+        resp = client.get(
+            "/api/v1/admin/models",
+            headers={"Authorization": "Bearer bsv_sk_x"},
+        )
         assert resp.status_code == 200, resp.text
 
-    def test_no_scope_blocks_get_tenants(self, client_with_scope) -> None:
+    def test_no_scope_blocks_get_admin_models(self, client_with_scope) -> None:
         client, _ = client_with_scope([])
         resp = client.get(
-            "/api/v1/tenants",
+            "/api/v1/admin/models",
             headers={"Authorization": "Bearer bsv_sk_x"},
         )
         assert resp.status_code == 403, resp.text

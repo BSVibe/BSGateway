@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from bsgateway.api.deps import (
     GatewayAuthContext,
     get_pool,
-    require_scope,
+    require_permission,
     require_tenant_access,
 )
 from bsgateway.audit.repository import AuditRepository
@@ -45,7 +45,7 @@ async def list_audit_logs(
     tenant_id: UUID,
     request: Request,
     auth: GatewayAuthContext = Depends(require_tenant_access),
-    _scope: None = Depends(require_scope("gateway:audit:read")),
+    _allowed: None = Depends(require_permission("bsgateway.audit.read")),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> AuditLogListResponse:

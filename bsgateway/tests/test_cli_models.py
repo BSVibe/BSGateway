@@ -160,7 +160,7 @@ def test_list_bad_type_value(runner: CliRunner, fake_client: MagicMock) -> None:
 def test_list_surfaces_http_error_friendly(runner: CliRunner, fake_client: MagicMock) -> None:
     from bsgateway.cli.main import app
 
-    fake_client.get.return_value = _resp(403, {"detail": "scope missing: gateway:models:read"})
+    fake_client.get.return_value = _resp(403, {"detail": "scope missing: bsgateway:models:read"})
     result = runner.invoke(app, _base_args("models", "list"))
     assert result.exit_code != 0
     assert "scope missing" in (result.stdout + result.stderr)

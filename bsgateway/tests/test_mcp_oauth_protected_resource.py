@@ -14,12 +14,12 @@ def test_protected_resource_metadata_shape():
     body = build_protected_resource_metadata(
         resource_url="https://api-gateway.bsvibe.dev",
         authorization_server="https://auth.bsvibe.dev",
-        scopes_supported=["gateway:*"],
+        scopes_supported=["bsgateway:*"],
     )
     assert body["resource"] == "https://api-gateway.bsvibe.dev"
     assert body["authorization_servers"] == ["https://auth.bsvibe.dev"]
     assert body["bearer_methods_supported"] == ["header"]
-    assert "gateway:*" in body["scopes_supported"]
+    assert "bsgateway:*" in body["scopes_supported"]
 
 
 @pytest.mark.asyncio

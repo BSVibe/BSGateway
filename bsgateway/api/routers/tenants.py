@@ -13,8 +13,8 @@ from bsgateway.api.deps import (
     get_encryption_key,
     get_model_registry,
     get_pool,
+    require_admin,
     require_permission,
-    require_scope,
     require_tenant_access,
 )
 from bsgateway.audit.events import (
@@ -74,8 +74,7 @@ def get_tenant_service(request: Request) -> TenantService:
 async def create_tenant(
     body: TenantCreate,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:tenants:write")),
-    _allowed: None = Depends(require_permission("bsgateway.tenants.create")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> TenantResponse:
     svc = get_tenant_service(request)
@@ -112,7 +111,6 @@ async def list_tenants(
     request: Request,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    _scope: None = Depends(require_scope("gateway:tenants:read")),
     _allowed: None = Depends(require_permission("bsgateway.tenants.read")),
     _auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> list[TenantResponse]:
@@ -124,7 +122,7 @@ async def list_tenants(
 async def get_tenant(
     tenant_id: UUID,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:tenants:read")),
+    _allowed: None = Depends(require_permission("bsgateway.tenants.read")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> TenantResponse:
     svc = get_tenant_service(request)
@@ -139,7 +137,7 @@ async def update_tenant(
     tenant_id: UUID,
     body: TenantUpdate,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:tenants:write")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> TenantResponse:
     svc = get_tenant_service(request)
@@ -173,7 +171,7 @@ async def update_tenant(
 async def deactivate_tenant(
     tenant_id: UUID,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:tenants:write")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> None:
     svc = get_tenant_service(request)
@@ -321,7 +319,7 @@ async def create_model(
     tenant_id: UUID,
     body: TenantModelCreate,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:write")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
     registry=Depends(get_model_registry),
 ) -> TenantModelResponse:
@@ -368,7 +366,7 @@ async def create_model(
 async def list_models(
     tenant_id: UUID,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:read")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> list[TenantModelResponse]:
     svc = get_tenant_service(request)
@@ -384,7 +382,7 @@ async def get_model(
     tenant_id: UUID,
     model_id: UUID,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:read")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> TenantModelResponse:
     svc = get_tenant_service(request)
@@ -404,7 +402,7 @@ async def update_model(
     model_id: UUID,
     body: TenantModelUpdate,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:write")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
     registry=Depends(get_model_registry),
 ) -> TenantModelResponse:
@@ -440,7 +438,7 @@ async def delete_model(
     tenant_id: UUID,
     model_id: UUID,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:write")),
+    _admin: None = Depends(require_admin()),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
     registry=Depends(get_model_registry),
 ) -> None:

@@ -5,13 +5,13 @@ in alembic ``0004_models_and_tenant_isolation``. It is the only mutation
 surface for the yaml-union-DB merge cache (``ModelRegistryService``), so
 every write here MUST:
 
-* enforce ``gateway:models:write`` (scope cutover lockdown),
+* enforce ``bsgateway:models:write`` (scope cutover lockdown),
 * call ``registry.invalidate(tenant_id)`` so the next routing decision
   sees the new state without a process restart,
 * emit an audit row through ``AuditService.record`` with no
   ``litellm_params`` payload (provider creds may live there).
 
-Reads enforce ``gateway:models:read`` and call ``registry.list_models``
+Reads enforce ``bsgateway:models:read`` and call ``registry.list_models``
 so the response is the **effective** (yaml-union-DB) list — clients never
 have to merge themselves.
 """
@@ -201,7 +201,7 @@ class TestListEffectiveModels:
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.get("/api/v1/admin/models")
         assert resp.status_code == 403
-        assert "gateway:models:read" in resp.json()["detail"]
+        assert "bsgateway:models:read" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +334,7 @@ class TestCreateModel:
             },
         )
         assert resp.status_code == 403
-        assert "gateway:models:write" in resp.json()["detail"]
+        assert "bsgateway:models:write" in resp.json()["detail"]
         assert registry.invalidated == []
 
 

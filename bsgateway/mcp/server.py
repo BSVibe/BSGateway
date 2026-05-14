@@ -232,7 +232,7 @@ def register_domain_tools(
             input_schema=ListRulesInput,
             output_schema=ListRulesOutput,
             handler=_list_rules_handler(service_factory),
-            required_scopes=["gateway:routing:read"],
+            required_scopes=["bsgateway:routing:read"],
         ),
         Tool(
             name="bsgateway_mcp_create_rule",
@@ -240,7 +240,7 @@ def register_domain_tools(
             input_schema=CreateRuleInput,
             output_schema=MCPRuleResponse,
             handler=_create_rule_handler(service_factory),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.rule.created",
         ),
         Tool(
@@ -249,7 +249,7 @@ def register_domain_tools(
             input_schema=UpdateRuleInput,
             output_schema=MCPRuleResponse,
             handler=_update_rule_handler(service_factory),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.rule.updated",
         ),
         Tool(
@@ -258,7 +258,7 @@ def register_domain_tools(
             input_schema=DeleteRuleInput,
             output_schema=DeleteRuleOutput,
             handler=_delete_rule_handler(service_factory),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.rule.deleted",
         ),
         Tool(
@@ -267,7 +267,7 @@ def register_domain_tools(
             input_schema=ListModelsInput,
             output_schema=ListModelsOutput,
             handler=_list_models_handler(service_factory),
-            required_scopes=["gateway:models:read"],
+            required_scopes=["bsgateway:models:read"],
         ),
         Tool(
             name="bsgateway_mcp_register_model",
@@ -275,7 +275,7 @@ def register_domain_tools(
             input_schema=RegisterModelInput,
             output_schema=MCPModelResponse,
             handler=_register_model_handler(service_factory),
-            required_scopes=["gateway:models:write"],
+            required_scopes=["bsgateway:models:write"],
             audit_event="gateway.model.created",
         ),
         Tool(
@@ -284,7 +284,7 @@ def register_domain_tools(
             input_schema=SimulateRoutingInput,
             output_schema=MCPSimulateResponse,
             handler=_simulate_handler(service_factory),
-            required_scopes=["gateway:routing:read"],
+            required_scopes=["bsgateway:routing:read"],
         ),
         Tool(
             name="bsgateway_mcp_get_cost_report",
@@ -292,7 +292,7 @@ def register_domain_tools(
             input_schema=GetCostReportInput,
             output_schema=MCPCostReport,
             handler=_cost_report_handler(service_factory),
-            required_scopes=["gateway:usage:read"],
+            required_scopes=["bsgateway:usage:read"],
         ),
         Tool(
             name="bsgateway_mcp_get_usage_stats",
@@ -300,7 +300,7 @@ def register_domain_tools(
             input_schema=GetUsageStatsInput,
             output_schema=MCPUsageStats,
             handler=_usage_stats_handler(service_factory),
-            required_scopes=["gateway:usage:read"],
+            required_scopes=["bsgateway:usage:read"],
         ),
     ]
     for tool in tools:

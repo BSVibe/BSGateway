@@ -245,10 +245,10 @@ class TestCallToolScopeEnforcement:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["gateway:models:write"],
+                required_scopes=["bsgateway:models:write"],
             )
         )
-        ctx = _make_ctx(_make_user(scopes=["gateway:models:read"]))
+        ctx = _make_ctx(_make_user(scopes=["bsgateway:models:read"]))
         with pytest.raises(ToolError) as exc:
             await reg.call_tool("echo", {"message": "hi"}, ctx)
         assert exc.value.code == "permission_denied"
@@ -262,10 +262,10 @@ class TestCallToolScopeEnforcement:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["gateway:models:write"],
+                required_scopes=["bsgateway:models:write"],
             )
         )
-        ctx = _make_ctx(_make_user(scopes=["gateway:*"]))
+        ctx = _make_ctx(_make_user(scopes=["bsgateway:*"]))
         result = await reg.call_tool("echo", {"message": "hi"}, ctx)
         assert result == {"echoed": "hi"}
 
@@ -279,10 +279,10 @@ class TestCallToolScopeEnforcement:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["gateway:models:write", "gateway:routing:write"],
+                required_scopes=["bsgateway:models:write", "bsgateway:routing:write"],
             )
         )
-        ctx = _make_ctx(_make_user(scopes=["gateway:models:write"]))
+        ctx = _make_ctx(_make_user(scopes=["bsgateway:models:write"]))
         with pytest.raises(ToolError) as exc:
             await reg.call_tool("echo", {"message": "hi"}, ctx)
         assert exc.value.code == "permission_denied"
@@ -398,7 +398,7 @@ class TestAuditEmission:
                 input_schema=_AddIn,
                 output_schema=_AddOut,
                 handler=_add_handler,
-                required_scopes=["gateway:models:write"],
+                required_scopes=["bsgateway:models:write"],
                 audit_event="gateway.tool.add",
             )
         )
@@ -508,7 +508,7 @@ class TestBuildMcpServer:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["gateway:models:write"],
+                required_scopes=["bsgateway:models:write"],
             )
         )
 
@@ -582,7 +582,7 @@ class TestResolveToolContextIntrospection:
             active_tenant_id=None,
             tenants=[],
             is_service=True,
-            scope=["gateway:models:read"],
+            scope=["bsgateway:models:read"],
         )
 
         async def _fake_get_current_user(**_kwargs):
