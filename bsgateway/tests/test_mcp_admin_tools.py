@@ -14,7 +14,7 @@ The contract under test:
   (NO Typer auto-conversion) — the dispatcher's contract from TASK-002
   is preserved.
 * Required scopes mirror the REST surface the equivalent CLI command
-  hits (``gateway:models:write`` for ``models add``, etc.).
+  hits (``bsgateway:models:write`` for ``models add``, etc.).
 * ``audit_event`` is set on every mutating tool; reads emit nothing.
 * Handlers delegate the actual request to an injected ``loopback``
   callable so tests can stub it. Production wiring (TASK-005) plumbs
@@ -54,7 +54,7 @@ def _make_user(scopes: list[str] | None = None) -> User:
         active_tenant_id=str(TENANT_ID),
         tenants=[],
         is_service=False,
-        scope=["gateway:*"] if scopes is None else scopes,
+        scope=["bsgateway:*"] if scopes is None else scopes,
     )
 
 
@@ -162,14 +162,14 @@ class TestScopeAndAudit:
         ):
             tool = reg.get(name)
             assert tool is not None
-            assert "gateway:models:write" in tool.required_scopes
+            assert "bsgateway:models:write" in tool.required_scopes
 
     def test_models_read_scopes(self) -> None:
         reg = _build_registry(_StubLoopback())
         for name in ("bsgateway_models_list", "bsgateway_models_show"):
             tool = reg.get(name)
             assert tool is not None
-            assert "gateway:models:read" in tool.required_scopes
+            assert "bsgateway:models:read" in tool.required_scopes
 
     def test_routing_write_scope_for_rule_mutations(self) -> None:
         reg = _build_registry(_StubLoopback())
@@ -180,7 +180,7 @@ class TestScopeAndAudit:
         ):
             tool = reg.get(name)
             assert tool is not None
-            assert "gateway:routing:write" in tool.required_scopes
+            assert "bsgateway:routing:write" in tool.required_scopes
 
     def test_audit_event_set_on_every_mutating_tool(self) -> None:
         reg = _build_registry(_StubLoopback())

@@ -178,7 +178,7 @@ def test_routes_test_403_friendly(runner: CliRunner, monkeypatch: pytest.MonkeyP
     from bsgateway.cli.main import app
 
     fake = _fake(monkeypatch, "routes")
-    fake.post.return_value = _resp(403, {"detail": "scope missing: gateway:routing:read"})
+    fake.post.return_value = _resp(403, {"detail": "scope missing: bsgateway:routing:read"})
     result = runner.invoke(app, _base("routes", "test", "--prompt", "x"))
     assert result.exit_code != 0
     assert "scope missing" in (result.stdout + result.stderr)
@@ -382,7 +382,7 @@ def test_rules_403_friendly(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) 
     from bsgateway.cli.main import app
 
     fake = _fake(monkeypatch, "rules")
-    fake.get.return_value = _resp(403, {"detail": "scope missing: gateway:routing:read"})
+    fake.get.return_value = _resp(403, {"detail": "scope missing: bsgateway:routing:read"})
     result = runner.invoke(app, _base("rules", "list"))
     assert result.exit_code != 0
     assert "scope missing" in (result.stdout + result.stderr)
@@ -527,7 +527,7 @@ def test_intents_403_friendly(runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     from bsgateway.cli.main import app
 
     fake = _fake(monkeypatch, "intents")
-    fake.get.return_value = _resp(403, {"detail": "scope missing: gateway:routing:read"})
+    fake.get.return_value = _resp(403, {"detail": "scope missing: bsgateway:routing:read"})
     result = runner.invoke(app, _base("intents", "list"))
     assert result.exit_code != 0
     assert "Traceback" not in (result.stdout + result.stderr)
@@ -663,7 +663,7 @@ def test_presets_apply_403_friendly(runner: CliRunner, monkeypatch: pytest.Monke
     from bsgateway.cli.main import app
 
     fake = _fake(monkeypatch, "presets")
-    fake.post.return_value = _resp(403, {"detail": "scope missing: gateway:routing:write"})
+    fake.post.return_value = _resp(403, {"detail": "scope missing: bsgateway:routing:write"})
     result = runner.invoke(
         app,
         _base(

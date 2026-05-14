@@ -200,13 +200,14 @@ class TestBSVibeAuth:
             )
         assert resp.status_code == 200
 
-    def test_non_admin_cannot_list_tenants(self):
-        """Phase 1 cutover: scopeless principal → 403 from ``require_scope``.
+    def test_non_admin_can_list_tenants(self):
+        """Phase 2b: ``GET /tenants`` is permissive — a member-role session
+        JWT (``scope=[]``) reaches the handler.
 
-        The legacy "member-role JWT can't list tenants" gate was role-based
-        (``require_admin``). Post-cutover the gate is scope-based; the
-        member's JWT carries no ``gateway:tenants:read`` so the
-        ``bsvibe_authz.require_scope`` chain rejects.
+        Pure ``require_scope`` 403'd every dashboard request because the
+        wrapped session JWT carries ``scope=[]``. The read was swapped to
+        the permissive ``require_permission`` (no-op pass when OpenFGA is
+        unconfigured, which it is on BSGateway).
         """
         app = _make_app()
         user = make_authz_user(tenant_id=TENANT_ID, role="member")
@@ -215,9 +216,9 @@ class TestBSVibeAuth:
         with (
             _patch_authz_user(user),
             patch(
-                "bsgateway.tenant.repository.TenantRepository.get_tenant",
+                "bsgateway.tenant.repository.TenantRepository.list_tenants",
                 new_callable=AsyncMock,
-                return_value=_tenant_row(TENANT_ID),
+                return_value=[],
             ),
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -225,8 +226,24 @@ class TestBSVibeAuth:
                 "/api/v1/tenants",
                 headers={"Authorization": "Bearer valid-token"},
             )
+        assert resp.status_code == 200, resp.text
+
+    def test_non_admin_cannot_create_tenant(self):
+        """Phase 2b: ``POST /tenants`` gates on ``require_admin()`` — a
+        member-role principal 403s with ``admin role required``."""
+        app = _make_app()
+        user = make_authz_user(tenant_id=TENANT_ID, role="member")
+        app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
+
+        with _patch_authz_user(user):
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/v1/tenants",
+                json={"name": "t", "slug": "t"},
+                headers={"Authorization": "Bearer valid-token"},
+            )
         assert resp.status_code == 403
-        assert "gateway:tenants:read" in resp.json()["detail"]
+        assert "admin role required" in resp.json()["detail"]
 
     def test_tenant_access_own_data(self):
         app = _make_app()

@@ -23,6 +23,7 @@ import pytest
 from bsgateway.api.deps import (
     ServiceKeyAuth,
     get_active_tenant_id,
+    require_admin,
     require_permission,
 )
 
@@ -66,6 +67,14 @@ def _has_require_permission(route, permission: str) -> bool:
 def _has_service_key_auth(route, audience: str) -> bool:
     for dep in _route_dependencies(route):
         if isinstance(dep, ServiceKeyAuth) and dep.audience == audience:
+            return True
+    return False
+
+
+def _has_require_admin(route) -> bool:
+    """Return True iff one of the route's deps was created by ``require_admin``."""
+    for dep in _route_dependencies(route):
+        if getattr(dep, "_bsvibe_admin", None) is True:
             return True
     return False
 
@@ -117,12 +126,46 @@ class TestRouteMatrix:
         # API keys routes were removed in the Phase 1 token cutover —
         # bsvibe-authz introspection + JWT tokens replace the
         # self-hosted ``api_keys`` table and its CRUD router.
-        # Routing rules
+        #
+        # Phase 2b — frontend-hit routes swapped off pure require_scope to
+        # require_permission (permissive when OpenFGA is unconfigured, so
+        # session-JWT users with scope=[] pass) or require_admin (genuine
+        # tenant-admin operations). CLI/PAT-only routes keep require_scope
+        # (see test_authz_scope_matrix.py).
+        #
+        # Routing — rules (tenant-member CRUD)
         ("/api/v1/tenants/{tenant_id}/rules", "GET", "bsgateway.routes.read"),
         ("/api/v1/tenants/{tenant_id}/rules", "POST", "bsgateway.routes.create"),
-        # Tenants admin
-        ("/api/v1/tenants", "POST", "bsgateway.tenants.create"),
+        ("/api/v1/tenants/{tenant_id}/rules/{rule_id}", "GET", "bsgateway.routes.read"),
+        ("/api/v1/tenants/{tenant_id}/rules/{rule_id}", "PATCH", "bsgateway.routes.write"),
+        ("/api/v1/tenants/{tenant_id}/rules/{rule_id}", "DELETE", "bsgateway.routes.write"),
+        # Routing — intents (dashboard surface)
+        ("/api/v1/tenants/{tenant_id}/intents", "GET", "bsgateway.routing.read"),
+        ("/api/v1/tenants/{tenant_id}/intents", "POST", "bsgateway.routing.write"),
+        ("/api/v1/tenants/{tenant_id}/intents/{intent_id}", "GET", "bsgateway.routing.read"),
+        ("/api/v1/tenants/{tenant_id}/intents/{intent_id}", "PATCH", "bsgateway.routing.write"),
+        ("/api/v1/tenants/{tenant_id}/intents/{intent_id}", "DELETE", "bsgateway.routing.write"),
+        # Routing — presets
+        ("/api/v1/presets", "GET", "bsgateway.routing.read"),
+        ("/api/v1/tenants/{tenant_id}/presets/apply", "POST", "bsgateway.routing.write"),
+        # Audit (read-only dashboard surface)
+        ("/api/v1/tenants/{tenant_id}/audit", "GET", "bsgateway.audit.read"),
+        # Tenants — reads are permissive
         ("/api/v1/tenants", "GET", "bsgateway.tenants.read"),
+        ("/api/v1/tenants/{tenant_id}", "GET", "bsgateway.tenants.read"),
+    ]
+
+    # Genuine tenant-administration routes — gate on require_admin()
+    # (app_metadata.role in owner/admin). REAL enforced check in prod.
+    ADMIN_MATRIX: ClassVar[list[tuple[str, str]]] = [
+        ("/api/v1/tenants", "POST"),
+        ("/api/v1/tenants/{tenant_id}", "PATCH"),
+        ("/api/v1/tenants/{tenant_id}", "DELETE"),
+        ("/api/v1/tenants/{tenant_id}/models", "POST"),
+        ("/api/v1/tenants/{tenant_id}/models", "GET"),
+        ("/api/v1/tenants/{tenant_id}/models/{model_id}", "GET"),
+        ("/api/v1/tenants/{tenant_id}/models/{model_id}", "PATCH"),
+        ("/api/v1/tenants/{tenant_id}/models/{model_id}", "DELETE"),
     ]
 
     @pytest.mark.parametrize("path,method,permission", MATRIX)
@@ -131,6 +174,11 @@ class TestRouteMatrix:
         assert _has_require_permission(route, permission), (
             f"{method} {path} must depend on require_permission({permission!r})"
         )
+
+    @pytest.mark.parametrize("path,method", ADMIN_MATRIX)
+    def test_admin_route_carries_require_admin(self, app, path, method) -> None:
+        route = _find_route(app, path, method)
+        assert _has_require_admin(route), f"{method} {path} must depend on require_admin()"
 
 
 class TestServiceOnlyEndpoints:
@@ -161,3 +209,17 @@ class TestRequirePermissionIntrospection:
         # FastAPI introspects Depends() params — at minimum we expect a
         # request param so the dependant graph can be built.
         assert "request" in sig.parameters
+
+
+class TestRequireAdminIntrospection:
+    """``require_admin`` must be re-exported from ``bsgateway.api.deps``
+    and tag its closure with ``_bsvibe_admin`` so the route matrix can
+    verify which routes are gated on the admin-role check."""
+
+    def test_dep_callable(self) -> None:
+        dep = require_admin()
+        assert callable(dep)
+
+    def test_dep_carries_admin_tag(self) -> None:
+        dep = require_admin()
+        assert getattr(dep, "_bsvibe_admin", None) is True

@@ -153,7 +153,7 @@ async def _invalidate(registry: object | None, tenant_id: UUID) -> None:
 )
 async def list_effective_models(
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:read")),
+    _scope: None = Depends(require_scope("bsgateway:models:read")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> list[EffectiveModel]:
@@ -191,7 +191,7 @@ async def list_effective_models(
 async def create_model(
     request: Request,
     body: Annotated[ModelCreate, Body()],
-    _scope: None = Depends(require_scope("gateway:models:write")),
+    _scope: None = Depends(require_scope("bsgateway:models:write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> ModelResponse:
@@ -252,7 +252,7 @@ async def update_model(
     model_id: UUID,
     body: ModelUpdate,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:write")),
+    _scope: None = Depends(require_scope("bsgateway:models:write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> ModelResponse:
@@ -309,7 +309,7 @@ async def update_model(
 async def delete_model(
     model_id: UUID,
     request: Request,
-    _scope: None = Depends(require_scope("gateway:models:write")),
+    _scope: None = Depends(require_scope("bsgateway:models:write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> None:

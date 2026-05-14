@@ -146,11 +146,11 @@ async def lifespan(app: FastAPI):
                 auth_url=settings.bsvibe_auth_url,
                 client_id=settings.bsvibe_client_id,
                 client_secret=settings.bsvibe_client_secret,
-                # Round 5 Step 3: flipped from legacy ``bsupervisor`` audience
-                # to the MCP-aligned bare name ``supervisor``. Pair with
-                # bsvibe-authz 0.9.1 which accepts both during the cutover.
-                audience="supervisor",
-                scope=["supervisor:audit.write"],
+                # Phase 2b: service audiences re-prefixed to ``bsXXX`` to
+                # match bsvibe-authz 1.2.0 SERVICE_AUDIENCES
+                # ({bsgateway, bsupervisor, bsage, bsnexus}).
+                audience="bsupervisor",
+                scope=["bsupervisor:audit.write"],
             )
             client = BSupervisorClient(
                 base_url=settings.bsupervisor_url,
@@ -443,7 +443,7 @@ def create_app() -> FastAPI:
             content=build_protected_resource_metadata(
                 resource_url=resource_url,
                 authorization_server=settings.bsvibe_auth_url.rstrip("/"),
-                scopes_supported=["gateway:*"],
+                scopes_supported=["bsgateway:*"],
             ),
             headers={"Cache-Control": "public, max-age=300"},
         )

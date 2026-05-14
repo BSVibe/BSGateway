@@ -14,7 +14,6 @@ from bsgateway.api.deps import (
     get_cache,
     get_pool,
     require_permission,
-    require_scope,
     require_tenant_access,
 )
 from bsgateway.audit.events import (
@@ -147,7 +146,6 @@ async def create_rule(
     # tenant members can manage their own rules without superadmin privilege.
     _auth: GatewayAuthContext = Depends(require_tenant_access),
     _allowed: None = Depends(require_permission("bsgateway.routes.create")),
-    _scope: None = Depends(require_scope("gateway:routing:write")),
 ) -> RuleResponse:
     await _validate_target_model(request, tenant_id, body.target_model)
     repo = _get_repo(request)
@@ -379,7 +377,6 @@ async def list_rules(
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
     _allowed: None = Depends(require_permission("bsgateway.routes.read")),
-    _scope: None = Depends(require_scope("gateway:routing:read")),
 ) -> list[RuleResponse]:
     repo = _get_repo(request)
     rows = await repo.list_rules(tenant_id)
@@ -392,7 +389,7 @@ async def get_rule(
     rule_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
-    _scope: None = Depends(require_scope("gateway:routing:read")),
+    _allowed: None = Depends(require_permission("bsgateway.routes.read")),
 ) -> RuleResponse:
     repo = _get_repo(request)
     row = await repo.get_rule(rule_id, tenant_id)
@@ -408,7 +405,7 @@ async def update_rule(
     body: RuleUpdate,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
-    _scope: None = Depends(require_scope("gateway:routing:write")),
+    _allowed: None = Depends(require_permission("bsgateway.routes.write")),
 ) -> RuleResponse:
     repo = _get_repo(request)
     existing = await repo.get_rule(rule_id, tenant_id)
@@ -465,7 +462,7 @@ async def delete_rule(
     rule_id: UUID,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
-    _scope: None = Depends(require_scope("gateway:routing:write")),
+    _allowed: None = Depends(require_permission("bsgateway.routes.write")),
 ) -> None:
     repo = _get_repo(request)
     await repo.delete_rule(rule_id, tenant_id)

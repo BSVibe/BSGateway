@@ -97,12 +97,14 @@ class TestTenantAuth:
         assert resp.status_code == 401
 
     def test_non_admin_returns_403(self, mock_pool):
-        """Token without ``gateway:tenants:read`` → 403 on admin-only endpoints.
+        """Non-admin principal → 403 on genuine tenant-admin endpoints.
 
-        Phase 1 token cutover replaced role-based gating (``require_admin``)
-        with scope-based gating (``require_scope("gateway:tenants:read")``).
-        A scopeless principal must hit 403 with the ``missing required scope``
-        detail from ``bsvibe_authz.require_scope``.
+        Phase 2b: frontend-hit reads (``GET /tenants``) were swapped to the
+        permissive ``require_permission`` so the browser session JWT
+        (``scope=[]``) is no longer dead. Genuine tenant administration
+        (``POST /tenants``) now gates on ``require_admin()`` — a real
+        enforced check on ``app_metadata.role``. A principal without an
+        ``owner``/``admin`` role must hit 403 with ``admin role required``.
         """
         app = create_app()
         app.state.db_pool = mock_pool
@@ -112,9 +114,32 @@ class TestTenantAuth:
         app.dependency_overrides[get_auth_context] = lambda: member_ctx
         app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.get("/api/v1/tenants")
+        resp = client.post("/api/v1/tenants", json={"name": "t", "slug": "t"})
         assert resp.status_code == 403
-        assert "gateway:tenants:read" in resp.json()["detail"]
+        assert "admin role required" in resp.json()["detail"]
+
+    def test_permissive_read_allows_non_admin_list_tenants(self, mock_pool):
+        """Phase 2b: ``GET /tenants`` is now permissive — a browser session
+        JWT with ``scope=[]`` and no admin role reaches the handler (200).
+
+        This is the core fix: pure ``require_scope`` 403'd every dashboard
+        request because the wrapped session JWT carries ``scope=[]``.
+        """
+        app = create_app()
+        app.state.db_pool = mock_pool
+        app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
+        app.state.redis = None
+        member_ctx = make_gateway_auth_context(is_admin=False)
+        app.dependency_overrides[get_auth_context] = lambda: member_ctx
+        app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
+        client = TestClient(app, raise_server_exceptions=False)
+        with patch(
+            "bsgateway.tenant.repository.TenantRepository.list_tenants",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            resp = client.get("/api/v1/tenants")
+        assert resp.status_code == 200, resp.text
 
 
 class TestTenantCRUD:
@@ -222,12 +247,11 @@ class TestCrossTenantAccess:
         assert resp.status_code == 403
 
     def test_tenant_cannot_update_other_tenant(self, mock_pool):
-        """A scopeless principal cannot PATCH any tenant — ``require_scope`` blocks.
+        """A non-admin principal cannot PATCH any tenant — ``require_admin`` blocks.
 
-        Post-cutover, cross-tenant write isolation is enforced by
-        ``require_scope("gateway:tenants:write")`` (only
-        explicitly-scoped service keys carry it). The legacy
-        ``require_admin`` gate is gone.
+        Phase 2b: tenant administration (PATCH/DELETE ``/tenants/{id}``)
+        gates on ``require_admin()``. A principal without an
+        ``owner``/``admin`` role 403s before reaching the handler.
         """
         own_tid = uuid4()
         other_tid = uuid4()

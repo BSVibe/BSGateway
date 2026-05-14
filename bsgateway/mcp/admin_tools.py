@@ -760,7 +760,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=AuditListInput,
             output_schema=AdminToolResponse,
             handler=_h_audit_list(loopback),
-            required_scopes=["gateway:audit:read"],
+            required_scopes=["bsgateway:audit:read"],
         ),
         # execute -------------------------------------------------------
         Tool(
@@ -769,7 +769,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=ExecuteInput,
             output_schema=AdminToolResponse,
             handler=_h_execute(loopback),
-            required_scopes=["gateway:execute:write"],
+            required_scopes=["bsgateway:execute:write"],
             audit_event="gateway.executor.task.created",
         ),
         # feedback ------------------------------------------------------
@@ -779,7 +779,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=FeedbackAddInput,
             output_schema=AdminToolResponse,
             handler=_h_feedback_add(loopback),
-            required_scopes=["gateway:feedback:write"],
+            required_scopes=["bsgateway:feedback:write"],
             audit_event="gateway.feedback.created",
         ),
         Tool(
@@ -788,7 +788,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=FeedbackListInput,
             output_schema=AdminToolResponse,
             handler=_h_feedback_list(loopback),
-            required_scopes=["gateway:feedback:read"],
+            required_scopes=["bsgateway:feedback:read"],
         ),
         # intents -------------------------------------------------------
         Tool(
@@ -797,7 +797,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=IntentsListInput,
             output_schema=AdminToolResponse,
             handler=_h_intents_list(loopback),
-            required_scopes=["gateway:routing:read"],
+            required_scopes=["bsgateway:routing:read"],
         ),
         Tool(
             name="bsgateway_intents_add",
@@ -805,7 +805,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=IntentsAddInput,
             output_schema=AdminToolResponse,
             handler=_h_intents_add(loopback),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.intent.created",
         ),
         Tool(
@@ -814,7 +814,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=IntentsUpdateInput,
             output_schema=AdminToolResponse,
             handler=_h_intents_update(loopback),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.intent.updated",
         ),
         Tool(
@@ -823,7 +823,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=IntentsDeleteInput,
             output_schema=AdminToolResponse,
             handler=_h_intents_delete(loopback),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.intent.deleted",
         ),
         # models --------------------------------------------------------
@@ -833,7 +833,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=ModelsListInput,
             output_schema=AdminToolResponse,
             handler=_h_models_list(loopback),
-            required_scopes=["gateway:models:read"],
+            required_scopes=["bsgateway:models:read"],
         ),
         Tool(
             name="bsgateway_models_show",
@@ -841,7 +841,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=ModelsShowInput,
             output_schema=AdminToolResponse,
             handler=_h_models_show(loopback),
-            required_scopes=["gateway:models:read"],
+            required_scopes=["bsgateway:models:read"],
         ),
         Tool(
             name="bsgateway_models_add",
@@ -849,7 +849,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=ModelsAddInput,
             output_schema=AdminToolResponse,
             handler=_h_models_add(loopback),
-            required_scopes=["gateway:models:write"],
+            required_scopes=["bsgateway:models:write"],
             audit_event="gateway.model.created",
         ),
         Tool(
@@ -858,7 +858,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=ModelsUpdateInput,
             output_schema=AdminToolResponse,
             handler=_h_models_update(loopback),
-            required_scopes=["gateway:models:write"],
+            required_scopes=["bsgateway:models:write"],
             audit_event="gateway.model.updated",
         ),
         Tool(
@@ -867,7 +867,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=ModelsRemoveInput,
             output_schema=AdminToolResponse,
             handler=_h_models_remove(loopback),
-            required_scopes=["gateway:models:write"],
+            required_scopes=["bsgateway:models:write"],
             audit_event="gateway.model.deleted",
         ),
         # presets -------------------------------------------------------
@@ -877,7 +877,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=PresetsListInput,
             output_schema=AdminToolResponse,
             handler=_h_presets_list(loopback),
-            required_scopes=["gateway:presets:read"],
+            required_scopes=["bsgateway:presets:read"],
         ),
         Tool(
             name="bsgateway_presets_apply",
@@ -885,7 +885,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=PresetsApplyInput,
             output_schema=AdminToolResponse,
             handler=_h_presets_apply(loopback),
-            required_scopes=["gateway:presets:write"],
+            required_scopes=["bsgateway:presets:write"],
             audit_event="gateway.presets.applied",
         ),
         # routes --------------------------------------------------------
@@ -895,7 +895,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=RoutesTestInput,
             output_schema=AdminToolResponse,
             handler=_h_routes_test(loopback),
-            required_scopes=["gateway:routing:read"],
+            required_scopes=["bsgateway:routing:read"],
         ),
         # rules ---------------------------------------------------------
         Tool(
@@ -904,7 +904,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=RulesListInput,
             output_schema=AdminToolResponse,
             handler=_h_rules_list(loopback),
-            required_scopes=["gateway:routing:read"],
+            required_scopes=["bsgateway:routing:read"],
         ),
         Tool(
             name="bsgateway_rules_add",
@@ -912,7 +912,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=RulesAddInput,
             output_schema=AdminToolResponse,
             handler=_h_rules_add(loopback),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.rule.created",
         ),
         Tool(
@@ -921,7 +921,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=RulesUpdateInput,
             output_schema=AdminToolResponse,
             handler=_h_rules_update(loopback),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.rule.updated",
         ),
         Tool(
@@ -930,7 +930,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=RulesDeleteInput,
             output_schema=AdminToolResponse,
             handler=_h_rules_delete(loopback),
-            required_scopes=["gateway:routing:write"],
+            required_scopes=["bsgateway:routing:write"],
             audit_event="gateway.routing.rule.deleted",
         ),
         # tenants -------------------------------------------------------
@@ -940,7 +940,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=TenantsListInput,
             output_schema=AdminToolResponse,
             handler=_h_tenants_list(loopback),
-            required_scopes=["gateway:tenants:read"],
+            required_scopes=["bsgateway:tenants:read"],
         ),
         Tool(
             name="bsgateway_tenants_add",
@@ -948,7 +948,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=TenantsAddInput,
             output_schema=AdminToolResponse,
             handler=_h_tenants_add(loopback),
-            required_scopes=["gateway:tenants:write"],
+            required_scopes=["bsgateway:tenants:write"],
             audit_event="gateway.tenant.created",
         ),
         Tool(
@@ -957,7 +957,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=TenantsShowInput,
             output_schema=AdminToolResponse,
             handler=_h_tenants_show(loopback),
-            required_scopes=["gateway:tenants:read"],
+            required_scopes=["bsgateway:tenants:read"],
         ),
         Tool(
             name="bsgateway_tenants_update",
@@ -965,7 +965,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=TenantsUpdateInput,
             output_schema=AdminToolResponse,
             handler=_h_tenants_update(loopback),
-            required_scopes=["gateway:tenants:write"],
+            required_scopes=["bsgateway:tenants:write"],
             audit_event="gateway.tenant.updated",
         ),
         Tool(
@@ -974,7 +974,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=TenantsDeleteInput,
             output_schema=AdminToolResponse,
             handler=_h_tenants_delete(loopback),
-            required_scopes=["gateway:tenants:write"],
+            required_scopes=["bsgateway:tenants:write"],
             audit_event="gateway.tenant.deleted",
         ),
         # usage ---------------------------------------------------------
@@ -984,7 +984,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=UsageReportInput,
             output_schema=AdminToolResponse,
             handler=_h_usage_report(loopback),
-            required_scopes=["gateway:usage:read"],
+            required_scopes=["bsgateway:usage:read"],
         ),
         Tool(
             name="bsgateway_usage_sparklines",
@@ -992,7 +992,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=UsageSparklinesInput,
             output_schema=AdminToolResponse,
             handler=_h_usage_sparklines(loopback),
-            required_scopes=["gateway:usage:read"],
+            required_scopes=["bsgateway:usage:read"],
         ),
         # workers -------------------------------------------------------
         Tool(
@@ -1001,7 +1001,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=WorkersListInput,
             output_schema=AdminToolResponse,
             handler=_h_workers_list(loopback),
-            required_scopes=["gateway:workers:read"],
+            required_scopes=["bsgateway:workers:read"],
         ),
         Tool(
             name="bsgateway_workers_register",
@@ -1009,7 +1009,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=WorkersRegisterInput,
             output_schema=AdminToolResponse,
             handler=_h_workers_register(loopback),
-            required_scopes=["gateway:workers:write"],
+            required_scopes=["bsgateway:workers:write"],
             audit_event="gateway.worker.registered",
         ),
         Tool(
@@ -1018,7 +1018,7 @@ def register_admin_tools(registry: ToolRegistry, *, loopback: LoopbackCaller) ->
             input_schema=WorkersRevokeInput,
             output_schema=AdminToolResponse,
             handler=_h_workers_revoke(loopback),
-            required_scopes=["gateway:workers:write"],
+            required_scopes=["bsgateway:workers:write"],
             audit_event="gateway.worker.revoked",
         ),
     ]

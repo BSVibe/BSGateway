@@ -264,7 +264,7 @@ def test_tenants_403_friendly(runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     from bsgateway.cli.main import app
 
     fake = _fake(monkeypatch, "tenants")
-    fake.get.return_value = _resp(403, {"detail": "scope missing: gateway:tenants:read"})
+    fake.get.return_value = _resp(403, {"detail": "scope missing: bsgateway:tenants:read"})
     result = runner.invoke(app, _base("tenants", "list", tenant=False))
     assert result.exit_code != 0
     assert "scope missing" in (result.stdout + result.stderr)
@@ -346,7 +346,7 @@ def test_audit_403_friendly(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) 
     from bsgateway.cli.main import app
 
     fake = _fake(monkeypatch, "audit")
-    fake.get.return_value = _resp(403, {"detail": "scope missing: gateway:audit:read"})
+    fake.get.return_value = _resp(403, {"detail": "scope missing: bsgateway:audit:read"})
     result = runner.invoke(app, _base("audit", "list"))
     assert result.exit_code != 0
     assert "Traceback" not in (result.stdout + result.stderr)

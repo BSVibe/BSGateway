@@ -5,8 +5,10 @@ Drives the dispatch branches end-to-end through real
 of dependency_overrides shortcuts:
 
 - (a) ``Bearer bsv_sk_*`` — opaque token, introspection returns
-  ``active=true scope=['gateway:models:read']``. ``GET .../models``
-  → 200. ``POST .../models`` → 403 (scope mismatch).
+  ``active=true scope=['bsgateway:models:read']``. ``GET /admin/models``
+  → 200. ``POST /admin/models`` → 403 (scope mismatch). The org-level
+  model registry is the surviving ``require_scope`` route after the
+  Phase 2b swap.
 - (b) ``Bearer bsv_sk_*`` with ``active=false`` — 401.
 - (c) ``Bearer <jwt>`` — BSVibe JWT path through ``bsvibe_authz``. Stays green.
 
@@ -171,21 +173,19 @@ def _opaque_active_handler(tenant_id: str, scope: list[str]):
 
 def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
     tid = uuid4()
-    handler = _opaque_active_handler(str(tid), ["gateway:models:read"])
+    handler = _opaque_active_handler(str(tid), ["bsgateway:models:read"])
     app, _ = _build_app(introspection_handler=handler)
     client = TestClient(app, raise_server_exceptions=False)
 
-    with (
-        patch(
-            "bsgateway.tenant.repository.TenantRepository.get_tenant",
-            new_callable=AsyncMock,
-            return_value=_tenant_row(tid),
-        ),
-        patch("bsgateway.api.routers.tenants.get_tenant_service") as svc_factory,
+    with patch(
+        "bsgateway.tenant.repository.TenantRepository.get_tenant",
+        new_callable=AsyncMock,
+        return_value=_tenant_row(tid),
     ):
-        svc_factory.return_value.list_models = AsyncMock(return_value=[])
+        # The org-level effective-model registry stays on ``require_scope``.
+        # No model_registry attached → handler returns an empty list (200).
         get_resp = client.get(
-            f"/api/v1/tenants/{tid}/models",
+            "/api/v1/admin/models",
             headers={"Authorization": "Bearer bsv_sk_readonly"},
         )
 
@@ -197,7 +197,7 @@ def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
         return_value=_tenant_row(tid),
     ):
         post_resp = client.post(
-            f"/api/v1/tenants/{tid}/models",
+            "/api/v1/admin/models",
             json={
                 "model_name": "gpt-foo",
                 "litellm_model": "openai/gpt-foo",
@@ -207,7 +207,7 @@ def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
         )
 
     assert post_resp.status_code == 403, post_resp.text
-    assert "gateway:models:write" in post_resp.text
+    assert "bsgateway:models:write" in post_resp.text
 
 
 # ---------------------------------------------------------------------------

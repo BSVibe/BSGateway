@@ -55,8 +55,8 @@ def _make_router_with_supervisor(
         auth_url="https://auth.bsvibe.test",
         client_id="bsgateway-test",
         client_secret="bootstrap-secret",
-        audience="supervisor",
-        scope=["supervisor:audit.write"],
+        audience="bsupervisor",
+        scope=["bsupervisor:audit.write"],
     )
     client = BSupervisorClient(
         base_url="https://api-supervisor.bsvibe.test",
@@ -143,8 +143,8 @@ async def test_e2e_run_pre_uses_minted_service_token_and_hits_events(monkeypatch
     assert len(auth_calls) == 1
     body = auth_calls[0]["data"]
     assert body["grant_type"] == "client_credentials"
-    assert body["audience"] == "supervisor"
-    assert body["scope"] == "supervisor:audit.write"
+    assert body["audience"] == "bsupervisor"
+    assert body["scope"] == "bsupervisor:audit.write"
     auth_header = auth_calls[0]["headers"]["Authorization"]
     assert auth_header.startswith("Basic ")
     decoded = base64.b64decode(auth_header[len("Basic ") :]).decode()
