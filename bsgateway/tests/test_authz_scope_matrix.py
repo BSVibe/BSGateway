@@ -191,7 +191,7 @@ class TestScopeEnforcementAdminModels:
         resp = client.post(
             "/api/v1/admin/models",
             json={"model_name": "m", "litellm_model": "openai/gpt-4"},
-            headers={"Authorization": "Bearer bsv_sk_x"},
+            headers={"Authorization": "Bearer eyJhbGciOiJFUzI1NiJ9.fake.pat"},
         )
         assert resp.status_code == 403, resp.text
         assert "bsgateway:models:write" in resp.text
@@ -203,7 +203,7 @@ class TestScopeEnforcementAdminModels:
         # gate passes (200, not 403).
         resp = client.get(
             "/api/v1/admin/models",
-            headers={"Authorization": "Bearer bsv_sk_x"},
+            headers={"Authorization": "Bearer eyJhbGciOiJFUzI1NiJ9.fake.pat"},
         )
         assert resp.status_code == 200, resp.text
 
@@ -211,6 +211,6 @@ class TestScopeEnforcementAdminModels:
         client, _ = client_with_scope([])
         resp = client.get(
             "/api/v1/admin/models",
-            headers={"Authorization": "Bearer bsv_sk_x"},
+            headers={"Authorization": "Bearer eyJhbGciOiJFUzI1NiJ9.fake.pat"},
         )
         assert resp.status_code == 403, resp.text

@@ -124,6 +124,11 @@ class _AlwaysAllowFGA:
     async def list_objects(self, user: str, relation: str, type_: str) -> list[str]:
         return []
 
+    async def write_tuple(self, user: str, relation: str, object_: str) -> None:
+        # bsvibe-authz 1.3.0 lazy-writes role tuples from app_metadata in
+        # ``require_permission``. No-op for tests.
+        return None
+
 
 def _fake_authz_user() -> AuthzUser:
     # ``scope=["bsgateway:*"]`` grants any narrow bsgateway scope via the
@@ -163,6 +168,11 @@ def install_authz_test_overrides(app, *, allow: bool = True) -> None:
 
         async def list_objects(self, *args, **kwargs):
             return []
+
+        async def write_tuple(self, *args, **kwargs):
+            # bsvibe-authz 1.3.0 lazy-writes role tuples from
+            # ``app_metadata`` inside ``require_permission``. No-op.
+            return None
 
     fga = _FGAStub()
     cache = PermissionCache(ttl_s=0)

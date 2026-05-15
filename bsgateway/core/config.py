@@ -51,11 +51,14 @@ class Settings(FastApiSettings):
     bsvibe_client_secret: str = ""
 
     # ----------------------------------------------------------------------
-    # bsvibe-authz dispatch — opaque (`bsv_sk_*`) introspection + JWT.
-    # The introspection fields mirror :class:`bsvibe_authz.Settings` so a
-    # single ``.env`` configures both classes. ``BSV_*``-prefixed aliases
-    # let prod operators use one consistent naming scheme across every
-    # product Settings class.
+    # bsvibe-authz dispatch — user JWT (JWKS) + PAT-JWT introspection
+    # fallback. (The legacy ``bsv_sk_*`` opaque branch was retired in
+    # bsvibe-authz 1.3.0 — introspection now serves only JWT-shaped PATs
+    # issued by the device-authorization grant.) The introspection
+    # fields mirror :class:`bsvibe_authz.Settings` so a single ``.env``
+    # configures both classes. ``BSV_*``-prefixed aliases let prod
+    # operators use one consistent naming scheme across every product
+    # Settings class.
     # ----------------------------------------------------------------------
     introspection_url: str = Field(
         default="",
