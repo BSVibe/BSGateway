@@ -2,15 +2,20 @@
 
 Drives the dispatch branches end-to-end through real
 ``bsvibe_authz.get_current_user`` + BSGateway ``get_auth_context`` instead
-of dependency_overrides shortcuts:
+of dependency_overrides shortcuts. bsvibe-authz 1.3.0 retired the legacy
+``bsv_sk_*`` opaque dispatch; introspection now serves only JWT-shaped
+PAT tokens issued by the device-authorization grant (signed with
+``SERVICE_TOKEN_SIGNING_SECRET``, so they fail ``verify_user_jwt`` and
+fall through to ``verify_via_introspection``).
 
-- (a) ``Bearer bsv_sk_*`` — opaque token, introspection returns
+- (a) ``Bearer <pat-jwt>`` — JWT-shaped PAT, ``verify_user_jwt`` fails
+  (no signing key configured here), introspection returns
   ``active=true scope=['bsgateway:models:read']``. ``GET /admin/models``
   → 200. ``POST /admin/models`` → 403 (scope mismatch). The org-level
   model registry is the surviving ``require_scope`` route after the
   Phase 2b swap.
-- (b) ``Bearer bsv_sk_*`` with ``active=false`` — 401.
-- (c) ``Bearer <jwt>`` — BSVibe JWT path through ``bsvibe_authz``. Stays green.
+- (b) ``Bearer <pat-jwt>`` with ``active=false`` — 401.
+- (c) ``Bearer <jwt>`` — BSVibe user JWT path through ``bsvibe_authz``. Stays green.
 
 Coverage gate (>=80%) is enforced by the suite-level pytest run, not by
 this module.
@@ -153,11 +158,21 @@ def _build_app(
 
 
 # ---------------------------------------------------------------------------
-# (a) opaque token — scope enforcement via real introspection
+# JWT-shaped PAT tokens — three base64url segments separated by dots.
+# ``verify_user_jwt`` fails (no signing key configured in this test app),
+# the library's ``_looks_like_jwt`` gate passes, and the introspection
+# fallback fires against the mock transport.
+# ---------------------------------------------------------------------------
+_PAT_JWT_READONLY = "eyJhbGciOiJFUzI1NiJ9.cmVhZG9ubHk.sig"
+_PAT_JWT_REVOKED = "eyJhbGciOiJFUzI1NiJ9.cmV2b2tlZA.sig"
+
+
+# ---------------------------------------------------------------------------
+# (a) PAT JWT — scope enforcement via real introspection
 # ---------------------------------------------------------------------------
 
 
-def _opaque_active_handler(tenant_id: str, scope: list[str]):
+def _active_introspect_handler(tenant_id: str, scope: list[str]):
     payload = {
         "active": True,
         "sub": "user-123",
@@ -171,9 +186,9 @@ def _opaque_active_handler(tenant_id: str, scope: list[str]):
     return _handler
 
 
-def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
+def test_pat_read_scope_allows_get_models_and_blocks_post() -> None:
     tid = uuid4()
-    handler = _opaque_active_handler(str(tid), ["bsgateway:models:read"])
+    handler = _active_introspect_handler(str(tid), ["bsgateway:models:read"])
     app, _ = _build_app(introspection_handler=handler)
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -186,7 +201,7 @@ def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
         # No model_registry attached → handler returns an empty list (200).
         get_resp = client.get(
             "/api/v1/admin/models",
-            headers={"Authorization": "Bearer bsv_sk_readonly"},
+            headers={"Authorization": f"Bearer {_PAT_JWT_READONLY}"},
         )
 
     assert get_resp.status_code == 200, get_resp.text
@@ -203,7 +218,7 @@ def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
                 "litellm_model": "openai/gpt-foo",
                 "is_active": True,
             },
-            headers={"Authorization": "Bearer bsv_sk_readonly"},
+            headers={"Authorization": f"Bearer {_PAT_JWT_READONLY}"},
         )
 
     assert post_resp.status_code == 403, post_resp.text
@@ -211,11 +226,11 @@ def test_opaque_read_scope_allows_get_models_and_blocks_post() -> None:
 
 
 # ---------------------------------------------------------------------------
-# (b) opaque token — inactive
+# (b) PAT JWT — inactive
 # ---------------------------------------------------------------------------
 
 
-def test_opaque_inactive_token_returns_401() -> None:
+def test_pat_inactive_token_returns_401() -> None:
     def _inactive(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=json.dumps({"active": False}).encode())
 
@@ -224,7 +239,7 @@ def test_opaque_inactive_token_returns_401() -> None:
 
     resp = client.get(
         "/api/v1/tenants",
-        headers={"Authorization": "Bearer bsv_sk_revoked"},
+        headers={"Authorization": f"Bearer {_PAT_JWT_REVOKED}"},
     )
 
     assert resp.status_code == 401, resp.text

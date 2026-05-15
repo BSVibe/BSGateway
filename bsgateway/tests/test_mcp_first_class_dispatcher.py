@@ -550,7 +550,8 @@ class TestResolveToolContextHeaderValidation:
         assert exc.value.code == "unauthenticated"
 
     async def test_unsupported_token_kind_rejected(self) -> None:
-        # Neither bsv_sk_ prefix nor JWT — the resolver must reject.
+        # Garbage 3-segment string — neither a verifiable user JWT nor
+        # a PAT JWT introspection accepts. The resolver must reject.
         with pytest.raises(ToolError) as exc:
             await resolve_tool_context(
                 headers={"authorization": "Bearer some.jwt.token"},
@@ -560,7 +561,19 @@ class TestResolveToolContextHeaderValidation:
 
 
 class TestResolveToolContextIntrospection:
-    async def test_opaque_token_without_introspection_url_rejected(self, monkeypatch) -> None:
+    """PAT-JWT introspection paths through ``resolve_tool_context``.
+
+    bsvibe-authz 1.3.0 retired the legacy ``bsv_sk_*`` opaque dispatch;
+    introspection now serves only JWT-shaped PATs issued by the
+    device-authorization grant. These tests stub
+    ``_authz_get_current_user`` directly, so the token string is
+    cosmetic — what's exercised is the BSGateway-side translation of
+    the dispatch outcome into a :class:`ToolContext` / :class:`ToolError`.
+    """
+
+    _PAT_JWT = "Bearer eyJhbGciOiJFUzI1NiJ9.fake.pat"
+
+    async def test_pat_token_without_introspection_url_rejected(self, monkeypatch) -> None:
         # introspection_url unset → introspection client is None → reject.
         from bsgateway.api import deps as _deps
 
@@ -569,12 +582,12 @@ class TestResolveToolContextIntrospection:
 
         with pytest.raises(ToolError) as exc:
             await resolve_tool_context(
-                headers={"authorization": "Bearer bsv_sk_" + "z" * 32},
+                headers={"authorization": self._PAT_JWT},
                 app_state=MagicMock(),
             )
         assert exc.value.code == "unauthenticated"
 
-    async def test_opaque_token_active_yields_context(self, monkeypatch) -> None:
+    async def test_pat_token_active_yields_context(self, monkeypatch) -> None:
         # Resolve goes through bsvibe_authz.deps.get_current_user — stub it.
         stub_user = User(
             id="svc-1",
@@ -591,13 +604,13 @@ class TestResolveToolContextIntrospection:
         monkeypatch.setattr("bsgateway.mcp.api._authz_get_current_user", _fake_get_current_user)
 
         ctx = await resolve_tool_context(
-            headers={"authorization": "Bearer bsv_sk_" + "x" * 32},
+            headers={"authorization": self._PAT_JWT},
             app_state=MagicMock(),
         )
         assert ctx.user.id == "svc-1"
         assert ctx.user.is_service is True
 
-    async def test_opaque_token_introspection_failure_rejected(self, monkeypatch) -> None:
+    async def test_pat_token_introspection_failure_rejected(self, monkeypatch) -> None:
         from fastapi import HTTPException
 
         async def _fake_get_current_user(**_kwargs):
@@ -607,7 +620,7 @@ class TestResolveToolContextIntrospection:
 
         with pytest.raises(ToolError) as exc:
             await resolve_tool_context(
-                headers={"authorization": "Bearer bsv_sk_" + "y" * 32},
+                headers={"authorization": self._PAT_JWT},
                 app_state=MagicMock(),
             )
         assert exc.value.code == "unauthenticated"

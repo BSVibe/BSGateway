@@ -46,7 +46,6 @@ from fastapi import Depends, HTTPException, Request, status
 from bsgateway.core.cache import CacheManager
 from bsgateway.core.config import settings as gateway_settings
 
-OPAQUE_TOKEN_PREFIX = "bsv_sk_"
 _INTROSPECTION_CACHE_TTL_S = 60
 
 # Re-exports so route modules import bsvibe-authz primitives from a
@@ -83,8 +82,9 @@ def require_scope(scope: str) -> Callable[..., Awaitable[None]]:
     """Wrap ``bsvibe_authz.require_scope`` and tag the closure.
 
     CLI/PAT-only routes (the org-level model registry) gate on narrow
-    ``bsgateway:<resource>:<action>`` scope strings carried by opaque
-    service-key tokens / real-scope PATs. Frontend-hit routes use
+    ``bsgateway:<resource>:<action>`` scope strings carried by
+    real-scope PAT JWTs (the legacy ``bsv_sk_*`` opaque path was
+    retired in bsvibe-authz 1.3.0). Frontend-hit routes use
     ``require_permission`` / ``require_admin`` instead — see Phase 2b.
     The tag (``_bsvibe_scope``) lets ``test_authz_scope_matrix.py`` pin
     the catalog so future refactors cannot silently downgrade a gate.
@@ -155,10 +155,11 @@ async def get_auth_context(request: Request) -> GatewayAuthContext:
     """Authenticate the request and resolve a :class:`GatewayAuthContext`.
 
     Fully delegated to :func:`bsvibe_authz.deps.get_current_user` — same
-    BSage pattern. The lib runs opaque → JWT (via JWKS) →
-    PAT-JWT-introspection fallback, returning a :class:`User` with
-    ``app_metadata`` lifted off the verified JWT payload (bsvibe-authz
-    PR #22). BSGateway's job is only to translate that User into a
+    BSage pattern. The lib runs user-JWT (via JWKS) → PAT-JWT
+    introspection fallback (1.3.0 retired the legacy ``bsv_sk_*``
+    opaque branch), returning a :class:`User` with ``app_metadata``
+    lifted off the verified JWT payload (bsvibe-authz PR #22).
+    BSGateway's job is only to translate that User into a
     :class:`GatewayAuthContext` and run the tenant active-check +
     auto-provisioning.
     """
@@ -166,12 +167,14 @@ async def get_auth_context(request: Request) -> GatewayAuthContext:
 
 
 # ---------------------------------------------------------------------------
-# bsvibe-authz dispatch helpers (Phase 1 token cutover).
+# bsvibe-authz dispatch helpers.
 #
-# Two singletons feed the opaque-token branch — the IntrospectionClient
-# is constructed lazily because the introspection_url may be intentionally
-# left empty (air-gapped self-host). The IntrospectionCache TTL is fixed
-# at 60s here to bound the post-revoke window for opaque tokens.
+# Two singletons feed the PAT-JWT introspection fallback — the
+# IntrospectionClient is constructed lazily because the introspection_url
+# may be intentionally left empty (air-gapped self-host). The
+# IntrospectionCache TTL is fixed at 60s here to bound the post-revoke
+# window for PAT JWTs. (The legacy ``bsv_sk_*`` opaque dispatch was
+# retired in bsvibe-authz 1.3.0 — Tier 2 of the 2026-05 auth cleanup.)
 # ---------------------------------------------------------------------------
 _introspection_client_singleton: IntrospectionClient | None = None
 _introspection_cache_singleton: IntrospectionCache | None = None
@@ -208,8 +211,8 @@ def _get_introspection_cache() -> IntrospectionCache:
 async def _auth_via_authz(request: Request) -> GatewayAuthContext:
     """Delegate to :func:`bsvibe_authz.deps.get_current_user` + tenant ops.
 
-    The lib runs the canonical 3-way dispatch (opaque →
-    user-JWT-via-JWKS → PAT-JWT-introspection-fallback) and returns a
+    The lib runs the canonical 2-way dispatch
+    (user-JWT-via-JWKS → PAT-JWT-introspection-fallback) and returns a
     :class:`User` with ``app_metadata`` / ``user_metadata`` lifted from
     the verified JWT payload (bsvibe-authz #22). We only:
 
@@ -250,8 +253,8 @@ async def _auth_via_authz(request: Request) -> GatewayAuthContext:
             )
 
         # User-JWT path: auto-provision the tenant on first access.
-        # Bootstrap / opaque service-key tokens never trigger this — the
-        # tenant must already exist (provisioned out-of-band).
+        # Bootstrap / service-account PAT tokens never trigger this —
+        # the tenant must already exist (provisioned out-of-band).
         if not tenant_row and not user.is_service:
             short_id = str(tenant_uuid)[:8]
             await repo.provision_tenant(
@@ -301,8 +304,8 @@ def _context_from_user(user: _AuthzUser) -> GatewayAuthContext:
     all-zeros UUID so callers that read ``ctx.tenant_id`` don't blow up.
 
     ``identity.kind`` reflects the token shape: ``user`` for verified
-    user JWTs (carry ``app_metadata``), ``apikey`` for opaque and PAT
-    JWTs (introspection response).
+    user JWTs (carry ``app_metadata``), ``apikey`` for PAT JWTs
+    (introspection response).
     """
     is_admin = user.app_metadata.get("role") == "admin"
     if user.active_tenant_id:
@@ -317,7 +320,7 @@ def _context_from_user(user: _AuthzUser) -> GatewayAuthContext:
         tenant_id = UUID(int=0)
 
     # Distinguish a real user JWT (carries Supabase app_metadata) from
-    # a service token (opaque introspection / PAT).
+    # a service token (PAT JWT via introspection).
     kind = "user" if user.app_metadata and not user.is_service else "apikey"
 
     return GatewayAuthContext(
