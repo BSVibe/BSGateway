@@ -83,6 +83,11 @@ class Settings(FastApiSettings):
     openfga_api_url: str = ""
     openfga_store_id: str = ""
     openfga_auth_model_id: str = ""
+    # OpenFGA preshared-key API token. ``_authz_settings`` builds the authz
+    # Settings via ``model_construct`` (bypasses pydantic-settings env
+    # loading), so this must be an explicit field threaded through —
+    # otherwise the OpenFGA client sends no auth and every check 401s.
+    openfga_auth_token: str = ""
 
     # ----------------------------------------------------------------------
     # User-JWT verification — fed straight into bsvibe_authz.Settings.

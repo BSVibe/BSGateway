@@ -273,6 +273,9 @@ def _authz_settings() -> _AuthzSettings:
         openfga_api_url=gateway_settings.openfga_api_url,
         openfga_store_id=gateway_settings.openfga_store_id,
         openfga_auth_model_id=gateway_settings.openfga_auth_model_id,
+        # Threaded explicitly — model_construct bypasses env loading, so an
+        # unset token here means the OpenFGA client 401s on every check.
+        openfga_auth_token=gateway_settings.openfga_auth_token or None,
         service_token_signing_secret="",
         introspection_url=gateway_settings.introspection_url,
         introspection_client_id=gateway_settings.introspection_client_id,
