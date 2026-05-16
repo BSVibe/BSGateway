@@ -58,13 +58,47 @@ def _make_user(scopes: list[str] | None = None) -> User:
     )
 
 
-def _make_ctx(user: User | None = None) -> ToolContext:
+class _FakeFGA:
+    """Minimal FGAClientProtocol stand-in with a fixed check() verdict."""
+
+    def __init__(self, *, allow: bool = True) -> None:
+        self._allow = allow
+
+    async def check(self, user: str, relation: str, object_: str) -> bool:
+        return self._allow
+
+    async def list_objects(self, user: str, relation: str, type_: str) -> list[str]:
+        return []
+
+    async def write_tuple(self, user: str, relation: str, object_: str) -> None:
+        return None
+
+
+def _authz_settings_openfga_on() -> object:
+    """A bsvibe-authz Settings with OpenFGA 'configured' so
+    ``check_tenant_permission`` actually consults the (fake) FGA client.
+    """
+    from bsvibe_authz import Settings as _AuthzSettings
+
+    return _AuthzSettings.model_construct(
+        openfga_api_url="http://openfga.test",
+        openfga_store_id="store",
+        openfga_auth_model_id="model",
+    )
+
+
+def _make_ctx(user: User | None = None, *, fga_allow: bool = True) -> ToolContext:
+    from bsvibe_authz import PermissionCache
+
     return ToolContext(
         settings=MagicMock(),
         user=user or _make_user(),
         db=None,
         audit_app_state=None,
         log=MagicMock(),
+        fga=_FakeFGA(allow=fga_allow),
+        permission_cache=PermissionCache(ttl_s=0),
+        authz_settings=_authz_settings_openfga_on(),
     )
 
 
@@ -150,10 +184,14 @@ class TestAdminCatalog:
             assert issubclass(tool.output_schema, BaseModel)
 
 
-class TestScopeAndAudit:
-    """Required scopes + audit_event match the REST routes the CLI hits."""
+class TestPermissionAndAudit:
+    """Required permission + audit_event match the REST routes the CLI hits.
 
-    def test_models_write_scopes(self) -> None:
+    Tier 5 Phase 3a: tools declare a ``<product>.<resource>.<action>``
+    dot-grammar ``required_permission`` (was colon-grammar ``required_scopes``).
+    """
+
+    def test_models_write_permission(self) -> None:
         reg = _build_registry(_StubLoopback())
         for name in (
             "bsgateway_models_add",
@@ -162,16 +200,16 @@ class TestScopeAndAudit:
         ):
             tool = reg.get(name)
             assert tool is not None
-            assert "bsgateway:models:write" in tool.required_scopes
+            assert tool.required_permission == "bsgateway.models.write"
 
-    def test_models_read_scopes(self) -> None:
+    def test_models_read_permission(self) -> None:
         reg = _build_registry(_StubLoopback())
         for name in ("bsgateway_models_list", "bsgateway_models_show"):
             tool = reg.get(name)
             assert tool is not None
-            assert "bsgateway:models:read" in tool.required_scopes
+            assert tool.required_permission == "bsgateway.models.read"
 
-    def test_routing_write_scope_for_rule_mutations(self) -> None:
+    def test_routing_write_permission_for_rule_mutations(self) -> None:
         reg = _build_registry(_StubLoopback())
         for name in (
             "bsgateway_rules_add",
@@ -180,7 +218,7 @@ class TestScopeAndAudit:
         ):
             tool = reg.get(name)
             assert tool is not None
-            assert "bsgateway:routing:write" in tool.required_scopes
+            assert tool.required_permission == "bsgateway.routing.write"
 
     def test_audit_event_set_on_every_mutating_tool(self) -> None:
         reg = _build_registry(_StubLoopback())
@@ -454,13 +492,13 @@ class TestEdgeCases:
         assert body["name"] == "host-1"
         assert body["labels"] == ["gpu"]
 
-    async def test_scope_enforced_before_dispatch(self) -> None:
+    async def test_permission_enforced_before_dispatch(self) -> None:
         lb = _StubLoopback()
         reg = _build_registry(lb)
         from bsgateway.mcp.api import ToolError
 
-        # Caller has no scopes — must be rejected by the dispatcher
-        # before the loopback runs.
+        # OpenFGA denies the caller — the dispatcher must reject the call
+        # before the loopback runs (Tier 5 Phase 3a).
         with pytest.raises(ToolError) as excinfo:
             await reg.call_tool(
                 "bsgateway_models_add",
@@ -471,7 +509,7 @@ class TestEdgeCases:
                     "provider": "ollama_chat/qwen",
                     "passthrough": True,
                 },
-                _make_ctx(_make_user(scopes=[])),
+                _make_ctx(fga_allow=False),
             )
         assert excinfo.value.code == "permission_denied"
         assert lb.calls == []

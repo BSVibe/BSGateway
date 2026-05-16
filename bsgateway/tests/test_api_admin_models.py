@@ -183,11 +183,16 @@ class TestListEffectiveModels:
         entry = next(m for m in resp.json() if m["name"] == "custom/foo")
         assert entry["has_litellm_params"] is True
 
-    def test_requires_models_read_scope(
+    def test_permissive_read_allows_scopeless_list(
         self,
         tenant_id: UUID,
         registry: _StubRegistry,
     ) -> None:
+        """Tier 5: ``GET /admin/models`` uses ``require_permission`` (DOT
+        grammar), permissive when OpenFGA is unconfigured. A session JWT
+        with ``scope=[]`` and no admin role reaches the handler (200) —
+        the legacy ``require_scope`` COLON gate that 403'd it is gone.
+        """
         pool, _conn = make_mock_pool()
         app = create_app()
         app.state.db_pool = pool
@@ -200,8 +205,7 @@ class TestListEffectiveModels:
         app.dependency_overrides[authz_get_current_user] = lambda: _scopeless_authz_user(tenant_id)
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.get("/api/v1/admin/models")
-        assert resp.status_code == 403
-        assert "bsgateway:models:read" in resp.json()["detail"]
+        assert resp.status_code == 200, resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -309,11 +313,18 @@ class TestCreateModel:
         )
         assert resp.status_code == 422
 
-    def test_create_requires_models_write_scope(
+    def test_permissive_write_allows_scopeless_create(
         self,
         tenant_id: UUID,
         registry: _StubRegistry,
     ) -> None:
+        """Tier 5: ``POST /admin/models`` uses ``require_permission`` (DOT
+        grammar), permissive when OpenFGA is unconfigured. A session JWT
+        with ``scope=[]`` and no admin role reaches the handler (201) —
+        the legacy ``require_scope`` COLON gate that 403'd it is gone.
+        The matrix row ``bsgateway.models.write`` (min role: member) is
+        what enforces the role boundary once OpenFGA is wired.
+        """
         pool, _conn = make_mock_pool()
         app = create_app()
         app.state.db_pool = pool
@@ -325,17 +336,28 @@ class TestCreateModel:
         app.dependency_overrides[get_model_registry] = lambda: registry
         app.dependency_overrides[authz_get_current_user] = lambda: _scopeless_authz_user(tenant_id)
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.post(
-            "/api/v1/admin/models",
-            json={
-                "name": "custom/foo",
-                "origin": "custom",
-                "litellm_model": "ollama/foo",
-            },
-        )
-        assert resp.status_code == 403
-        assert "bsgateway:models:write" in resp.json()["detail"]
-        assert registry.invalidated == []
+        row = _db_row(tenant_id=tenant_id, name="custom/foo", origin="custom")
+        with (
+            patch(
+                "bsgateway.routing.models_repository.ModelsRepository.create_model",
+                new_callable=AsyncMock,
+                return_value=row,
+            ),
+            patch(
+                "bsgateway.audit.service.AuditService.record",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/admin/models",
+                json={
+                    "name": "custom/foo",
+                    "origin": "custom",
+                    "litellm_model": "ollama/foo",
+                },
+            )
+        assert resp.status_code == 201, resp.text
+        assert registry.invalidated == [tenant_id]
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,9 @@
 """First-class MCP API for BSGateway (Phase 7 — TASK-002).
 
 Tools are first-class definitions with explicit Pydantic input/output
-schemas, an async handler, required scopes, and an optional audit
-event. The :class:`ToolRegistry` is the single dispatcher for both
+schemas, an async handler, a ``required_permission`` (a single
+``<product>.<resource>.<action>`` dot-grammar string), and an optional
+audit event. The :class:`ToolRegistry` is the single dispatcher for both
 domain and admin tools (TASK-003 / TASK-004).
 
 Design contract (mirrors REST routers, not Typer commands):
@@ -10,10 +11,11 @@ Design contract (mirrors REST routers, not Typer commands):
 * ``ListTools`` derives the JSON Schema for each registered tool from
   ``tool.input_schema.model_json_schema()`` — schemas live next to the
   models, no auto-derivation gymnastics.
-* ``CallTool`` validates input, enforces every entry of
-  ``required_scopes`` against the caller's :class:`bsvibe_authz.User`,
-  runs the handler, validates output, and emits a single audit event
-  when ``audit_event`` is set AND the handler returned successfully.
+* ``CallTool`` validates input, enforces ``required_permission`` via the
+  shared OpenFGA check (:func:`bsvibe_authz.check_tenant_permission`) —
+  the same model REST routes use through ``require_permission`` — runs
+  the handler, validates output, and emits a single audit event when
+  ``audit_event`` is set AND the handler returned successfully.
 * All errors leave the dispatcher as a typed :class:`ToolError` with a
   stable ``code`` literal (``invalid_input``, ``permission_denied``,
   ``tool_not_found``, ``invalid_output``). Handler-raised
@@ -31,15 +33,22 @@ the HTTP transport (TASK-005) and the stdio launcher.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, ClassVar
 
 import structlog
 from bsvibe_audit.events.base import AuditActor, AuditEventBase
 from bsvibe_authz import (
+    FGAClientProtocol,
+    PermissionCache,
     User,
+    check_tenant_permission,
+    get_openfga_client,
+    get_permission_cache,
 )
-from bsvibe_authz.deps import _scope_grants
+from bsvibe_authz import (
+    Settings as _AuthzSettings,
+)
 from bsvibe_authz.deps import get_current_user as _authz_get_current_user
 from fastapi import HTTPException
 from mcp.server import Server as McpServer
@@ -77,7 +86,8 @@ class ToolError(Exception):
     * ``invalid_input`` — input did not validate against ``input_schema``
     * ``invalid_output`` — handler returned a value that failed
       ``output_schema`` validation
-    * ``permission_denied`` — caller does not hold a required scope
+    * ``permission_denied`` — OpenFGA denied the caller the tool's
+      ``required_permission`` (shared check with REST routes)
     * ``unauthenticated`` — :func:`resolve_tool_context` rejected the
       request (missing / malformed / disabled token)
 
@@ -111,6 +121,14 @@ class ToolContext:
     ``log`` is a structlog logger bound with caller identity but never
     with raw tokens (:func:`resolve_tool_context` strips them on the
     way in).
+
+    ``fga`` / ``permission_cache`` / ``authz_settings`` feed the shared
+    :func:`bsvibe_authz.check_tenant_permission` call the dispatcher
+    runs for ``Tool.required_permission`` — the same OpenFGA model REST
+    routes enforce via ``require_permission``. They may be ``None`` in
+    tests / contexts that pre-date the OpenFGA wiring; the dispatcher
+    treats a missing ``fga`` as permissive (no enforcement), matching
+    ``check_tenant_permission``'s posture when OpenFGA is unconfigured.
     """
 
     settings: object
@@ -118,6 +136,9 @@ class ToolContext:
     db: object | None = None
     audit_app_state: object | None = None
     log: structlog.BoundLogger | Any | None = None
+    fga: FGAClientProtocol | None = None
+    permission_cache: PermissionCache | None = None
+    authz_settings: _AuthzSettings | None = None
 
 
 _HandlerType = Callable[[BaseModel, ToolContext], Awaitable[BaseModel]]
@@ -129,9 +150,11 @@ class Tool:
 
     ``input_schema`` and ``output_schema`` are Pydantic v2 models — the
     JSON Schema for ``input_schema`` is what ``ListTools`` advertises.
-    ``required_scopes`` is enforced via the same ``_scope_grants``
-    semantics that :func:`bsvibe_authz.require_scope` uses for REST
-    routes (``"*"`` super-scope, ``"prefix:*"`` wildcard, exact match).
+    ``required_permission`` is a single ``<product>.<resource>.<action>``
+    dot-grammar identifier (e.g. ``"bsgateway.routing.read"``) enforced
+    via :func:`bsvibe_authz.check_tenant_permission` — the same OpenFGA
+    tenant-scoped check REST routes run through ``require_permission``
+    (Tier 5 Phase 3a). ``None`` means the tool is unauthenticated-open.
     ``audit_event`` is the literal event_type fired on success.
     """
 
@@ -140,7 +163,7 @@ class Tool:
     input_schema: type[BaseModel]
     output_schema: type[BaseModel]
     handler: _HandlerType
-    required_scopes: list[str] = field(default_factory=list)
+    required_permission: str | None = None
     audit_event: str | None = None
 
 
@@ -235,7 +258,7 @@ class ToolRegistry:
         Order of operations (each step is a separate failure mode):
 
         1. Tool lookup → ``tool_not_found``
-        2. Scope enforcement → ``permission_denied``
+        2. Permission enforcement → ``permission_denied``
         3. Input validation → ``invalid_input``
         4. Handler invocation → propagates :class:`ToolError`
         5. Output validation → ``invalid_output``
@@ -245,12 +268,27 @@ class ToolRegistry:
         if tool is None:
             raise ToolError(code="tool_not_found", message=f"Tool not found: {name}")
 
-        # Enforce ALL required scopes (AND-semantics).
-        for required in tool.required_scopes:
-            if not _scope_grants(list(ctx.user.scope), required):
+        # Enforce ``required_permission`` via the shared OpenFGA check —
+        # the SAME tenant-scoped model REST routes use through
+        # ``require_permission`` (Tier 5 Phase 3a). ``check_tenant_permission``
+        # is permissive (returns True) for demo sessions and when OpenFGA is
+        # unconfigured, so test / self-host envs still pass. When the context
+        # has no ``fga`` wired (legacy callers / unit tests pre-dating the
+        # OpenFGA plumbing) the check is skipped — same permissive posture.
+        if tool.required_permission is not None and ctx.fga is not None:
+            assert ctx.permission_cache is not None
+            assert ctx.authz_settings is not None
+            allowed = await check_tenant_permission(
+                ctx.user,
+                tool.required_permission,
+                fga=ctx.fga,
+                cache=ctx.permission_cache,
+                settings=ctx.authz_settings,
+            )
+            if not allowed:
                 raise ToolError(
                     code="permission_denied",
-                    message=f"missing required scope: {required}",
+                    message=f"permission denied: {tool.required_permission}",
                 )
 
         try:
@@ -325,12 +363,31 @@ async def resolve_tool_context(
 
 
 def _ctx_from_user(user: User, *, app_state: object | None) -> ToolContext:
+    # Wire the shared OpenFGA check inputs onto the context so the
+    # dispatcher can enforce ``Tool.required_permission`` via
+    # ``check_tenant_permission`` — the SAME model REST routes use.
+    #
+    # ``_authz_settings()`` (bsgateway.api.deps) builds the bsvibe-authz
+    # Settings from BSGateway config. Today it leaves ``openfga_api_url``
+    # empty, so ``check_tenant_permission`` runs in permissive mode —
+    # exactly the posture REST's ``require_permission`` has in this repo.
+    # When BSGateway adds OpenFGA config the same code path enforces.
+    #
+    # ``get_openfga_client`` / ``get_permission_cache`` carry FastAPI
+    # ``Depends(...)`` defaults but resolve cleanly when called directly
+    # with an explicit ``settings`` argument (the singletons are lazy).
+    authz_settings = _authz_settings()
+    fga = get_openfga_client(authz_settings)
+    cache = get_permission_cache(authz_settings)
     return ToolContext(
         settings=gateway_settings,
         user=user,
         db=None,
         audit_app_state=app_state,
         log=structlog.get_logger("bsgateway.mcp").bind(user_id=user.id),
+        fga=fga,
+        permission_cache=cache,
+        authz_settings=authz_settings,
     )
 
 

@@ -4,7 +4,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
-from bsgateway.api.deps import GatewayAuthContext, get_pool, require_tenant_access
+from bsgateway.api.deps import (
+    GatewayAuthContext,
+    get_pool,
+    require_permission,
+    require_tenant_access,
+)
 from bsgateway.presets.repository import FeedbackRepository
 from bsgateway.presets.schemas import FeedbackCreate, FeedbackResponse
 
@@ -21,6 +26,7 @@ async def submit_feedback(
     tenant_id: UUID,
     body: FeedbackCreate,
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.feedback.write")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> FeedbackResponse:
     """Submit feedback for a routing decision."""
@@ -52,6 +58,7 @@ async def list_feedback(
     request: Request,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    _allowed: None = Depends(require_permission("bsgateway.feedback.read")),
     _auth: GatewayAuthContext = Depends(require_tenant_access),
 ) -> list[FeedbackResponse]:
     pool = get_pool(request)

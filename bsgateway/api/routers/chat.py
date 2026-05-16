@@ -183,7 +183,14 @@ async def chat_completions(
     request: Request,
     auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> Any:
-    """OpenAI-compatible chat completions with tenant-based routing."""
+    """OpenAI-compatible chat completions with tenant-based routing.
+
+    DATA-PLANE: this is the gateway's core function. Deliberately gated
+    only by tenant-scoped authentication (``get_auth_context``) — NOT by
+    a per-resource ``require_permission`` check. Any authenticated tenant
+    member may send completions; per-resource gating belongs on the
+    control-plane (model registry, routing rules), not the dispatch path.
+    """
     try:
         body = await request.json()
     except Exception:
