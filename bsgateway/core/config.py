@@ -76,6 +76,15 @@ class Settings(FastApiSettings):
     )
 
     # ----------------------------------------------------------------------
+    # OpenFGA — Tier 5 per-resource authorization. Fed into
+    # bsvibe_authz.Settings so require_permission enforces in prod. Empty
+    # ``openfga_api_url`` keeps the permissive no-op posture (local dev).
+    # ----------------------------------------------------------------------
+    openfga_api_url: str = ""
+    openfga_store_id: str = ""
+    openfga_auth_model_id: str = ""
+
+    # ----------------------------------------------------------------------
     # User-JWT verification — fed straight into bsvibe_authz.Settings.
     # ``user_jwt_jwks_url`` (preferred for prod, ES256/RS256 with key
     # rotation), ``user_jwt_public_key`` (static PEM), or ``user_jwt_secret``

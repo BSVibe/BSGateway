@@ -251,14 +251,15 @@ def _authz_settings() -> _AuthzSettings:
     """Build a :class:`bsvibe_authz.Settings` from BSGateway config.
 
     Constructed per-call so test patches against ``gateway_settings`` take
-    effect without a process restart. OpenFGA fields are placeholders —
-    BSGateway does not call OpenFGA from this dispatch.
+    effect without a process restart. Tier 5: the OpenFGA coordinates are
+    fed from config so per-resource ``require_permission`` gates enforce in
+    prod; empty (local dev) keeps the permissive no-op posture.
     """
     return _AuthzSettings.model_construct(
         bsvibe_auth_url=gateway_settings.bsvibe_auth_url or "",
-        openfga_api_url="",
-        openfga_store_id="",
-        openfga_auth_model_id="",
+        openfga_api_url=gateway_settings.openfga_api_url,
+        openfga_store_id=gateway_settings.openfga_store_id,
+        openfga_auth_model_id=gateway_settings.openfga_auth_model_id,
         service_token_signing_secret="",
         introspection_url=gateway_settings.introspection_url,
         introspection_client_id=gateway_settings.introspection_client_id,
