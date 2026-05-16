@@ -3,15 +3,16 @@
 These tests pin the contract that ``bsgateway/mcp/api.py`` must satisfy:
 
 * ``Tool`` is a typed primitive (Pydantic input/output schemas, async
-  handler, required scopes, optional audit_event literal).
+  handler, a single ``required_permission`` dot-grammar string, optional
+  audit_event literal).
 * ``ToolRegistry.list_tools()`` derives JSON Schema from
   ``input_schema.model_json_schema()`` and emits one ``mcp.types.Tool``
   per registered tool.
 * ``ToolRegistry.call_tool()`` validates input against ``input_schema``,
-  enforces every entry in ``required_scopes`` against the caller's
-  scope list (with ``"prefix:*"`` semantics), runs the handler, validates
-  output, and emits a single audit event when ``audit_event`` is set AND
-  the handler returned successfully.
+  enforces ``required_permission`` via the shared OpenFGA check
+  (``bsvibe_authz.check_tenant_permission``) — the same model REST routes
+  use — runs the handler, validates output, and emits a single audit
+  event when ``audit_event`` is set AND the handler returned successfully.
 * Errors translate to a typed :class:`ToolError` with a stable code
   (``invalid_input``, ``permission_denied``, ``tool_not_found``,
   ``invalid_output``); handler-raised :class:`ToolError` propagates
@@ -99,13 +100,47 @@ def _make_user(scopes: list[str] | None = None, tenant_id: str | None = None) ->
     )
 
 
-def _make_ctx(user: User | None = None) -> ToolContext:
+class _FakeFGA:
+    """Minimal FGAClientProtocol stand-in with a fixed check() verdict."""
+
+    def __init__(self, *, allow: bool = True) -> None:
+        self._allow = allow
+
+    async def check(self, user: str, relation: str, object_: str) -> bool:
+        return self._allow
+
+    async def list_objects(self, user: str, relation: str, type_: str) -> list[str]:
+        return []
+
+    async def write_tuple(self, user: str, relation: str, object_: str) -> None:
+        return None
+
+
+def _authz_settings_openfga_on() -> object:
+    """A bsvibe-authz Settings with OpenFGA 'configured' so
+    ``check_tenant_permission`` actually consults the (fake) FGA client.
+    """
+    from bsvibe_authz import Settings as _AuthzSettings
+
+    return _AuthzSettings.model_construct(
+        openfga_api_url="http://openfga.test",
+        openfga_store_id="store",
+        openfga_auth_model_id="model",
+    )
+
+
+def _make_ctx(user: User | None = None, *, fga_allow: bool = True) -> ToolContext:
+    from bsvibe_authz import PermissionCache
+
     return ToolContext(
         settings=MagicMock(),
-        user=user or _make_user(scopes=["*"]),
+        user=user or _make_user(scopes=["*"], tenant_id="00000000-0000-0000-0000-000000000001"),
         db=None,
         audit_app_state=None,
         log=MagicMock(),
+        fga=_FakeFGA(allow=fga_allow),
+        permission_cache=PermissionCache(ttl_s=0),
+        authz_settings=_authz_settings_openfga_on(),
     )
 
 
@@ -235,8 +270,13 @@ class TestCallToolBasics:
         assert exc.value.code == "invalid_output"
 
 
-class TestCallToolScopeEnforcement:
-    async def test_missing_scope_raises_permission_denied(self) -> None:
+class TestCallToolPermissionEnforcement:
+    """Tier 5 Phase 3a: ``required_permission`` is enforced via the shared
+    OpenFGA check (``check_tenant_permission``) — the same model REST routes
+    use. Denial comes from the FGA verdict, not from a scope claim.
+    """
+
+    async def test_fga_deny_raises_permission_denied(self) -> None:
         reg = ToolRegistry()
         reg.register(
             Tool(
@@ -245,15 +285,16 @@ class TestCallToolScopeEnforcement:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["bsgateway:models:write"],
+                required_permission="bsgateway.models.write",
             )
         )
-        ctx = _make_ctx(_make_user(scopes=["bsgateway:models:read"]))
+        ctx = _make_ctx(fga_allow=False)
         with pytest.raises(ToolError) as exc:
             await reg.call_tool("echo", {"message": "hi"}, ctx)
         assert exc.value.code == "permission_denied"
+        assert "bsgateway.models.write" in exc.value.message
 
-    async def test_prefix_wildcard_grants_subscope(self) -> None:
+    async def test_fga_allow_runs_handler(self) -> None:
         reg = ToolRegistry()
         reg.register(
             Tool(
@@ -262,15 +303,16 @@ class TestCallToolScopeEnforcement:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["bsgateway:models:write"],
+                required_permission="bsgateway.models.write",
             )
         )
-        ctx = _make_ctx(_make_user(scopes=["bsgateway:*"]))
+        ctx = _make_ctx(fga_allow=True)
         result = await reg.call_tool("echo", {"message": "hi"}, ctx)
         assert result == {"echoed": "hi"}
 
-    async def test_all_required_scopes_must_be_present(self) -> None:
-        # When two scopes are required, a user holding only one must be denied.
+    async def test_no_required_permission_skips_check(self) -> None:
+        # A tool with required_permission=None is unauthenticated-open —
+        # even an FGA that denies everything must not block it.
         reg = ToolRegistry()
         reg.register(
             Tool(
@@ -279,13 +321,34 @@ class TestCallToolScopeEnforcement:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["bsgateway:models:write", "bsgateway:routing:write"],
             )
         )
-        ctx = _make_ctx(_make_user(scopes=["bsgateway:models:write"]))
-        with pytest.raises(ToolError) as exc:
-            await reg.call_tool("echo", {"message": "hi"}, ctx)
-        assert exc.value.code == "permission_denied"
+        ctx = _make_ctx(fga_allow=False)
+        result = await reg.call_tool("echo", {"message": "hi"}, ctx)
+        assert result == {"echoed": "hi"}
+
+    async def test_missing_fga_is_permissive(self) -> None:
+        # Context with no fga wired (legacy / pre-OpenFGA callers) — the
+        # dispatcher skips enforcement rather than 500ing.
+        reg = ToolRegistry()
+        reg.register(
+            Tool(
+                name="echo",
+                description="x",
+                input_schema=_EchoIn,
+                output_schema=_EchoOut,
+                handler=_echo_handler,
+                required_permission="bsgateway.models.write",
+            )
+        )
+        ctx = ToolContext(
+            settings=MagicMock(),
+            user=_make_user(scopes=[]),
+            audit_app_state=None,
+            log=MagicMock(),
+        )
+        result = await reg.call_tool("echo", {"message": "hi"}, ctx)
+        assert result == {"echoed": "hi"}
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +451,7 @@ class TestAuditEmission:
                 await reg.call_tool("boom", {"message": "ok"}, ctx)
         assert cap.events == []
 
-    async def test_no_audit_event_on_scope_denied(self) -> None:
+    async def test_no_audit_event_on_permission_denied(self) -> None:
         cap = _AuditCapture()
         reg = ToolRegistry()
         reg.register(
@@ -398,16 +461,12 @@ class TestAuditEmission:
                 input_schema=_AddIn,
                 output_schema=_AddOut,
                 handler=_add_handler,
-                required_scopes=["bsgateway:models:write"],
+                required_permission="bsgateway.models.write",
                 audit_event="gateway.tool.add",
             )
         )
-        ctx = ToolContext(
-            settings=MagicMock(),
-            user=_make_user(scopes=[]),
-            audit_app_state=cap,
-            log=MagicMock(),
-        )
+        ctx = _make_ctx(fga_allow=False)
+        ctx.audit_app_state = cap
         with patch("bsgateway.mcp.api.emit_event", side_effect=cap._capture):
             with pytest.raises(ToolError):
                 await reg.call_tool("add", {"a": 1, "b": 2}, ctx)
@@ -508,13 +567,13 @@ class TestBuildMcpServer:
                 input_schema=_EchoIn,
                 output_schema=_EchoOut,
                 handler=_echo_handler,
-                required_scopes=["bsgateway:models:write"],
+                required_permission="bsgateway.models.write",
             )
         )
 
         async def _resolver(headers: dict[str, str]) -> ToolContext:
-            # Caller has no scopes → permission_denied
-            return _make_ctx(_make_user(scopes=[]))
+            # FGA denies → permission_denied
+            return _make_ctx(fga_allow=False)
 
         server = build_mcp_server(reg, context_resolver=_resolver)
         handler = server.request_handlers[CallToolRequest]

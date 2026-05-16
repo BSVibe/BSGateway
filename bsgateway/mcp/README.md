@@ -3,8 +3,8 @@
 First-class MCP API for BSGateway. MCP is a peer of REST — both transports
 delegate to the same service / handler layer. There is no Typer
 auto-adapter; every tool has explicit Pydantic input/output schemas, the
-same scope guards as the equivalent REST route, and an audit event on
-mutations.
+same OpenFGA permission guard as the equivalent REST route (Tier 5), and
+an audit event on mutations.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ mutations.
          │                          │
          ▼                          ▼
    resolve_tool_context()      ToolRegistry.call_tool()
-   (bsvibe-authz 3-way)        ├─ scope check
+   (bsvibe-authz 3-way)        ├─ permission check (OpenFGA)
                                ├─ input validate
                                ├─ handler
                                ├─ output validate
@@ -59,7 +59,7 @@ Tool(
     input_schema=ListModelsArgs,
     output_schema=ListModelsResult,
     handler=_handler,
-    required_scopes=["gateway:models:read"],
+    required_permission="bsgateway.models.read",
     audit_event=None,            # read-only → no audit
 )
 ```
@@ -70,13 +70,16 @@ Rules of the road:
   routes, not CLI commands.
 - **Schemas live with the model.** `ListTools` derives JSON Schema from
   `input_schema.model_json_schema()` — no auto-derivation magic.
-- **Scopes match the REST route.** `gateway:models:write`,
-  `gateway:routing:read`, etc. The dispatcher evaluates them with the
-  same `_scope_grants` semantics that `bsvibe_authz.require_scope` uses
-  (super `*`, prefix `foo:*`, exact match).
+- **Permission matches the REST route.** A single
+  `<product>.<resource>.<action>` dot-grammar string —
+  `bsgateway.models.write`, `bsgateway.routing.read`, etc. The dispatcher
+  enforces it via `bsvibe_authz.check_tenant_permission` (the same
+  tenant-scoped OpenFGA check REST's `require_permission` runs). It is
+  permissive when OpenFGA is unconfigured / demo. Every permission MUST be
+  a row in `bsvibe-authz` `schema/permission_matrix.yaml`.
 - **Audit on success only.** Set `audit_event="gateway.models.created"`
   for mutations; leave `None` for reads. The registry never audits a
-  failed call (validation error, scope denial, handler exception).
+  failed call (validation error, permission denial, handler exception).
 - **Errors are typed.** Raise `ToolError(code=..., message=...)` from
   handlers. Built-in codes: `tool_not_found`, `invalid_input`,
   `invalid_output`, `permission_denied`, `unauthenticated`. Handlers
@@ -96,9 +99,10 @@ Rules of the road:
    `service_factory`. Admin handlers receive a `LoopbackCaller` and call
    the REST route in-process via `httpx.ASGITransport` — no router-logic
    duplication.
-4. **Set scopes + audit_event** to match the equivalent REST route. Any
-   route that emits a `gateway.*` audit event MUST set the same
-   `audit_event` on the tool.
+4. **Set required_permission + audit_event** to match the equivalent REST
+   route. Use the same `<product>.<resource>.<action>` permission the REST
+   route's `require_permission` enforces. Any route that emits a
+   `gateway.*` audit event MUST set the same `audit_event` on the tool.
 5. **Test.** Use the in-process pattern (memory
    `mcp-python-sdk-testing`) — extract `server.request_handlers`, send
    `ListToolsRequest` / `CallToolRequest` directly. Never spawn a
@@ -147,7 +151,7 @@ curl -H "Authorization: Bearer ${BSV_OPAQUE_TOKEN}" \
 ```bash
 # List the catalog without booting a server
 bsgateway mcp list-tools                    # text, one name per line
-bsgateway mcp list-tools --output json      # JSON: [{name, description, scopes}, ...]
+bsgateway mcp list-tools --output json      # JSON: [{name, description, permission}, ...]
 
 # Run as an MCP stdio server (env: BSGATEWAY_PAT required for downstream auth)
 bsgateway mcp serve --transport stdio

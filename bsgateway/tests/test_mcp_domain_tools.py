@@ -9,8 +9,9 @@ Phase-7 first-class registry from TASK-002:
 * Tool names follow the ``bsgateway_mcp_<op>`` pattern surveyed in
   ``.agent/mcp-inventory.md`` so they don't collide with the admin
   catalog (``bsgateway_<subapp>_<action>``) coming in TASK-004.
-* Required scopes mirror the equivalent REST routes
-  (``gateway:routing:*``, ``gateway:models:*``, ``bsgateway:usage:read``).
+* ``required_permission`` mirrors the equivalent REST route's
+  ``require_permission`` (``bsgateway.routing.*``, ``bsgateway.models.*``,
+  ``bsgateway.usage.read``) — Tier 5 dot-grammar.
 * Mutating tools carry the matching ``audit_event`` literal so the
   registry's audit step fires the same gateway.* events REST does.
 * Each tool's handler delegates to an :class:`MCPService` built from the
@@ -62,13 +63,47 @@ def _make_user(scopes: list[str] | None = None, tenant_id: str | None = None) ->
     )
 
 
-def _make_ctx(user: User | None = None) -> ToolContext:
+class _FakeFGA:
+    """Minimal FGAClientProtocol stand-in with a fixed check() verdict."""
+
+    def __init__(self, *, allow: bool = True) -> None:
+        self._allow = allow
+
+    async def check(self, user: str, relation: str, object_: str) -> bool:
+        return self._allow
+
+    async def list_objects(self, user: str, relation: str, type_: str) -> list[str]:
+        return []
+
+    async def write_tuple(self, user: str, relation: str, object_: str) -> None:
+        return None
+
+
+def _authz_settings_openfga_on() -> object:
+    """A bsvibe-authz Settings with OpenFGA 'configured' so
+    ``check_tenant_permission`` actually consults the (fake) FGA client.
+    """
+    from bsvibe_authz import Settings as _AuthzSettings
+
+    return _AuthzSettings.model_construct(
+        openfga_api_url="http://openfga.test",
+        openfga_store_id="store",
+        openfga_auth_model_id="model",
+    )
+
+
+def _make_ctx(user: User | None = None, *, fga_allow: bool = True) -> ToolContext:
+    from bsvibe_authz import PermissionCache
+
     return ToolContext(
         settings=MagicMock(),
         user=user or _make_user(),
         db=None,
         audit_app_state=None,
         log=MagicMock(),
+        fga=_FakeFGA(allow=fga_allow),
+        permission_cache=PermissionCache(ttl_s=0),
+        authz_settings=_authz_settings_openfga_on(),
     )
 
 
@@ -137,39 +172,39 @@ def registry(mock_service: MagicMock) -> ToolRegistry:
 
 EXPECTED_TOOLS: dict[str, dict[str, Any]] = {
     "bsgateway_mcp_list_rules": {
-        "scopes": ["bsgateway:routing:read"],
+        "permission": "bsgateway.routing.read",
         "audit": None,
     },
     "bsgateway_mcp_create_rule": {
-        "scopes": ["bsgateway:routing:write"],
+        "permission": "bsgateway.routing.write",
         "audit": "gateway.routing.rule.created",
     },
     "bsgateway_mcp_update_rule": {
-        "scopes": ["bsgateway:routing:write"],
+        "permission": "bsgateway.routing.write",
         "audit": "gateway.routing.rule.updated",
     },
     "bsgateway_mcp_delete_rule": {
-        "scopes": ["bsgateway:routing:write"],
+        "permission": "bsgateway.routing.write",
         "audit": "gateway.routing.rule.deleted",
     },
     "bsgateway_mcp_list_models": {
-        "scopes": ["bsgateway:models:read"],
+        "permission": "bsgateway.models.read",
         "audit": None,
     },
     "bsgateway_mcp_register_model": {
-        "scopes": ["bsgateway:models:write"],
+        "permission": "bsgateway.models.write",
         "audit": "gateway.model.created",
     },
     "bsgateway_mcp_simulate_routing": {
-        "scopes": ["bsgateway:routing:read"],
+        "permission": "bsgateway.routing.read",
         "audit": None,
     },
     "bsgateway_mcp_get_cost_report": {
-        "scopes": ["bsgateway:usage:read"],
+        "permission": "bsgateway.usage.read",
         "audit": None,
     },
     "bsgateway_mcp_get_usage_stats": {
-        "scopes": ["bsgateway:usage:read"],
+        "permission": "bsgateway.usage.read",
         "audit": None,
     },
 }
@@ -180,12 +215,12 @@ class TestCatalogShape:
         names = set(registry.names())
         assert names == set(EXPECTED_TOOLS.keys())
 
-    def test_each_tool_has_expected_scope_and_audit(self, registry: ToolRegistry) -> None:
+    def test_each_tool_has_expected_permission_and_audit(self, registry: ToolRegistry) -> None:
         for name, expected in EXPECTED_TOOLS.items():
             tool: Tool | None = registry.get(name)
             assert tool is not None, f"missing tool: {name}"
-            assert tool.required_scopes == expected["scopes"], (
-                f"{name}: scopes={tool.required_scopes}, expected={expected['scopes']}"
+            assert tool.required_permission == expected["permission"], (
+                f"{name}: permission={tool.required_permission}, expected={expected['permission']}"
             )
             assert tool.audit_event == expected["audit"], (
                 f"{name}: audit={tool.audit_event}, expected={expected['audit']}"
@@ -389,16 +424,17 @@ class TestSimulateAndUsageTools:
 
 
 # ---------------------------------------------------------------------------
-# Scope enforcement — tools share the dispatcher's enforcement, but we
-# pin one read + one write to make sure the wiring is correct.
+# Permission enforcement — Tier 5: tools share the dispatcher's OpenFGA
+# enforcement (``check_tenant_permission``). We pin one read + one write
+# to make sure the ``required_permission`` wiring reaches the FGA check.
 # ---------------------------------------------------------------------------
 
 
-class TestScopeEnforcement:
-    async def test_list_rules_denied_without_routing_read(
+class TestPermissionEnforcement:
+    async def test_list_rules_denied_when_fga_denies(
         self, registry: ToolRegistry, mock_service: MagicMock
     ) -> None:
-        ctx = _make_ctx(_make_user(scopes=["bsgateway:models:read"]))
+        ctx = _make_ctx(fga_allow=False)
         with pytest.raises(ToolError) as exc:
             await registry.call_tool(
                 "bsgateway_mcp_list_rules",
@@ -408,10 +444,10 @@ class TestScopeEnforcement:
         assert exc.value.code == "permission_denied"
         mock_service.list_rules.assert_not_awaited()
 
-    async def test_create_rule_denied_without_routing_write(
+    async def test_create_rule_denied_when_fga_denies(
         self, registry: ToolRegistry, mock_service: MagicMock
     ) -> None:
-        ctx = _make_ctx(_make_user(scopes=["bsgateway:routing:read"]))
+        ctx = _make_ctx(fga_allow=False)
         with pytest.raises(ToolError) as exc:
             await registry.call_tool(
                 "bsgateway_mcp_create_rule",
@@ -426,10 +462,10 @@ class TestScopeEnforcement:
         assert exc.value.code == "permission_denied"
         mock_service.create_rule.assert_not_awaited()
 
-    async def test_gateway_prefix_wildcard_grants_subscopes(
+    async def test_tool_allowed_when_fga_grants(
         self, registry: ToolRegistry, mock_service: MagicMock
     ) -> None:
-        ctx = _make_ctx(_make_user(scopes=["bsgateway:*"]))
+        ctx = _make_ctx(fga_allow=True)
         result = await registry.call_tool(
             "bsgateway_mcp_list_models",
             {"tenant_id": str(TENANT_ID)},
