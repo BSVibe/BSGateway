@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "bsvibe-authz"
-version = "1.3.0"
+version = "1.5.0"
 source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-authz&rev=main#ab9d7fa9b0087c7c3d9b6b60087ff9e9c9235a98" }
 dependencies = [
     { name = "bsvibe-core" },
@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "bsvibe-cli-base"
-version = "0.1.0"
+version = "0.2.0"
 source = { git = "https://github.com/BSVibe/bsvibe-python.git?subdirectory=packages%2Fbsvibe-cli-base&rev=main#ab9d7fa9b0087c7c3d9b6b60087ff9e9c9235a98" }
 dependencies = [
     { name = "bsvibe-authz" },
