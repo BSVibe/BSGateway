@@ -21,6 +21,7 @@ from bsgateway.api.deps import (
     GatewayAuthContext,
     get_auth_context,
     get_pool,
+    require_permission,
 )
 from bsgateway.core.cache import cache_key_models
 from bsgateway.core.utils import parse_jsonb_value
@@ -195,6 +196,7 @@ class InstallTokenResponse(BaseModel):
 )
 async def get_install_token_status(
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.workers.read")),
     auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> InstallTokenResponse:
     """Return whether an install token exists for this tenant."""
@@ -210,6 +212,7 @@ async def get_install_token_status(
 )
 async def create_install_token(
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.workers.write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> InstallTokenResponse:
     """Mint a new install token for this tenant (replaces any existing)."""
@@ -227,6 +230,7 @@ async def create_install_token(
 )
 async def revoke_install_token(
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.workers.write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> None:
     pool = get_pool(request)
@@ -351,6 +355,7 @@ async def report_result(
 @router.get("", summary="List workers")
 async def list_workers(
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.workers.read")),
     auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> list[dict[str, Any]]:
     pool = get_pool(request)
@@ -374,6 +379,7 @@ async def list_workers(
 async def delete_worker(
     worker_id: UUID,
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.workers.write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> None:
     """Soft-delete a worker and drop its auto-registered tenant_models row."""

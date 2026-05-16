@@ -30,7 +30,7 @@ _registry = PresetRegistry()
 
 @router.get("/presets", response_model=list[PresetSummary], summary="List presets")
 async def list_presets(
-    _allowed: None = Depends(require_permission("bsgateway.routing.read")),
+    _allowed: None = Depends(require_permission("bsgateway.presets.read")),
     _auth: GatewayAuthContext = Depends(get_auth_context),
 ) -> list[PresetSummary]:
     """List all available preset templates."""
@@ -56,7 +56,7 @@ async def apply_preset(
     body: PresetApplyRequest,
     request: Request,
     _auth: GatewayAuthContext = Depends(require_tenant_access),
-    _allowed: None = Depends(require_permission("bsgateway.routing.write")),
+    _allowed: None = Depends(require_permission("bsgateway.presets.write")),
 ) -> PresetApplyResponse:
     """Apply a preset template to a tenant."""
     pool = get_pool(request)

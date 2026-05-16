@@ -10,10 +10,11 @@ fall through to ``verify_via_introspection``).
 
 - (a) ``Bearer <pat-jwt>`` — JWT-shaped PAT, ``verify_user_jwt`` fails
   (no signing key configured here), introspection returns
-  ``active=true scope=['bsgateway:models:read']``. ``GET /admin/models``
-  → 200. ``POST /admin/models`` → 403 (scope mismatch). The org-level
-  model registry is the surviving ``require_scope`` route after the
-  Phase 2b swap.
+  ``active=true``. The PAT dispatch (introspect → User) is exercised
+  end-to-end against ``GET /admin/models``. Tier 5 swapped the model
+  registry off ``require_scope`` onto ``require_permission`` (DOT
+  grammar, permissive when OpenFGA is unconfigured) — so the request
+  reaches the handler (200) on the strength of a valid PAT alone.
 - (b) ``Bearer <pat-jwt>`` with ``active=false`` — 401.
 - (c) ``Bearer <jwt>`` — BSVibe user JWT path through ``bsvibe_authz``. Stays green.
 
@@ -105,7 +106,7 @@ def _build_app(
 ):
     """Construct an app wired to a shared MockTransport-backed
     ``IntrospectionClient`` for both BSGateway dispatch and bsvibe-authz
-    ``require_scope``. Returns ``(app, transport)``."""
+    PAT-JWT introspection. Returns ``(app, transport)``."""
 
     transport = _CountingTransport(introspection_handler)
     http = httpx.AsyncClient(transport=transport)
@@ -124,7 +125,7 @@ def _build_app(
     app.state.redis = None
 
     # Drop the autouse fake bsvibe-authz user so the real dispatch
-    # (header → introspect / JWT) drives ``require_scope``.
+    # (header → introspect / JWT) drives the permission gate.
     app.dependency_overrides.pop(authz_get_current_user, None)
 
     # bsvibe-authz Settings + introspection client overrides — these
@@ -168,7 +169,7 @@ _PAT_JWT_REVOKED = "eyJhbGciOiJFUzI1NiJ9.cmV2b2tlZA.sig"
 
 
 # ---------------------------------------------------------------------------
-# (a) PAT JWT — scope enforcement via real introspection
+# (a) PAT JWT — dispatch via real introspection
 # ---------------------------------------------------------------------------
 
 
@@ -186,7 +187,16 @@ def _active_introspect_handler(tenant_id: str, scope: list[str]):
     return _handler
 
 
-def test_pat_read_scope_allows_get_models_and_blocks_post() -> None:
+def test_pat_dispatch_reaches_admin_models_handler() -> None:
+    """A valid PAT-JWT dispatches end-to-end to ``GET /admin/models``.
+
+    Tier 5 moved the model registry off ``require_scope`` onto
+    ``require_permission`` (DOT grammar). ``require_permission`` is
+    permissive when OpenFGA is unconfigured, so a valid PAT — regardless
+    of the narrow scope strings it carries — reaches the handler. The
+    point exercised here is the introspection dispatch (header →
+    introspect → User → tenant resolution), not a scope gate.
+    """
     tid = uuid4()
     handler = _active_introspect_handler(str(tid), ["bsgateway:models:read"])
     app, _ = _build_app(introspection_handler=handler)
@@ -197,7 +207,6 @@ def test_pat_read_scope_allows_get_models_and_blocks_post() -> None:
         new_callable=AsyncMock,
         return_value=_tenant_row(tid),
     ):
-        # The org-level effective-model registry stays on ``require_scope``.
         # No model_registry attached → handler returns an empty list (200).
         get_resp = client.get(
             "/api/v1/admin/models",
@@ -205,24 +214,6 @@ def test_pat_read_scope_allows_get_models_and_blocks_post() -> None:
         )
 
     assert get_resp.status_code == 200, get_resp.text
-
-    with patch(
-        "bsgateway.tenant.repository.TenantRepository.get_tenant",
-        new_callable=AsyncMock,
-        return_value=_tenant_row(tid),
-    ):
-        post_resp = client.post(
-            "/api/v1/admin/models",
-            json={
-                "model_name": "gpt-foo",
-                "litellm_model": "openai/gpt-foo",
-                "is_active": True,
-            },
-            headers={"Authorization": f"Bearer {_PAT_JWT_READONLY}"},
-        )
-
-    assert post_resp.status_code == 403, post_resp.text
-    assert "bsgateway:models:write" in post_resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +258,7 @@ def test_jwt_path_unchanged() -> None:
         raise AssertionError("introspection must not be called for JWT")
 
     app, transport = _build_app(introspection_handler=_never)
-    # Re-install the conftest fake authz user for the require_scope chain
+    # Re-install the conftest fake authz user for the dispatch chain
     # (the autouse override is popped in _build_app).
     app.dependency_overrides[authz_get_current_user] = _fake_authz_user
 

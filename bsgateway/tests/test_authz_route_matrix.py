@@ -127,11 +127,14 @@ class TestRouteMatrix:
         # bsvibe-authz introspection + JWT tokens replace the
         # self-hosted ``api_keys`` table and its CRUD router.
         #
-        # Phase 2b — frontend-hit routes swapped off pure require_scope to
-        # require_permission (permissive when OpenFGA is unconfigured, so
-        # session-JWT users with scope=[] pass) or require_admin (genuine
-        # tenant-admin operations). CLI/PAT-only routes keep require_scope
-        # (see test_authz_scope_matrix.py).
+        # Tier 5 (bsvibe-authz 1.4.0) — every BSGateway REST route now
+        # uses the uniform 3-part DOT-grammar ``require_permission``
+        # (``bsgateway.<resource>.<action>``). The legacy ``require_scope``
+        # COLON-grammar gate (and its bsgateway wrapper) was removed; the
+        # model registry routes were swapped off it onto require_permission.
+        # require_permission is permissive when OpenFGA is unconfigured, so
+        # session-JWT users with scope=[] pass; require_admin (genuine
+        # tenant-admin operations) stays a real enforced check.
         #
         # Routing — rules (tenant-member CRUD)
         ("/api/v1/tenants/{tenant_id}/rules", "GET", "bsgateway.routes.read"),
@@ -145,14 +148,35 @@ class TestRouteMatrix:
         ("/api/v1/tenants/{tenant_id}/intents/{intent_id}", "GET", "bsgateway.routing.read"),
         ("/api/v1/tenants/{tenant_id}/intents/{intent_id}", "PATCH", "bsgateway.routing.write"),
         ("/api/v1/tenants/{tenant_id}/intents/{intent_id}", "DELETE", "bsgateway.routing.write"),
-        # Routing — presets
-        ("/api/v1/presets", "GET", "bsgateway.routing.read"),
-        ("/api/v1/tenants/{tenant_id}/presets/apply", "POST", "bsgateway.routing.write"),
+        # Presets — dedicated ``presets`` resource (Tier 5 — was routing.*)
+        ("/api/v1/presets", "GET", "bsgateway.presets.read"),
+        ("/api/v1/tenants/{tenant_id}/presets/apply", "POST", "bsgateway.presets.write"),
+        # Models — org-level effective-model registry (Tier 5 — was
+        # require_scope COLON grammar, now uniform require_permission DOT).
+        ("/api/v1/admin/models", "GET", "bsgateway.models.read"),
+        ("/api/v1/admin/models", "POST", "bsgateway.models.write"),
+        ("/api/v1/admin/models/{model_id}", "PATCH", "bsgateway.models.write"),
+        ("/api/v1/admin/models/{model_id}", "DELETE", "bsgateway.models.write"),
         # Audit (read-only dashboard surface)
         ("/api/v1/tenants/{tenant_id}/audit", "GET", "bsgateway.audit.read"),
         # Tenants — reads are permissive
         ("/api/v1/tenants", "GET", "bsgateway.tenants.read"),
         ("/api/v1/tenants/{tenant_id}", "GET", "bsgateway.tenants.read"),
+        # Workers — admin-surface (executor fleet). Tier 5 added gates to
+        # the user-facing install-token + worker-listing routes; the
+        # worker-token-authed register/heartbeat/poll/result endpoints
+        # stay on their X-Worker-Token / X-Install-Token header auth.
+        ("/api/v1/workers/install-token", "GET", "bsgateway.workers.read"),
+        ("/api/v1/workers/install-token", "POST", "bsgateway.workers.write"),
+        ("/api/v1/workers/install-token", "DELETE", "bsgateway.workers.write"),
+        ("/api/v1/workers", "GET", "bsgateway.workers.read"),
+        ("/api/v1/workers/{worker_id}", "DELETE", "bsgateway.workers.write"),
+        # Usage — per-tenant statistics + sparklines (Tier 5 — was ungated).
+        ("/api/v1/tenants/{tenant_id}/usage", "GET", "bsgateway.usage.read"),
+        ("/api/v1/tenants/{tenant_id}/usage/sparklines", "GET", "bsgateway.usage.read"),
+        # Feedback — routing-decision feedback (Tier 5 — was ungated).
+        ("/api/v1/tenants/{tenant_id}/feedback", "GET", "bsgateway.feedback.read"),
+        ("/api/v1/tenants/{tenant_id}/feedback", "POST", "bsgateway.feedback.write"),
     ]
 
     # Genuine tenant-administration routes — gate on require_admin()

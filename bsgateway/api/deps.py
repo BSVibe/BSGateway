@@ -38,9 +38,6 @@ from bsvibe_authz import (
 from bsvibe_authz import (
     require_permission as _authz_require_permission,
 )
-from bsvibe_authz import (
-    require_scope as _authz_require_scope,
-)
 from fastapi import Depends, HTTPException, Request, status
 
 from bsgateway.core.cache import CacheManager
@@ -75,24 +72,6 @@ def require_permission(
         resource_id_param=resource_id_param,
     )
     dep._bsvibe_permission = permission  # type: ignore[attr-defined]
-    return dep
-
-
-def require_scope(scope: str) -> Callable[..., Awaitable[None]]:
-    """Wrap ``bsvibe_authz.require_scope`` and tag the closure.
-
-    CLI/PAT-only routes (the org-level model registry) gate on narrow
-    ``bsgateway:<resource>:<action>`` scope strings carried by
-    real-scope PAT JWTs (the legacy ``bsv_sk_*`` opaque path was
-    retired in bsvibe-authz 1.3.0). Frontend-hit routes use
-    ``require_permission`` / ``require_admin`` instead — see Phase 2b.
-    The tag (``_bsvibe_scope``) lets ``test_authz_scope_matrix.py`` pin
-    the catalog so future refactors cannot silently downgrade a gate.
-
-    See ``docs/scopes.md`` for the active catalog.
-    """
-    dep = _authz_require_scope(scope)
-    dep._bsvibe_scope = scope  # type: ignore[attr-defined]
     return dep
 
 

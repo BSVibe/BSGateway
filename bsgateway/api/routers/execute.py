@@ -1,4 +1,15 @@
-"""Execute endpoint — submit async executor tasks and poll results."""
+"""Execute endpoint — submit async executor tasks and poll results.
+
+DATA-PLANE: the executor dispatch path is a core gateway function, the
+async sibling of ``POST /chat/completions``. All three routes here
+(``POST /execute``, ``GET /tasks/{id}``, ``GET /tasks``) are deliberately
+gated only by tenant-scoped authentication (``get_auth_context``) — NOT
+by a per-resource ``require_permission`` gate. The permission matrix row
+``bsgateway.execute.write`` exists for a future control-plane execute
+admin surface (e.g. quota / executor-config management); it is NOT
+applied to the data-plane dispatch routes below. Any authenticated
+tenant member may submit and read their own tasks.
+"""
 
 from __future__ import annotations
 

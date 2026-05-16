@@ -9,7 +9,12 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
-from bsgateway.api.deps import GatewayAuthContext, get_pool, require_tenant_access
+from bsgateway.api.deps import (
+    GatewayAuthContext,
+    get_pool,
+    require_permission,
+    require_tenant_access,
+)
 from bsgateway.routing.repository import RoutingLogsRepository
 
 logger = structlog.get_logger(__name__)
@@ -69,6 +74,7 @@ def _parse_period(
 async def get_usage(
     tenant_id: UUID,
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.usage.read")),
     auth: GatewayAuthContext = Depends(require_tenant_access),
     period: str = Query("day", pattern="^(day|week|month)$"),
     from_date: date | None = Query(None, alias="from"),
@@ -129,6 +135,7 @@ async def get_usage(
 async def get_sparklines(
     tenant_id: UUID,
     request: Request,
+    _allowed: None = Depends(require_permission("bsgateway.usage.read")),
     auth: GatewayAuthContext = Depends(require_tenant_access),
     days: int = Query(7, ge=1, le=90),
 ) -> dict[str, list[int]]:

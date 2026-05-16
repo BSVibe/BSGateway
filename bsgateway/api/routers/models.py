@@ -4,7 +4,7 @@ table.
 The router is the **only** mutation site for the yaml-union-DB merge
 that ``ModelRegistryService`` caches. Every write therefore:
 
-* enforces ``gateway:models:write`` (Phase 1 scope cutover),
+* enforces ``bsgateway.models.write`` (Tier 5 per-resource permission),
 * calls ``registry.invalidate(tenant_id)`` so the next routing
   decision sees the new state without a process restart,
 * records a ``model.created`` / ``model.updated`` / ``model.deleted``
@@ -12,7 +12,7 @@ that ``ModelRegistryService`` caches. Every write therefore:
   **never** echoed into the audit payload — provider credentials
   may live there.
 
-GET reads enforce ``gateway:models:read`` and return the *effective*
+GET reads enforce ``bsgateway.models.read`` and return the *effective*
 list (yaml-union-DB) so callers don't have to re-implement the merge.
 """
 
@@ -32,7 +32,7 @@ from bsgateway.api.deps import (
     get_auth_context,
     get_model_registry,
     get_pool,
-    require_scope,
+    require_permission,
 )
 from bsgateway.audit.events import (
     ModelCreated,
@@ -153,7 +153,7 @@ async def _invalidate(registry: object | None, tenant_id: UUID) -> None:
 )
 async def list_effective_models(
     request: Request,
-    _scope: None = Depends(require_scope("bsgateway:models:read")),
+    _allowed: None = Depends(require_permission("bsgateway.models.read")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> list[EffectiveModel]:
@@ -191,7 +191,7 @@ async def list_effective_models(
 async def create_model(
     request: Request,
     body: Annotated[ModelCreate, Body()],
-    _scope: None = Depends(require_scope("bsgateway:models:write")),
+    _allowed: None = Depends(require_permission("bsgateway.models.write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> ModelResponse:
@@ -252,7 +252,7 @@ async def update_model(
     model_id: UUID,
     body: ModelUpdate,
     request: Request,
-    _scope: None = Depends(require_scope("bsgateway:models:write")),
+    _allowed: None = Depends(require_permission("bsgateway.models.write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> ModelResponse:
@@ -309,7 +309,7 @@ async def update_model(
 async def delete_model(
     model_id: UUID,
     request: Request,
-    _scope: None = Depends(require_scope("bsgateway:models:write")),
+    _allowed: None = Depends(require_permission("bsgateway.models.write")),
     auth: GatewayAuthContext = Depends(get_auth_context),
     registry=Depends(get_model_registry),
 ) -> None:
