@@ -1,4 +1,5 @@
-import { getAccessToken, clearTokenCache } from '../hooks/useAuth';
+import { isDemoMode } from '@bsvibe/demo';
+import { getAccessToken, getActiveTenantId, clearTokenCache } from '../hooks/useAuth';
 
 const API_PATH_PREFIX = '/api/v1';
 
@@ -58,6 +59,16 @@ async function request<T>(
   const token = await getAccessToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  // Tier 3.2: the raw Supabase JWT carries no tenant claim — product
+  // backends resolve the active tenant from this header. Demo mode is
+  // single-tenant + cookie auth, so the header is skipped there.
+  if (!isDemoMode()) {
+    const activeTenant = await getActiveTenantId();
+    if (activeTenant) {
+      headers['X-Active-Tenant'] = activeTenant;
+    }
   }
 
   const controller = new AbortController();

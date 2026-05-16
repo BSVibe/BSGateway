@@ -8,14 +8,17 @@ const AUTH_URL =
 const TENANT_NAME_KEY = 'bsvibe_tenant_name';
 const STORED_TOKEN_KEY = 'bsgateway_access_token';
 const STORED_REFRESH_KEY = 'bsgateway_refresh_token';
+const LS_ACTIVE_TENANT = 'bsgateway_active_tenant';
 
 interface SessionResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
+  active_tenant_id?: string | null;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
+let cachedActiveTenant: string | null = null;
 
 interface AccessTokenOptions {
   probeRemoteSession?: boolean;
@@ -91,7 +94,50 @@ export async function getAccessToken({
       value: data.access_token,
       expiresAt: Date.now() + data.expires_in * 1000,
     };
+    if (data.active_tenant_id) {
+      cachedActiveTenant = data.active_tenant_id;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LS_ACTIVE_TENANT, data.active_tenant_id);
+      }
+    }
     return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the active tenant id for the `X-Active-Tenant` request header.
+ *
+ * Tier 3.2 collapsed the wrapped session JWT to the raw Supabase JWT, which
+ * carries no tenant claim. Product backends now read the active tenant from
+ * this header. Resolution order: module cache → localStorage → probe
+ * `/api/session` on the auth server → null.
+ */
+export async function getActiveTenantId(): Promise<string | null> {
+  if (cachedActiveTenant) return cachedActiveTenant;
+
+  const stored =
+    typeof window !== 'undefined' ? localStorage.getItem(LS_ACTIVE_TENANT) : null;
+  if (stored) {
+    cachedActiveTenant = stored;
+    return stored;
+  }
+
+  // Probe the auth server's /api/session — this also refreshes the token
+  // cache and, on success, populates cachedActiveTenant as a side effect.
+  try {
+    const res = await fetch(`${AUTH_URL}/api/session`, { credentials: 'include' });
+    if (!res.ok) return null;
+    const data: SessionResponse = await res.json();
+    if (data.active_tenant_id) {
+      cachedActiveTenant = data.active_tenant_id;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LS_ACTIVE_TENANT, data.active_tenant_id);
+      }
+      return data.active_tenant_id;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -99,9 +145,11 @@ export async function getAccessToken({
 
 export function clearTokenCache() {
   cachedToken = null;
+  cachedActiveTenant = null;
   if (typeof window !== 'undefined') {
     localStorage.removeItem(STORED_TOKEN_KEY);
     localStorage.removeItem(STORED_REFRESH_KEY);
+    localStorage.removeItem(LS_ACTIVE_TENANT);
   }
 }
 
