@@ -198,10 +198,15 @@ function readInitialState(): AuthState {
       // Demo JWT carries `tenant_id` directly (no app_metadata envelope).
       const directTenantId = (payload.tenant_id as string | undefined) ?? null;
       const isDemoSession = payload.is_demo === true;
+      // Tier 3.2: the raw Supabase JWT carries no tenant claim — fall back
+      // to the cached active tenant (localStorage) so tenant-id-in-path
+      // URLs (/tenants/${tenantId}/...) get a real id on first render.
+      const lsActiveTenant =
+        typeof window !== 'undefined' ? localStorage.getItem(LS_ACTIVE_TENANT) : null;
       return {
         isAuthenticated: true,
         isLoading: false,
-        tenantId: meta?.tenant_id ?? directTenantId,
+        tenantId: meta?.tenant_id ?? directTenantId ?? lsActiveTenant,
         tenantName: tenantName ?? (isDemoSession ? 'Demo sandbox' : null),
         role: meta?.role ?? (isDemoSession ? 'demo' : 'member'),
         email: (payload.email as string) ?? (isDemoSession ? 'demo@bsvibe.dev' : null),
@@ -245,10 +250,17 @@ export function useAuth({
       const meta = payload.app_metadata as Record<string, string> | undefined;
       const directTenantId = (payload.tenant_id as string | undefined) ?? null;
       const isDemoSession = payload.is_demo === true;
+      // Tier 3.2: the raw Supabase JWT carries no tenant claim — resolve the
+      // active tenant from the X-Active-Tenant source (cache / localStorage /
+      // /api/session probe). Without this, tenant-id-in-path URLs collapse to
+      // `/tenants//...` and 404.
+      const tenantId =
+        meta?.tenant_id ?? directTenantId ?? (await getActiveTenantId());
+      if (cancelled) return;
       setState({
         isAuthenticated: true,
         isLoading: false,
-        tenantId: meta?.tenant_id ?? directTenantId,
+        tenantId,
         tenantName:
           sessionStorage.getItem(TENANT_NAME_KEY) ??
           (isDemoSession ? 'Demo sandbox' : null),
