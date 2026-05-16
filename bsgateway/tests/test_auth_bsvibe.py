@@ -35,6 +35,20 @@ def _scopeless_authz_user() -> AuthzUser:
     )
 
 
+class _DenyFGA:
+    """OpenFGA double that denies every check — drives ``require_admin``
+    (OpenFGA-backed since bsvibe-authz 2.1.0) down its 403 branch."""
+
+    async def check(self, *args: object, **kwargs: object) -> bool:
+        return False
+
+    async def list_objects(self, *args: object, **kwargs: object) -> list[str]:
+        return []
+
+    async def write_tuple(self, *args: object, **kwargs: object) -> None:
+        return None
+
+
 ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 TENANT_ID = uuid4()
 
@@ -229,11 +243,24 @@ class TestBSVibeAuth:
         assert resp.status_code == 200, resp.text
 
     def test_non_admin_cannot_create_tenant(self):
-        """Phase 2b: ``POST /tenants`` gates on ``require_admin()`` — a
-        member-role principal 403s with ``admin role required``."""
+        """``POST /tenants`` gates on ``require_admin()`` — a member-role
+        principal 403s with ``admin role required``.
+
+        Since bsvibe-authz 2.1.0 ``require_admin`` checks the OpenFGA
+        ``admin`` relation (was the ``app_metadata.role`` claim) and is
+        permissive when OpenFGA is unconfigured. Prod wires OpenFGA
+        (``deploy/.env`` ``OPENFGA_API_URL``); this test points it at a
+        deny-everything FGA so the member is genuinely rejected."""
+        from bsvibe_authz import Settings as AuthzSettings
+        from bsvibe_authz.deps import get_openfga_client, get_settings_dep
+
         app = _make_app()
         user = make_authz_user(tenant_id=TENANT_ID, role="member")
         app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
+        app.dependency_overrides[get_settings_dep] = lambda: AuthzSettings(
+            openfga_api_url="http://openfga.test",
+        )
+        app.dependency_overrides[get_openfga_client] = lambda: _DenyFGA()
 
         with _patch_authz_user(user):
             client = TestClient(app, raise_server_exceptions=False)

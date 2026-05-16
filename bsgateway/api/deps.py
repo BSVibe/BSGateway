@@ -33,6 +33,9 @@ from bsvibe_authz import (
     get_current_user as _authz_get_current_user,
 )
 from bsvibe_authz import (
+    get_openfga_client as _authz_get_openfga_client,
+)
+from bsvibe_authz import (
     require_admin as _authz_require_admin,
 )
 from bsvibe_authz import (
@@ -198,13 +201,23 @@ async def _auth_via_authz(request: Request) -> GatewayAuthContext:
     * translate it into a :class:`GatewayAuthContext`,
     * verify the tenant is active, and
     * auto-provision the tenant row on first access for user JWTs.
+
+    Tier 3.2: ``get_current_user`` is a FastAPI dependency, but BSGateway
+    re-wraps it here and calls it directly — so it must thread the
+    ``X-Active-Tenant`` header (and the OpenFGA client the lib needs to
+    membership-validate it) explicitly. The raw Supabase JWT carries no
+    tenant claim; without this the active tenant never resolves for a
+    browser session and every tenant-scoped route 403s.
     """
     auth_header = request.headers.get("Authorization") or ""
+    authz_settings = _authz_settings()
     user = await _authz_get_current_user(
         authorization=auth_header,
-        settings=_authz_settings(),
+        x_active_tenant=request.headers.get("X-Active-Tenant"),
+        settings=authz_settings,
         introspection_client=_get_introspection_client(),
         introspection_cache=_get_introspection_cache(),
+        fga=_authz_get_openfga_client(authz_settings),
     )
 
     # Bootstrap / "*"-scope tokens are tenant-less by design.

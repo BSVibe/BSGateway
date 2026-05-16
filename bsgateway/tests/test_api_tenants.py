@@ -42,6 +42,20 @@ ENCRYPTION_KEY_HEX = os.urandom(32).hex()
 ADMIN_TENANT_ID = uuid4()
 
 
+class _DenyFGA:
+    """OpenFGA double that denies every check — drives ``require_admin``
+    (OpenFGA-backed since bsvibe-authz 2.1.0) down its 403 branch."""
+
+    async def check(self, *a: object, **k: object) -> bool:
+        return False
+
+    async def list_objects(self, *a: object, **k: object) -> list[str]:
+        return []
+
+    async def write_tuple(self, *a: object, **k: object) -> None:
+        return None
+
+
 @pytest.fixture
 def mock_pool():
     """Create a mock asyncpg pool."""
@@ -99,13 +113,17 @@ class TestTenantAuth:
     def test_non_admin_returns_403(self, mock_pool):
         """Non-admin principal → 403 on genuine tenant-admin endpoints.
 
-        Phase 2b: frontend-hit reads (``GET /tenants``) were swapped to the
-        permissive ``require_permission`` so the browser session JWT
-        (``scope=[]``) is no longer dead. Genuine tenant administration
-        (``POST /tenants``) now gates on ``require_admin()`` — a real
-        enforced check on ``app_metadata.role``. A principal without an
-        ``owner``/``admin`` role must hit 403 with ``admin role required``.
+        ``GET /tenants`` is permissive ``require_permission`` (browser
+        session JWT with ``scope=[]`` reaches the handler). ``POST
+        /tenants`` gates on ``require_admin()`` — since bsvibe-authz 2.1.0
+        an OpenFGA ``admin``-relation check (was the ``app_metadata.role``
+        claim), permissive when OpenFGA is unconfigured. Prod wires
+        OpenFGA (``deploy/.env``); this test points it at a deny FGA so
+        the member genuinely 403s with ``admin role required``.
         """
+        from bsvibe_authz import Settings as AuthzSettings
+        from bsvibe_authz.deps import get_openfga_client, get_settings_dep
+
         app = create_app()
         app.state.db_pool = mock_pool
         app.state.encryption_key = bytes.fromhex(ENCRYPTION_KEY_HEX)
@@ -113,6 +131,10 @@ class TestTenantAuth:
         member_ctx = make_gateway_auth_context(is_admin=False)
         app.dependency_overrides[get_auth_context] = lambda: member_ctx
         app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
+        app.dependency_overrides[get_settings_dep] = lambda: AuthzSettings(
+            openfga_api_url="http://openfga.test",
+        )
+        app.dependency_overrides[get_openfga_client] = lambda: _DenyFGA()
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.post("/api/v1/tenants", json={"name": "t", "slug": "t"})
         assert resp.status_code == 403
@@ -249,10 +271,14 @@ class TestCrossTenantAccess:
     def test_tenant_cannot_update_other_tenant(self, mock_pool):
         """A non-admin principal cannot PATCH any tenant — ``require_admin`` blocks.
 
-        Phase 2b: tenant administration (PATCH/DELETE ``/tenants/{id}``)
-        gates on ``require_admin()``. A principal without an
-        ``owner``/``admin`` role 403s before reaching the handler.
+        Tenant administration (PATCH/DELETE ``/tenants/{id}``) gates on
+        ``require_admin()`` — an OpenFGA ``admin``-relation check since
+        bsvibe-authz 2.1.0, permissive when OpenFGA is unconfigured. This
+        test points it at a deny FGA so the member 403s before the handler.
         """
+        from bsvibe_authz import Settings as AuthzSettings
+        from bsvibe_authz.deps import get_openfga_client, get_settings_dep
+
         own_tid = uuid4()
         other_tid = uuid4()
         app = create_app()
@@ -262,6 +288,10 @@ class TestCrossTenantAccess:
         member_ctx = make_gateway_auth_context(tenant_id=own_tid, is_admin=False)
         app.dependency_overrides[get_auth_context] = lambda: member_ctx
         app.dependency_overrides[authz_get_current_user] = _scopeless_authz_user
+        app.dependency_overrides[get_settings_dep] = lambda: AuthzSettings(
+            openfga_api_url="http://openfga.test",
+        )
+        app.dependency_overrides[get_openfga_client] = lambda: _DenyFGA()
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.patch(
             f"/api/v1/tenants/{other_tid}",
