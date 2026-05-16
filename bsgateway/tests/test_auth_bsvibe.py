@@ -348,3 +348,24 @@ class TestDependencyOverridePattern:
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/api/v1/tenants")
         assert resp.status_code == 200
+
+
+class TestAuthzSettingsOpenFGAToken:
+    """``_authz_settings`` builds the bsvibe-authz Settings via
+    ``model_construct``, which bypasses pydantic-settings env loading — so
+    every field the OpenFGA client needs must be threaded explicitly. A
+    missing ``openfga_auth_token`` makes the client 401 on every check
+    (Tier 3.2 surfaced this — ``_resolve_active_tenant`` is the first path
+    to actually call ``fga.check`` on a normal request)."""
+
+    def test_openfga_auth_token_threaded_from_gateway_settings(self):
+        from bsgateway.api.deps import _authz_settings
+
+        with patch("bsgateway.api.deps.gateway_settings.openfga_auth_token", "preshared-xyz"):
+            assert _authz_settings().openfga_auth_token == "preshared-xyz"
+
+    def test_openfga_auth_token_empty_resolves_to_none(self):
+        from bsgateway.api.deps import _authz_settings
+
+        with patch("bsgateway.api.deps.gateway_settings.openfga_auth_token", ""):
+            assert _authz_settings().openfga_auth_token is None
