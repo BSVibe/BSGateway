@@ -46,14 +46,27 @@ class TestClaudeExtract:
 
 
 class TestCodexExtract:
-    def test_message_delta(self) -> None:
-        assert _codex_extract_delta({"type": "message_delta", "content": "x"}) == "x"
+    def test_agent_message_item_completed(self) -> None:
+        evt = {
+            "type": "item.completed",
+            "item": {"id": "item_0", "type": "agent_message", "text": "pong"},
+        }
+        assert _codex_extract_delta(evt) == "pong"
 
-    def test_assistant_delta(self) -> None:
-        assert _codex_extract_delta({"type": "assistant_delta", "text": "y"}) == "y"
+    def test_non_agent_item_returns_empty(self) -> None:
+        evt = {
+            "type": "item.completed",
+            "item": {"id": "item_1", "type": "reasoning", "text": "thinking"},
+        }
+        assert _codex_extract_delta(evt) == ""
 
-    def test_message_final(self) -> None:
-        assert _codex_extract_delta({"type": "message", "content": "final"}) == "final"
+    def test_lifecycle_events_return_empty(self) -> None:
+        assert _codex_extract_delta({"type": "thread.started", "thread_id": "x"}) == ""
+        assert _codex_extract_delta({"type": "turn.completed", "usage": {}}) == ""
+
+    def test_legacy_message_delta_returns_empty(self) -> None:
+        """The old message_delta/message schema is no longer emitted."""
+        assert _codex_extract_delta({"type": "message_delta", "content": "x"}) == ""
 
     def test_unknown_returns_empty(self) -> None:
         assert _codex_extract_delta({"type": "noop"}) == ""
@@ -284,17 +297,43 @@ async def test_claude_executor_handles_filenotfound() -> None:
 
 
 @pytest.mark.asyncio
-async def test_codex_executor_streams_message_delta() -> None:
+async def test_codex_executor_streams_agent_message() -> None:
+    """codex emits the answer as a completed agent_message item."""
     executor = CodexExecutor(timeout_seconds=5)
-    line1 = json.dumps({"type": "message_delta", "content": "first "}).encode() + b"\n"
-    line2 = json.dumps({"type": "message_delta", "content": "second"}).encode() + b"\n"
-    proc = _make_proc([line1, line2], returncode=0)
+    lines = [
+        json.dumps({"type": "thread.started", "thread_id": "th-1"}).encode() + b"\n",
+        json.dumps({"type": "turn.started"}).encode() + b"\n",
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {"id": "item_0", "type": "agent_message", "text": "pong"},
+            }
+        ).encode()
+        + b"\n",
+        json.dumps({"type": "turn.completed", "usage": {}}).encode() + b"\n",
+    ]
+    proc = _make_proc(lines, returncode=0)
 
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
         result = await collect(executor.execute("p", {"task_id": "t"}))
 
     assert result.success is True
-    assert result.stdout == "first second"
+    assert result.stdout == "pong"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_uses_workspace_write_sandbox() -> None:
+    """--full-auto is deprecated — the executor uses --sandbox workspace-write."""
+    executor = CodexExecutor(timeout_seconds=5)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    args = mock_exec.call_args.args
+    assert "--sandbox" in args
+    assert args[args.index("--sandbox") + 1] == "workspace-write"
+    assert "--full-auto" not in args
 
 
 @pytest.mark.asyncio
@@ -303,7 +342,6 @@ async def test_codex_executor_writes_system_to_tempfile_and_cleans_up() -> None:
     proc = _make_proc([], returncode=0)
 
     captured_args: list[str] = []
-    real_create = asyncio.create_subprocess_exec
 
     async def _fake_exec(*args, **_kwargs):
         captured_args.extend(args)
@@ -312,14 +350,14 @@ async def test_codex_executor_writes_system_to_tempfile_and_cleans_up() -> None:
     with patch("asyncio.create_subprocess_exec", _fake_exec):
         await collect(executor.execute("p", {"task_id": "t", "system": "Be helpful and brief."}))
 
-    cfg_args = [a for a in captured_args if a.startswith("experimental_instructions_file=")]
+    # codex 0.130+ reads the system override from model_instructions_file —
+    # the old experimental_instructions_file key is silently ignored.
+    cfg_args = [a for a in captured_args if a.startswith("model_instructions_file=")]
     assert len(cfg_args) == 1
     sys_path = cfg_args[0].split("=", 1)[1]
-    # Tempfile should be cleaned up after execute() returns.
     import os
 
     assert not os.path.exists(sys_path)
-    _ = real_create  # silence "unused"
 
 
 # ─── OpenCodeExecutor ────────────────────────────────────────────────
@@ -399,75 +437,121 @@ async def test_opencode_executor_streams_sse_events() -> None:
     assert result.stdout == "Hello"
 
 
-@pytest.mark.asyncio
-async def test_opencode_executor_passes_mcp_servers_to_session_create() -> None:
-    """TODO E5b — opencode session-level MCP injection. mcp_servers from
-    context lands in the ``mcpServers`` field of the session POST body."""
-    executor = OpenCodeExecutor()
-    executor._cmd = "/bin/true"
-    executor._base_url = "http://127.0.0.1:1234"
-    executor._proc = MagicMock()
-    executor._proc.returncode = None
+# ─── opencode request-body contract (SessionPromptData) ─────────────
 
+
+@pytest.mark.asyncio
+async def test_opencode_message_body_uses_parts_array() -> None:
+    """opencode SessionPromptData uses a ``parts`` array — NOT {role, content}."""
+    executor = _make_opencode_executor()
     captured: list[dict[str, Any]] = []
 
-    class _FakeStreamResp:
-        status_code = 200
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("hello world", {"task_id": "t"}))
 
-        def raise_for_status(self) -> None:
-            pass
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert msg["body"]["parts"] == [{"type": "text", "text": "hello world"}]
+    assert "role" not in msg["body"]
+    assert "content" not in msg["body"]
 
-        async def aiter_lines(self):
-            yield "data: " + json.dumps(
-                {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
-            )
-            yield ""
 
-    class _FakeStreamCtx:
-        async def __aenter__(self):
-            return _FakeStreamResp()
+@pytest.mark.asyncio
+async def test_opencode_system_goes_on_message_body() -> None:
+    """``system`` is a SessionPromptData field — on the message, not /session."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
 
-        async def __aexit__(self, *a, **kw):
-            return None
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "system": "be terse"}))
 
-    class _FakeClient:
-        def __init__(self, *a, **kw):
-            pass
+    session_create = next(c for c in captured if c["path"] == "/session")
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert msg["body"]["system"] == "be terse"
+    assert "system" not in session_create["body"]
 
-        async def __aenter__(self):
-            return self
 
-        async def __aexit__(self, *a, **kw):
-            return None
+@pytest.mark.asyncio
+async def test_opencode_session_create_body_is_minimal() -> None:
+    """SessionCreateData only accepts {parentID?, title?} — POST /session is {}."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
 
-        async def post(self, path: str, json: dict[str, Any] | None = None):
-            captured.append({"path": path, "body": json})
-            resp = MagicMock()
-            resp.raise_for_status = MagicMock()
-            resp.json = MagicMock(return_value={"id": "sess-1"})
-            return resp
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "system": "x"}))
 
-        def stream(self, method: str, path: str):
-            return _FakeStreamCtx()
+    session_create = next(c for c in captured if c["path"] == "/session")
+    assert session_create["body"] == {}
+
+
+@pytest.mark.asyncio
+async def test_opencode_ignores_mcp_servers() -> None:
+    """opencode has no HTTP/per-session MCP API — mcp_servers is dropped
+    (documented TODO E5b limitation), never leaked into any request body."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
 
     mcp = {"bsnexus": {"url": "http://localhost:8100/mcp/sse?token=t", "headers": {}}}
-    with patch("worker.executors.httpx.AsyncClient", _FakeClient):
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
         await collect(executor.execute("p", {"task_id": "t", "mcp_servers": mcp}))
 
-    session_create = next(c for c in captured if c["path"] == "/session")
-    assert session_create["body"].get("mcpServers") == mcp
+    for call in captured:
+        assert "mcpServers" not in call["body"]
+        assert "mcp_servers" not in call["body"]
+
+
+# ─── model selection (context["model"]) ─────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_opencode_executor_omits_mcp_servers_when_empty() -> None:
-    """Back-compat: empty ``mcp_servers`` ⇒ ``mcpServers`` field absent."""
-    executor = OpenCodeExecutor()
-    executor._cmd = "/bin/true"
-    executor._base_url = "http://127.0.0.1:1234"
-    executor._proc = MagicMock()
-    executor._proc.returncode = None
+async def test_claude_executor_passes_model_flag() -> None:
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+    proc = _make_proc([], returncode=0)
 
-    captured: list[dict[str, Any]] = []
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t", "model": "claude-opus-4-7"}))
+
+    args = mock_exec.call_args.args
+    assert "--model" in args
+    assert args[args.index("--model") + 1] == "claude-opus-4-7"
+
+
+@pytest.mark.asyncio
+async def test_claude_executor_omits_model_flag_when_absent() -> None:
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    assert "--model" not in mock_exec.call_args.args
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_passes_model_flag() -> None:
+    executor = CodexExecutor(timeout_seconds=5)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t", "model": "gpt-5-codex"}))
+
+    args = mock_exec.call_args.args
+    assert "--model" in args
+    assert args[args.index("--model") + 1] == "gpt-5-codex"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_omits_model_flag_when_absent() -> None:
+    executor = CodexExecutor(timeout_seconds=5)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    assert "--model" not in mock_exec.call_args.args
+
+
+def _opencode_capture_client(captured: list[dict[str, Any]]) -> type:
+    """A fake httpx.AsyncClient that records every POST body."""
 
     class _FakeStreamResp:
         status_code = 200
@@ -476,6 +560,11 @@ async def test_opencode_executor_omits_mcp_servers_when_empty() -> None:
             pass
 
         async def aiter_lines(self):
+            # Yield to the event loop so the concurrently-scheduled
+            # ``/message`` POST task runs before the terminal event ends
+            # the stream — otherwise it gets cancelled and never records.
+            for _ in range(5):
+                await asyncio.sleep(0)
             yield "data: " + json.dumps(
                 {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
             )
@@ -508,11 +597,59 @@ async def test_opencode_executor_omits_mcp_servers_when_empty() -> None:
         def stream(self, method: str, path: str):
             return _FakeStreamCtx()
 
-    with patch("worker.executors.httpx.AsyncClient", _FakeClient):
+    return _FakeClient
+
+
+def _make_opencode_executor() -> OpenCodeExecutor:
+    executor = OpenCodeExecutor()
+    executor._cmd = "/bin/true"
+    executor._base_url = "http://127.0.0.1:1234"
+    executor._proc = MagicMock()
+    executor._proc.returncode = None
+    return executor
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_passes_provider_model() -> None:
+    """``provider/model`` ⇒ nested ``model: {providerID, modelID}`` (the
+    only model shape opencode's SessionPromptData accepts)."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
+
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "model": "anthropic/claude-opus-4-7"}))
+
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert msg["body"]["model"] == {
+        "providerID": "anthropic",
+        "modelID": "claude-opus-4-7",
+    }
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_drops_bare_model_string() -> None:
+    """opencode requires both providerID + modelID — a bare string (no
+    ``/``) can't be expressed, so it's dropped and the CLI default wins."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
+
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "model": "claude-opus-4-7"}))
+
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert "model" not in msg["body"]
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_omits_model_when_absent() -> None:
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
+
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
         await collect(executor.execute("p", {"task_id": "t"}))
 
-    session_create = next(c for c in captured if c["path"] == "/session")
-    assert "mcpServers" not in session_create["body"]
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert "model" not in msg["body"]
 
 
 # ─── factory ─────────────────────────────────────────────────────────

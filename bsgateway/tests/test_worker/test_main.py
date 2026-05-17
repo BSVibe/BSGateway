@@ -363,6 +363,58 @@ async def test_handle_task_mcp_servers_defaults_to_empty() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handle_task_passes_ai_model_in_context() -> None:
+    from worker.main import _handle_task
+
+    captured: dict = {}
+
+    async def _gen(prompt, context):
+        captured["context"] = context
+        yield ExecutionChunk(done=True)
+
+    executor = MagicMock()
+    executor.execute = _gen
+    executors = {"claude_code": executor}
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+    task = {
+        "task_id": "t-am1",
+        "prompt": "do",
+        "executor_type": "claude_code",
+        "ai_model": "claude-opus-4-7",
+    }
+    await _handle_task(task, executors, mock_client, {"X-Worker-Token": "t"}, None)
+
+    assert captured["context"]["model"] == "claude-opus-4-7"
+
+
+@pytest.mark.asyncio
+async def test_handle_task_ai_model_defaults_to_none() -> None:
+    """Back-compat: older gateway omits ai_model ⇒ context['model'] is None."""
+    from worker.main import _handle_task
+
+    captured: dict = {}
+
+    async def _gen(prompt, context):
+        captured["context"] = context
+        yield ExecutionChunk(done=True)
+
+    executor = MagicMock()
+    executor.execute = _gen
+    executors = {"claude_code": executor}
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+    task = {"task_id": "t-am2", "prompt": "do", "executor_type": "claude_code"}
+    await _handle_task(task, executors, mock_client, {"X-Worker-Token": "t"}, None)
+
+    assert captured["context"]["model"] is None
+
+
+@pytest.mark.asyncio
 async def test_handle_task_falls_back_to_title() -> None:
     from worker.main import _handle_task
 

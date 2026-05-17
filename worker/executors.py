@@ -144,6 +144,7 @@ class ClaudeCodeExecutor:
         workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
         mcp_servers = context.get("mcp_servers") or {}
+        model = context.get("model") or None
         # Materialise the mcp config tempfile once for the whole retry loop —
         # claude CLI re-reads the path on each invocation, so we don't need
         # to recreate it per attempt. Cleanup happens here in the finally so
@@ -161,7 +162,7 @@ class ClaudeCodeExecutor:
                 had_delta = False
                 try:
                     async for chunk in self._run_once(
-                        prompt, workspace, system, mcp_config_path, deadline, stderr_buf
+                        prompt, workspace, system, mcp_config_path, deadline, stderr_buf, model
                     ):
                         if chunk.delta:
                             had_delta = True
@@ -208,6 +209,7 @@ class ClaudeCodeExecutor:
         mcp_config_path: str | None,
         deadline: float,
         stderr_buf: list[str],
+        model: str | None = None,
     ) -> AsyncIterator[ExecutionChunk]:
         cmd_args = [
             self._cmd,
@@ -221,6 +223,8 @@ class ClaudeCodeExecutor:
             cmd_args += ["--append-system-prompt", system]
         if mcp_config_path:
             cmd_args += ["--mcp-config", mcp_config_path]
+        if model:
+            cmd_args += ["--model", model]
         process: asyncio.subprocess.Process | None = None
         try:
             process = await asyncio.create_subprocess_exec(
@@ -279,9 +283,18 @@ class ClaudeCodeExecutor:
 class CodexExecutor:
     """Stream from ``codex exec --json``.
 
-    System message (if any) is written to a temp file and passed via
-    ``--config experimental_instructions_file=<path>`` per the codex
-    docs. The temp file is removed when the subprocess exits.
+    Flags track codex-cli's current contract (verified against 0.130.0):
+
+    * ``--sandbox workspace-write`` — the supported sandbox policy.
+      ``--full-auto`` is a deprecated compat alias (prints a warning).
+    * ``--config model_instructions_file=<path>`` — the system message
+      override. The old ``experimental_instructions_file`` key is no
+      longer read by codex and silently drops the system prompt.
+    * ``-m/--model`` — per-run model override.
+
+    The prompt is fed on stdin (codex reads stdin when no positional
+    prompt is given). The system message (if any) is written to a temp
+    file, removed when the subprocess exits.
     """
 
     def __init__(self, timeout_seconds: int = 3600) -> None:
@@ -294,6 +307,7 @@ class CodexExecutor:
     async def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]:
         workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
+        model = context.get("model") or None
         deadline = asyncio.get_event_loop().time() + self._timeout
 
         sys_path: str | None = None
@@ -305,9 +319,11 @@ class CodexExecutor:
             tmp.close()
             sys_path = tmp.name
 
-        cmd_args = [self._cmd, "exec", "--json", "--full-auto"]
+        cmd_args = [self._cmd, "exec", "--json", "--sandbox", "workspace-write"]
         if sys_path:
-            cmd_args += ["--config", f"experimental_instructions_file={sys_path}"]
+            cmd_args += ["--config", f"model_instructions_file={sys_path}"]
+        if model:
+            cmd_args += ["--model", model]
 
         process: asyncio.subprocess.Process | None = None
         stderr_buf: list[str] = []
@@ -375,15 +391,29 @@ class OpenCodeExecutor:
     Each task gets a fresh session — multi-turn reuse is intentionally
     out of scope for v1 (see follow-ups).
 
+    The request shapes track the published ``@opencode-ai/sdk`` typed
+    contract (verified against 1.15.3):
+
+    * ``POST /session`` body is ``{parentID?, title?}`` only.
+    * ``POST /session/{id}/message`` body (``SessionPromptData``) is
+      ``{model?: {providerID, modelID}, system?, agent?, tools?,
+      parts: [...]}`` — messages are ``parts`` arrays of typed blocks,
+      NOT ``{role, content}``.
+
     **TODO E6 — workspace_dir limitation**: ``opencode serve`` is a
     single long-lived process whose ``cwd`` is fixed at spawn time. The
-    session create body does not currently expose a per-session
-    ``directory`` / ``cwd`` field (verified against opencode upstream
-    at PR #26 time). We therefore **ignore** ``context.workspace_dir``
+    session create body does not expose a per-session ``directory`` /
+    ``cwd`` field. We therefore **ignore** ``context.workspace_dir``
     here — opencode operates in the worker's process cwd. claude_code
     and codex both honor ``workspace_dir`` per-task. BSNexus v1 picks
     ``executor_type=claude_code`` so this is acceptable; tightening the
     opencode cwd is a follow-up TODO E6b.
+
+    **TODO E5b — MCP injection**: opencode has no HTTP/per-session MCP
+    API — MCP servers are only configurable via the ``mcp`` block of an
+    ``opencode.json`` config file read at process startup. Run-scoped
+    MCP injection therefore needs a per-task spawn restructure (see
+    E6b). ``context.mcp_servers`` is currently **ignored** for opencode.
     """
 
     _server_lock = asyncio.Lock()
@@ -452,21 +482,25 @@ class OpenCodeExecutor:
             return
 
         system = context.get("system") or ""
-        mcp_servers = context.get("mcp_servers") or {}
+        model = context.get("model") or None
+        # opencode's typed contract requires a structured
+        # ``model: {providerID, modelID}`` object — there is no bare
+        # model-string form. The single ``ai_model`` string must use the
+        # ``provider/model`` convention; we split on the first ``/``. A
+        # value with no ``/`` cannot be expressed and is dropped so
+        # opencode falls back to its configured default.
+        model_obj: dict[str, str] | None = None
+        if model and "/" in model:
+            provider_id, model_id = model.split("/", 1)
+            if provider_id and model_id:
+                model_obj = {"providerID": provider_id, "modelID": model_id}
         try:
             async with httpx.AsyncClient(
                 base_url=base_url, timeout=self._request_timeout
             ) as client:
-                session_body: dict[str, Any] = {}
-                if system:
-                    session_body["system"] = system
-                # TODO E5b — opencode session-level MCP injection. The
-                # ``mcpServers`` field on session create matches claude
-                # CLI's ``--mcp-config`` shape (``{name: {url, headers}}``).
-                # Empty / missing ⇒ field omitted (back-compat).
-                if mcp_servers:
-                    session_body["mcpServers"] = mcp_servers
-                res = await client.post("/session", json=session_body)
+                # SessionCreateData accepts only {parentID?, title?} —
+                # system + model are per-message (SessionPromptData).
+                res = await client.post("/session", json={})
                 res.raise_for_status()
                 session_id = res.json().get("id") or res.json().get("sessionID")
                 if not session_id:
@@ -474,9 +508,18 @@ class OpenCodeExecutor:
                     return
 
                 async def _post_message() -> None:
+                    # SessionPromptData: parts array of typed blocks,
+                    # optional system + model. NOT {role, content}.
+                    msg_body: dict[str, Any] = {
+                        "parts": [{"type": "text", "text": prompt}],
+                    }
+                    if system:
+                        msg_body["system"] = system
+                    if model_obj is not None:
+                        msg_body["model"] = model_obj
                     await client.post(
                         f"/session/{session_id}/message",
-                        json={"role": "user", "content": prompt},
+                        json=msg_body,
                     )
 
                 send_task = asyncio.create_task(_post_message())
@@ -542,20 +585,20 @@ def _claude_extract_delta(event: dict[str, Any]) -> str:
 
 
 def _codex_extract_delta(event: dict[str, Any]) -> str:
-    """Pull incremental text from `codex exec --json` JSONL events.
+    """Pull assistant text from a `codex exec --json` JSONL event.
 
-    Codex' JSONL stream uses ``{"type": "message_delta", "content": "..."}``
-    for streaming text and a final ``{"type": "message", ...}`` wrap-up.
-    Defensive against shape drift across versions.
+    codex-cli (verified 0.130.0) emits an item-based stream:
+    ``thread.started`` → ``turn.started`` → ``item.*`` → ``turn.completed``.
+    The assistant's answer arrives whole as
+    ``{"type": "item.completed", "item": {"type": "agent_message",
+    "text": "..."}}`` — there is no token-level delta event, so we
+    surface the text from the completed ``agent_message`` item only.
     """
-    t = event.get("type")
-    if t in ("message_delta", "assistant_delta"):
-        c = event.get("content") or event.get("text") or ""
-        return c if isinstance(c, str) else ""
-    if t == "message":
-        c = event.get("content") or ""
-        if isinstance(c, str):
-            return c
+    if event.get("type") == "item.completed":
+        item = event.get("item") or {}
+        if isinstance(item, dict) and item.get("type") == "agent_message":
+            text = item.get("text") or ""
+            return text if isinstance(text, str) else ""
     return ""
 
 

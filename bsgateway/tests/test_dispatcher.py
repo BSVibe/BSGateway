@@ -149,3 +149,29 @@ class TestDispatchTask:
         import json as _json
 
         assert _json.loads(data["mcp_servers"]) == {}
+
+    async def test_includes_ai_model_when_set(
+        self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock
+    ) -> None:
+        await dispatcher.dispatch_task(
+            worker_id=uuid4(),
+            task_id=uuid4(),
+            executor_type="codex",
+            prompt="hi",
+            ai_model="openai/gpt-5-codex",
+        )
+        data = mock_stream_manager.publish.call_args[0][1]
+        assert data["ai_model"] == "openai/gpt-5-codex"
+
+    async def test_omits_ai_model_when_none(
+        self, dispatcher: WorkerDispatcher, mock_stream_manager: AsyncMock
+    ) -> None:
+        """Redis Stream fields must be flat strings — None is dropped entirely."""
+        await dispatcher.dispatch_task(
+            worker_id=uuid4(),
+            task_id=uuid4(),
+            executor_type="claude_code",
+            prompt="hi",
+        )
+        data = mock_stream_manager.publish.call_args[0][1]
+        assert "ai_model" not in data

@@ -44,6 +44,7 @@ class WorkerDispatcher:
         system: str = "",
         workspace_dir: str = ".",
         mcp_servers: dict[str, Any] | None = None,
+        ai_model: str | None = None,
     ) -> str:
         """Publish a task to a worker's dedicated stream.
 
@@ -64,6 +65,11 @@ class WorkerDispatcher:
         Empty / None ⇒ no ``--mcp-config`` injection (back-compat).
         Serialised as a JSON string here because Redis Streams only
         accept flat string fields.
+
+        ``ai_model`` is the LLM model the executor CLI should run with
+        (e.g. ``claude-opus-4-7``, ``openai/gpt-5-codex``). It comes from
+        the routed model's ``extra_params.ai_model``. ``None`` ⇒ the
+        field is omitted and the CLI uses its local default (back-compat).
         """
         data = {
             "task_id": str(task_id),
@@ -77,6 +83,10 @@ class WorkerDispatcher:
             "action": "execute",
             "dispatched_at": datetime.now(UTC).isoformat(),
         }
+        # Redis Stream fields must be flat strings — only include the
+        # model when set so an older worker / absent value stays clean.
+        if ai_model:
+            data["ai_model"] = ai_model
         msg_id = await self._stream.publish(self._worker_stream(worker_id), data)
         logger.info(
             "task_dispatched",
