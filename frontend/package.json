@@ -16,7 +16,7 @@
   "dependencies": {
     "@bsvibe/demo": "^0.3.3",
     "@bsvibe/design-tokens": "^0.2.0",
-    "@bsvibe/i18n": "0.2.0",
+    "@bsvibe/i18n": "0.3.0",
     "@bsvibe/layout": "^0.7.0",
     "@bsvibe/ui": "0.2.0",
     "next": "^15.0.0",
