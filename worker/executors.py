@@ -283,9 +283,18 @@ class ClaudeCodeExecutor:
 class CodexExecutor:
     """Stream from ``codex exec --json``.
 
-    System message (if any) is written to a temp file and passed via
-    ``--config experimental_instructions_file=<path>`` per the codex
-    docs. The temp file is removed when the subprocess exits.
+    Flags track codex-cli's current contract (verified against 0.130.0):
+
+    * ``--sandbox workspace-write`` — the supported sandbox policy.
+      ``--full-auto`` is a deprecated compat alias (prints a warning).
+    * ``--config model_instructions_file=<path>`` — the system message
+      override. The old ``experimental_instructions_file`` key is no
+      longer read by codex and silently drops the system prompt.
+    * ``-m/--model`` — per-run model override.
+
+    The prompt is fed on stdin (codex reads stdin when no positional
+    prompt is given). The system message (if any) is written to a temp
+    file, removed when the subprocess exits.
     """
 
     def __init__(self, timeout_seconds: int = 3600) -> None:
@@ -310,9 +319,9 @@ class CodexExecutor:
             tmp.close()
             sys_path = tmp.name
 
-        cmd_args = [self._cmd, "exec", "--json", "--full-auto"]
+        cmd_args = [self._cmd, "exec", "--json", "--sandbox", "workspace-write"]
         if sys_path:
-            cmd_args += ["--config", f"experimental_instructions_file={sys_path}"]
+            cmd_args += ["--config", f"model_instructions_file={sys_path}"]
         if model:
             cmd_args += ["--model", model]
 
@@ -576,20 +585,20 @@ def _claude_extract_delta(event: dict[str, Any]) -> str:
 
 
 def _codex_extract_delta(event: dict[str, Any]) -> str:
-    """Pull incremental text from `codex exec --json` JSONL events.
+    """Pull assistant text from a `codex exec --json` JSONL event.
 
-    Codex' JSONL stream uses ``{"type": "message_delta", "content": "..."}``
-    for streaming text and a final ``{"type": "message", ...}`` wrap-up.
-    Defensive against shape drift across versions.
+    codex-cli (verified 0.130.0) emits an item-based stream:
+    ``thread.started`` → ``turn.started`` → ``item.*`` → ``turn.completed``.
+    The assistant's answer arrives whole as
+    ``{"type": "item.completed", "item": {"type": "agent_message",
+    "text": "..."}}`` — there is no token-level delta event, so we
+    surface the text from the completed ``agent_message`` item only.
     """
-    t = event.get("type")
-    if t in ("message_delta", "assistant_delta"):
-        c = event.get("content") or event.get("text") or ""
-        return c if isinstance(c, str) else ""
-    if t == "message":
-        c = event.get("content") or ""
-        if isinstance(c, str):
-            return c
+    if event.get("type") == "item.completed":
+        item = event.get("item") or {}
+        if isinstance(item, dict) and item.get("type") == "agent_message":
+            text = item.get("text") or ""
+            return text if isinstance(text, str) else ""
     return ""
 
 

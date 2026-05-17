@@ -46,14 +46,27 @@ class TestClaudeExtract:
 
 
 class TestCodexExtract:
-    def test_message_delta(self) -> None:
-        assert _codex_extract_delta({"type": "message_delta", "content": "x"}) == "x"
+    def test_agent_message_item_completed(self) -> None:
+        evt = {
+            "type": "item.completed",
+            "item": {"id": "item_0", "type": "agent_message", "text": "pong"},
+        }
+        assert _codex_extract_delta(evt) == "pong"
 
-    def test_assistant_delta(self) -> None:
-        assert _codex_extract_delta({"type": "assistant_delta", "text": "y"}) == "y"
+    def test_non_agent_item_returns_empty(self) -> None:
+        evt = {
+            "type": "item.completed",
+            "item": {"id": "item_1", "type": "reasoning", "text": "thinking"},
+        }
+        assert _codex_extract_delta(evt) == ""
 
-    def test_message_final(self) -> None:
-        assert _codex_extract_delta({"type": "message", "content": "final"}) == "final"
+    def test_lifecycle_events_return_empty(self) -> None:
+        assert _codex_extract_delta({"type": "thread.started", "thread_id": "x"}) == ""
+        assert _codex_extract_delta({"type": "turn.completed", "usage": {}}) == ""
+
+    def test_legacy_message_delta_returns_empty(self) -> None:
+        """The old message_delta/message schema is no longer emitted."""
+        assert _codex_extract_delta({"type": "message_delta", "content": "x"}) == ""
 
     def test_unknown_returns_empty(self) -> None:
         assert _codex_extract_delta({"type": "noop"}) == ""
@@ -284,17 +297,43 @@ async def test_claude_executor_handles_filenotfound() -> None:
 
 
 @pytest.mark.asyncio
-async def test_codex_executor_streams_message_delta() -> None:
+async def test_codex_executor_streams_agent_message() -> None:
+    """codex emits the answer as a completed agent_message item."""
     executor = CodexExecutor(timeout_seconds=5)
-    line1 = json.dumps({"type": "message_delta", "content": "first "}).encode() + b"\n"
-    line2 = json.dumps({"type": "message_delta", "content": "second"}).encode() + b"\n"
-    proc = _make_proc([line1, line2], returncode=0)
+    lines = [
+        json.dumps({"type": "thread.started", "thread_id": "th-1"}).encode() + b"\n",
+        json.dumps({"type": "turn.started"}).encode() + b"\n",
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {"id": "item_0", "type": "agent_message", "text": "pong"},
+            }
+        ).encode()
+        + b"\n",
+        json.dumps({"type": "turn.completed", "usage": {}}).encode() + b"\n",
+    ]
+    proc = _make_proc(lines, returncode=0)
 
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
         result = await collect(executor.execute("p", {"task_id": "t"}))
 
     assert result.success is True
-    assert result.stdout == "first second"
+    assert result.stdout == "pong"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_uses_workspace_write_sandbox() -> None:
+    """--full-auto is deprecated — the executor uses --sandbox workspace-write."""
+    executor = CodexExecutor(timeout_seconds=5)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    args = mock_exec.call_args.args
+    assert "--sandbox" in args
+    assert args[args.index("--sandbox") + 1] == "workspace-write"
+    assert "--full-auto" not in args
 
 
 @pytest.mark.asyncio
@@ -303,7 +342,6 @@ async def test_codex_executor_writes_system_to_tempfile_and_cleans_up() -> None:
     proc = _make_proc([], returncode=0)
 
     captured_args: list[str] = []
-    real_create = asyncio.create_subprocess_exec
 
     async def _fake_exec(*args, **_kwargs):
         captured_args.extend(args)
@@ -312,14 +350,14 @@ async def test_codex_executor_writes_system_to_tempfile_and_cleans_up() -> None:
     with patch("asyncio.create_subprocess_exec", _fake_exec):
         await collect(executor.execute("p", {"task_id": "t", "system": "Be helpful and brief."}))
 
-    cfg_args = [a for a in captured_args if a.startswith("experimental_instructions_file=")]
+    # codex 0.130+ reads the system override from model_instructions_file —
+    # the old experimental_instructions_file key is silently ignored.
+    cfg_args = [a for a in captured_args if a.startswith("model_instructions_file=")]
     assert len(cfg_args) == 1
     sys_path = cfg_args[0].split("=", 1)[1]
-    # Tempfile should be cleaned up after execute() returns.
     import os
 
     assert not os.path.exists(sys_path)
-    _ = real_create  # silence "unused"
 
 
 # ─── OpenCodeExecutor ────────────────────────────────────────────────
