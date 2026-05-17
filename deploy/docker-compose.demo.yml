@@ -100,7 +100,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      FRONTEND_DIST_DIR: /app/frontend/dist
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
