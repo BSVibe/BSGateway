@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '@bsvibe/i18n';
+import { ResponsiveTable } from '@bsvibe/ui';
+import type { ResponsiveTableColumn } from '@bsvibe/ui';
 import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -68,6 +70,44 @@ export function AuditPage() {
     return 'bg-secondary-container/20 text-secondary';
   };
 
+  const columns: ResponsiveTableColumn<AuditLog>[] = [
+    {
+      key: 'timestamp',
+      header: t('audit.table.timestamp'),
+      cellClassName: 'font-mono text-[11px] text-on-surface-variant whitespace-nowrap',
+      cell: (log) => formatDate(log.created_at),
+    },
+    {
+      key: 'actor',
+      header: t('audit.table.actor'),
+      cell: (log) => (
+        <code className="text-xs bg-surface-container-highest px-2 py-1 rounded font-mono text-on-surface border border-outline-variant/10">
+          {log.actor.substring(0, 8)}...
+        </code>
+      ),
+    },
+    {
+      key: 'action',
+      header: t('audit.table.action'),
+      cell: (log) => (
+        <span className={`px-2 py-1 text-[10px] rounded-full font-bold ${getActionColor(log.action)}`}>
+          {log.action}
+        </span>
+      ),
+    },
+    {
+      key: 'resource',
+      header: t('audit.table.resource'),
+      cellClassName: 'text-on-surface-variant font-mono text-xs',
+      cell: (log) => (
+        <>
+          {log.resource_type}:{' '}
+          <span className="text-on-surface font-semibold">{log.resource_id.substring(0, 12)}</span>
+        </>
+      ),
+    },
+  ];
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <div>
@@ -78,48 +118,17 @@ export function AuditPage() {
       {error && <ErrorBanner message={error} onRetry={loadAuditLogs} />}
 
       <div className="bg-surface-container-low rounded-2xl overflow-hidden border border-outline-variant/5">
-        {logs.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-surface-container/50">
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.timestamp')}</th>
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.actor')}</th>
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.action')}</th>
-                  <th className="px-6 py-4 text-left text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">{t('audit.table.resource')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/5">
-                {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-surface-container/30 transition-colors">
-                    <td className="px-6 py-4 font-mono text-[11px] text-on-surface-variant whitespace-nowrap">
-                      {formatDate(log.created_at)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <code className="text-xs bg-surface-container-highest px-2 py-1 rounded font-mono text-on-surface border border-outline-variant/10">
-                        {log.actor.substring(0, 8)}...
-                      </code>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-[10px] rounded-full font-bold ${getActionColor(log.action)}`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-on-surface-variant font-mono text-xs">
-                      {log.resource_type}:{' '}
-                      <span className="text-on-surface font-semibold">{log.resource_id.substring(0, 12)}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16">
-            <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-4">receipt_long</span>
-            <p className="text-sm text-on-surface-variant">{t('audit.empty.noLogs')}</p>
-          </div>
-        )}
+        <ResponsiveTable
+          columns={columns}
+          rows={logs}
+          rowKey={(log) => log.id}
+          emptyMessage={
+            <span className="flex flex-col items-center justify-center gap-4 py-8">
+              <span className="material-symbols-outlined text-5xl text-on-surface-variant/30">receipt_long</span>
+              <span className="text-sm text-on-surface-variant">{t('audit.empty.noLogs')}</span>
+            </span>
+          }
+        />
       </div>
 
       {/* Pagination */}

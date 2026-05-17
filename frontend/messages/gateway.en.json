@@ -160,7 +160,15 @@
       "hint": "Describe a kind of request and pick a model — that's it.",
       "createFirst": "Create your first routing rule"
     },
-    "configured": "{count, plural, one {{count} rule configured.} other {{count} rules configured.}}"
+    "configured": "{count, plural, one {{count} rule configured.} other {{count} rules configured.}}",
+    "table": {
+      "status": "Status",
+      "description": "Description",
+      "targetModel": "Target Model",
+      "priority": "Priority",
+      "examples": "Examples",
+      "actions": "Actions"
+    }
   },
   "models": {
     "title": "Model Registry",
@@ -211,6 +219,15 @@
       "lastHeartbeat": "Last heartbeat: {time}",
       "tasksTitle": "Tasks per day (last 7 days)",
       "requestsTitle": "Requests per day (last 7 days)"
+    },
+    "table": {
+      "provider": "Provider",
+      "apiBase": "API Base",
+      "actions": "Actions",
+      "worker": "Worker",
+      "capabilities": "Capabilities",
+      "labels": "Labels",
+      "lastHeartbeat": "Last Heartbeat"
     }
   },
   "rulesLegacy": {
@@ -314,6 +331,10 @@
     },
     "empty": {
       "noIntents": "No intents defined"
+    },
+    "table": {
+      "threshold": "Threshold",
+      "actions": "Actions"
     }
   },
   "test": {

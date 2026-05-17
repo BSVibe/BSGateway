@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '@bsvibe/i18n';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { ResponsiveTable } from '@bsvibe/ui';
+import type { ResponsiveTableColumn } from '@bsvibe/ui';
 import { rulesApi } from '../api/rules';
 import { auditApi } from '../api/audit';
 import { usageApi } from '../api/usage';
@@ -168,6 +170,44 @@ export function DashboardPage() {
 
   if (loading) return <LoadingSpinner />;
 
+  const recentActivityColumns: ResponsiveTableColumn<AuditLog>[] = [
+    {
+      key: 'actor',
+      header: t('dashboard.table.actor'),
+      cellClassName: 'font-mono text-[11px] text-on-surface-variant',
+      cell: (log) => log.actor?.slice(0, 16) ?? '—',
+    },
+    {
+      key: 'action',
+      header: t('dashboard.table.action'),
+      cell: (log) => (
+        <span
+          className={`px-2 py-1 text-[10px] rounded-full font-bold ${
+            log.action.startsWith('create')
+              ? 'bg-green-500/15 text-green-400'
+              : log.action.startsWith('delete')
+                ? 'bg-error/15 text-error'
+                : 'bg-secondary-container/20 text-secondary'
+          }`}
+        >
+          {log.action}
+        </span>
+      ),
+    },
+    {
+      key: 'resource',
+      header: t('dashboard.table.resource'),
+      cellClassName: 'text-xs text-on-surface-variant',
+      cell: (log) => log.resource_type,
+    },
+    {
+      key: 'when',
+      header: t('dashboard.table.when'),
+      cellClassName: 'text-right font-mono text-xs text-on-surface-variant',
+      cell: (log) => formatRelativeTime(log.created_at),
+    },
+  ];
+
   return (
     <div className="p-8 space-y-8">
       {/* Top Bar */}
@@ -287,48 +327,20 @@ export function DashboardPage() {
             <p className="text-xs text-on-surface-variant">{t('dashboard.recentActivitySubtitle')}</p>
           </div>
         </div>
-        {recentLogs.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-surface-container text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
-                  <th className="px-8 py-4">{t('dashboard.table.actor')}</th>
-                  <th className="px-8 py-4">{t('dashboard.table.action')}</th>
-                  <th className="px-8 py-4">{t('dashboard.table.resource')}</th>
-                  <th className="px-8 py-4 text-right">{t('dashboard.table.when')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/10">
-                {recentLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-surface-container transition-colors">
-                    <td className="px-8 py-4 font-mono text-[11px] text-on-surface-variant">
-                      {log.actor?.slice(0, 16) ?? '\u2014'}
-                    </td>
-                    <td className="px-8 py-4">
-                      <span className={`px-2 py-1 text-[10px] rounded-full font-bold ${
-                        log.action.startsWith('create') ? 'bg-green-500/15 text-green-400' :
-                        log.action.startsWith('delete') ? 'bg-error/15 text-error' :
-                        'bg-secondary-container/20 text-secondary'
-                      }`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-8 py-4 text-xs text-on-surface-variant">{log.resource_type}</td>
-                    <td className="px-8 py-4 text-right font-mono text-xs text-on-surface-variant">
-                      {formatRelativeTime(log.created_at)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-12">
-            <span className="material-symbols-outlined text-4xl text-on-surface-variant/30 mb-3">list_alt</span>
-            <p className="text-sm text-on-surface-variant">{t('dashboard.noActivity')}</p>
-            <p className="text-xs text-on-surface-variant/60 mt-1">{t('dashboard.noActivityHint')}</p>
-          </div>
-        )}
+        <div className="px-8 pb-8">
+          <ResponsiveTable
+            columns={recentActivityColumns}
+            rows={recentLogs}
+            rowKey={(log) => log.id}
+            emptyMessage={
+              <span className="flex flex-col items-center justify-center gap-1 py-4">
+                <span className="material-symbols-outlined text-4xl text-on-surface-variant/30 mb-2">list_alt</span>
+                <span className="text-sm text-on-surface-variant">{t('dashboard.noActivity')}</span>
+                <span className="text-xs text-on-surface-variant/60">{t('dashboard.noActivityHint')}</span>
+              </span>
+            }
+          />
+        </div>
       </section>
     </div>
   );

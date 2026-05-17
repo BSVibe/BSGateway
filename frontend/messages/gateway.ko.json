@@ -160,7 +160,15 @@
       "hint": "요청 종류를 설명하고 모델을 선택하세요 — 그게 전부입니다.",
       "createFirst": "첫 라우팅 규칙 만들기"
     },
-    "configured": "{count, plural, one {{count}개 규칙이 설정되었습니다.} other {{count}개 규칙이 설정되었습니다.}}"
+    "configured": "{count, plural, one {{count}개 규칙이 설정되었습니다.} other {{count}개 규칙이 설정되었습니다.}}",
+    "table": {
+      "status": "상태",
+      "description": "설명",
+      "targetModel": "대상 모델",
+      "priority": "우선순위",
+      "examples": "예시",
+      "actions": "작업"
+    }
   },
   "models": {
     "title": "모델 레지스트리",
@@ -211,6 +219,15 @@
       "lastHeartbeat": "마지막 하트비트: {time}",
       "tasksTitle": "일일 작업 수 (지난 7일)",
       "requestsTitle": "일일 요청 수 (지난 7일)"
+    },
+    "table": {
+      "provider": "제공자",
+      "apiBase": "API 베이스",
+      "actions": "작업",
+      "worker": "워커",
+      "capabilities": "기능",
+      "labels": "라벨",
+      "lastHeartbeat": "마지막 하트비트"
     }
   },
   "rulesLegacy": {
@@ -314,6 +331,10 @@
     },
     "empty": {
       "noIntents": "정의된 인텐트가 없습니다"
+    },
+    "table": {
+      "threshold": "임계값",
+      "actions": "작업"
     }
   },
   "test": {
