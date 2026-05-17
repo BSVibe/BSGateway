@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import type { TenantModel } from '../../types/api';
 import type { RouteCard as RouteCardType } from '../../api/routes';
 import { routesApi } from '../../api/routes';
@@ -31,7 +31,7 @@ export function RouteCard({
   canMoveUp = false,
   canMoveDown = false,
 }: RouteCardProps) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const [expanded, setExpanded] = useState(false);
   const [newExample, setNewExample] = useState('');
   const [savingExample, setSavingExample] = useState(false);

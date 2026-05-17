@@ -79,32 +79,19 @@ jobs:
         env:
           NEXT_PUBLIC_BSVIBE_DEMO: '1'
           NEXT_PUBLIC_API_URL: http://localhost:4500
-        run: |
-          pnpm run build
-          echo "::group::dist/ root listing"
-          ls -la dist | head -30
-          echo "::endgroup::"
-          echo "::group::dist/index.html head (if exists)"
-          head -c 300 dist/index.html 2>&1 || echo "MISSING"
-          echo "::endgroup::"
+        run: pnpm run build
 
       - name: Start frontend in background
         working-directory: frontend
         run: |
-          # Static export lives in dist/. node http-server kept showing the
-          # .next build-cache dir even when launched from dist/ — switch to
-          # python http.server which has zero indirection and rock-solid
-          # behavior on the runner.
-          test -f dist/index.html || { echo "::error::dist/index.html missing"; ls -la dist | head -20; exit 1; }
-          # Belt and suspenders: ensure no other process is on the port already
+          # Dynamic Next.js app (static export retired) — serve with
+          # `next start`, which runs the full server incl. i18n middleware.
           if ss -ltn | grep -q ":${FRONTEND_PORT} "; then
             echo "::error::port ${FRONTEND_PORT} already in use"
             ss -ltnp | head -10
             exit 1
           fi
-          cd dist
-          nohup python3 -m http.server "$FRONTEND_PORT" --bind 127.0.0.1 > /tmp/frontend.log 2>&1 &
-          cd ..
+          nohup pnpm exec next start -p "$FRONTEND_PORT" -H 127.0.0.1 > /tmp/frontend.log 2>&1 &
           for _ in $(seq 1 30); do
             if curl -fsS -o /dev/null --max-time 2 "http://localhost:${FRONTEND_PORT}/"; then
               echo "frontend ready"
@@ -112,9 +99,22 @@ jobs:
             fi
             sleep 2
           done
+          # Fail fast on a redirect loop. `next start` + next-intl
+          # `as-needed` routing can, if regressed, send `GET /` into an
+          # infinite 307 loop — Playwright's `webServer.url` probe would
+          # then hang the whole job until the 20-min timeout. `curl -L`
+          # follows redirects and gives up after --max-redirs; a loop
+          # surfaces here in seconds instead.
+          loop_code=$(curl -s -L --max-redirs 10 --max-time 15 \
+            -o /dev/null -w '%{http_code}' "http://localhost:${FRONTEND_PORT}/" || true)
+          if [ "$loop_code" != "200" ]; then
+            echo "::error::GET / did not settle on 200 (got '${loop_code}') — likely an i18n redirect loop"
+            tail -100 /tmp/frontend.log || true
+            exit 1
+          fi
           # Verify what's actually being served
           echo "::group::GET / preview"
-          curl -sS http://localhost:"$FRONTEND_PORT"/ | head -c 400
+          curl -sS -L http://localhost:"$FRONTEND_PORT"/ | head -c 400
           echo
           echo "::endgroup::"
 

@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import Link from 'next/link';
+import { useT } from '@bsvibe/i18n';
 import { useAuth } from '../hooks/useAuth';
 import { useApi } from '../hooks/useApi';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -36,7 +37,7 @@ function CreateModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const [formData, setFormData] = useState<CreateFormData>({
     ...INITIAL_FORM,
     targetModel: models[0]?.model_name || '',
@@ -128,9 +129,9 @@ function CreateModal({
             ) : (
               <div className="bg-surface-container-highest rounded-xl p-4 text-sm text-on-surface-variant">
                 {t('routes.modal.noModels')}{' '}
-                <a href="/models" className="text-primary font-bold hover:underline">
+                <Link href="/models" className="text-primary font-bold hover:underline">
                   {t('routes.modal.registerFirst')}
-                </a>
+                </Link>
                 .
               </div>
             )}
@@ -215,7 +216,7 @@ function CreateModal({
 }
 
 export function RoutesPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const loadRoutes = useCallback(() => routesApi.list(tid), [tid]);
