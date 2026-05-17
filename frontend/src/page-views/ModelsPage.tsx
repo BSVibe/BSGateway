@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { useT } from '@bsvibe/i18n';
+import { ResponsiveTable } from '@bsvibe/ui';
+import type { ResponsiveTableColumn } from '@bsvibe/ui';
 import { tenantsApi } from '../api/tenants';
 import { executorsApi } from '../api/executors';
 import { useAuth } from '../hooks/useAuth';
@@ -10,7 +12,7 @@ import { useForm } from '../hooks/useForm';
 import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
-import type { TenantModelCreate } from '../types/api';
+import type { TenantModel, TenantModelCreate, Worker } from '../types/api';
 
 const INITIAL_MODEL: TenantModelCreate = { model_name: '', litellm_model: '' };
 
@@ -149,6 +151,241 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
       h: Math.max(3, Math.round((v / max) * 100)),
       active: v > 0,
     }));
+  };
+
+  // Sparkline bars for a model/worker, sized for table-cell vs card use.
+  const sparkline = (name: string, enabled: boolean, color: 'amber' | 'cyan', heightCls: string) => (
+    <div className={`${heightCls} w-full flex items-end gap-1`}>
+      {sparkBarsFor(name).map(({ h, active }, i) => (
+        <div
+          key={i}
+          className={`flex-1 rounded-t transition-colors ${
+            enabled && active
+              ? color === 'amber'
+                ? 'bg-amber-500'
+                : 'bg-cyan-400'
+              : enabled
+                ? color === 'amber'
+                  ? 'bg-amber-500/15'
+                  : 'bg-cyan-400/15'
+                : 'bg-slate-500/20'
+          }`}
+          style={{ height: `${h}%` }}
+        />
+      ))}
+    </div>
+  );
+
+  const modelDeleteButton = (model: TenantModel) => (
+    <button
+      onClick={() => onDelete(model.id, () => tenantsApi.deleteModel(tid, model.id), refetch)}
+      className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg transition-colors ${
+        deleting === model.id
+          ? 'text-error'
+          : 'text-slate-500 hover:bg-surface-container-highest hover:text-amber-500'
+      }`}
+    >
+      <span className="material-symbols-outlined">
+        {deleting === model.id ? 'check_circle' : 'more_vert'}
+      </span>
+    </button>
+  );
+
+  const modelColumns: ResponsiveTableColumn<TenantModel>[] = [
+    {
+      key: 'model',
+      header: t('models.fields.alias'),
+      cell: (model) => (
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-on-surface">{model.model_name}</span>
+          <div className={`w-2 h-2 rounded-full ${model.is_active ? 'bg-green-500' : 'bg-slate-600'}`} />
+        </div>
+      ),
+    },
+    {
+      key: 'provider',
+      header: t('models.table.provider'),
+      cell: (model) => (
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProviderBadgeClass(model.litellm_model)}`}>
+          {model.litellm_model.split('/')[0]}
+        </span>
+      ),
+    },
+    {
+      key: 'modelId',
+      header: t('models.card.modelId'),
+      cellClassName: 'font-mono text-sm text-on-surface',
+      cell: (model) => {
+        const modelId = model.litellm_model.split('/').slice(1).join('/');
+        return modelId || model.litellm_model;
+      },
+    },
+    {
+      key: 'apiBase',
+      header: t('models.table.apiBase'),
+      cellClassName: 'font-mono text-[10px] text-on-surface-variant max-w-[12rem] truncate',
+      cell: (model) => model.api_base || '—',
+    },
+    {
+      key: 'usage',
+      header: t('models.workers.requestsTitle'),
+      cellClassName: 'w-40',
+      cell: (model) => sparkline(model.model_name, model.is_active, 'amber', 'h-10'),
+    },
+    {
+      key: 'actions',
+      header: t('models.table.actions'),
+      cellClassName: 'text-right',
+      cell: modelDeleteButton,
+    },
+  ];
+
+  const renderModelCard = (model: TenantModel) => {
+    const provider = model.litellm_model.split('/')[0];
+    const modelId = model.litellm_model.split('/').slice(1).join('/');
+    return (
+      <div
+        className={`bg-surface-container rounded-xl p-6 transition-colors border border-outline-variant/10 ${
+          !model.is_active ? 'opacity-60' : ''
+        }`}
+      >
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-bold">{model.model_name}</h3>
+              <div className={`w-2 h-2 rounded-full ${model.is_active ? 'bg-green-500' : 'bg-slate-600'}`} />
+            </div>
+            <div className="flex gap-2">
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProviderBadgeClass(model.litellm_model)}`}>
+                {provider}
+              </span>
+            </div>
+          </div>
+          {modelDeleteButton(model)}
+        </div>
+        <div className="mb-6">
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t('models.card.modelId')}</p>
+          <p className="text-on-surface font-mono text-sm">{modelId || model.litellm_model}</p>
+        </div>
+        {model.api_base && (
+          <p className="text-[10px] text-on-surface-variant font-mono truncate" title={model.api_base}>
+            {model.api_base}
+          </p>
+        )}
+        <div className="mt-4" title={t('models.workers.requestsTitle')}>
+          {sparkline(model.model_name, model.is_active, 'amber', 'h-16')}
+        </div>
+      </div>
+    );
+  };
+
+  const workerColumns: ResponsiveTableColumn<Worker>[] = [
+    {
+      key: 'name',
+      header: t('models.table.worker'),
+      cell: (w) => {
+        const online = w.status === 'online' || w.is_active;
+        return (
+          <div className="flex items-center gap-3">
+            <div className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-green-500' : 'bg-slate-600'}`} />
+            <span className="font-bold text-on-surface">{w.name}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'capabilities',
+      header: t('models.table.capabilities'),
+      cell: (w) => (
+        <div className="flex flex-wrap gap-1.5">
+          {w.capabilities.map((cap) => (
+            <span
+              key={cap}
+              className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400"
+            >
+              {cap}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: 'labels',
+      header: t('models.table.labels'),
+      cell: (w) =>
+        w.labels.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {w.labels.map((label) => (
+              <span
+                key={label}
+                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary-container text-on-secondary-container"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-on-surface-variant/40">—</span>
+        ),
+    },
+    {
+      key: 'heartbeat',
+      header: t('models.table.lastHeartbeat'),
+      cellClassName: 'text-[10px] text-on-surface-variant/60',
+      cell: (w) => (w.last_heartbeat ? formatTime(w.last_heartbeat) : '—'),
+    },
+    {
+      key: 'usage',
+      header: t('models.workers.tasksTitle'),
+      cellClassName: 'w-40',
+      cell: (w) => sparkline(w.name, w.status === 'online' || w.is_active, 'cyan', 'h-10'),
+    },
+  ];
+
+  const renderWorkerCard = (w: Worker) => {
+    const online = w.status === 'online' || w.is_active;
+    return (
+      <div
+        className={`bg-surface-container rounded-xl p-5 border border-outline-variant/10 ${
+          !online ? 'opacity-60' : ''
+        }`}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <div className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-green-500' : 'bg-slate-600'}`} />
+          <h3 className="text-base font-bold text-on-surface">{w.name}</h3>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {w.capabilities.map((cap) => (
+            <span
+              key={cap}
+              className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400"
+            >
+              {cap}
+            </span>
+          ))}
+        </div>
+        {w.labels.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {w.labels.map((label) => (
+              <span
+                key={label}
+                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary-container text-on-secondary-container"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+        {w.last_heartbeat && (
+          <p className="text-[10px] text-on-surface-variant/60 mt-3">
+            {t('models.workers.lastHeartbeat', { time: formatTime(w.last_heartbeat) })}
+          </p>
+        )}
+        <div className="mt-3" title={t('models.workers.tasksTitle')}>
+          {sparkline(w.name, online, 'cyan', 'h-12')}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -360,76 +597,14 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
 
       {deleteError && <ErrorBanner message={deleteError} onRetry={() => setDeleteError(null)} />}
 
-      {/* Models Grid */}
+      {/* Models — desktop table + mobile card stack */}
       {llmModels.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {llmModels.map((model) => {
-            const provider = model.litellm_model.split('/')[0];
-            const modelId = model.litellm_model.split('/').slice(1).join('/');
-            return (
-              <div
-                key={model.id}
-                className={`bg-surface-container rounded-xl p-6 hover:bg-surface-container-high transition-colors group cursor-pointer border border-outline-variant/10 ${
-                  !model.is_active ? 'opacity-60' : ''
-                }`}
-              >
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-bold">{model.model_name}</h3>
-                      <div className={`w-2 h-2 rounded-full ${model.is_active ? 'bg-green-500' : 'bg-slate-600'}`} />
-                    </div>
-                    <div className="flex gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProviderBadgeClass(model.litellm_model)}`}>
-                        {provider}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onDelete(model.id, () => tenantsApi.deleteModel(tid, model.id), refetch)}
-                    className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg transition-colors ${
-                      deleting === model.id
-                        ? 'text-error'
-                        : 'text-slate-500 hover:bg-surface-container-highest hover:text-amber-500 md:opacity-0 md:group-hover:opacity-100'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined">
-                      {deleting === model.id ? 'check_circle' : 'more_vert'}
-                    </span>
-                  </button>
-                </div>
-                <div className="mb-6">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t('models.card.modelId')}</p>
-                  <p className="text-on-surface font-mono text-sm">{modelId || model.litellm_model}</p>
-                </div>
-                {model.api_base && (
-                  <p className="text-[10px] text-on-surface-variant font-mono truncate" title={model.api_base}>
-                    {model.api_base}
-                  </p>
-                )}
-                {/* Sparkline — daily request counts over the last 7 days */}
-                <div
-                  className="h-16 w-full flex items-end gap-1 mt-4"
-                  title={t('models.workers.requestsTitle')}
-                >
-                  {sparkBarsFor(model.model_name).map(({ h, active }, i) => (
-                    <div
-                      key={i}
-                      className={`flex-1 rounded-t transition-colors ${
-                        model.is_active && active
-                          ? 'bg-amber-500'
-                          : model.is_active
-                            ? 'bg-amber-500/15'
-                            : 'bg-slate-500/20'
-                      }`}
-                      style={{ height: `${h}%` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <ResponsiveTable
+          columns={modelColumns}
+          rows={llmModels}
+          rowKey={(model) => model.id}
+          renderMobileCard={renderModelCard}
+        />
       ) : (
         <div className="bg-surface-container-low rounded-2xl border border-outline-variant/5 flex flex-col items-center justify-center py-16">
           <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-4">category</span>
@@ -459,70 +634,12 @@ BSGATEWAY_INSTALL_TOKEN=${tokenPlaceholder} ~/.bsgateway-worker/bsgateway-worker
               {t('common.refresh')}
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {workers.map((w) => {
-              const online = w.status === 'online' || w.is_active;
-              return (
-                <div
-                  key={w.id}
-                  className={`bg-surface-container rounded-xl p-5 border border-outline-variant/10 ${
-                    !online ? 'opacity-60' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-green-500' : 'bg-slate-600'}`} />
-                    <h3 className="text-base font-bold text-on-surface">{w.name}</h3>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {w.capabilities.map((cap) => (
-                      <span
-                        key={cap}
-                        className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400"
-                      >
-                        {cap}
-                      </span>
-                    ))}
-                  </div>
-                  {w.labels.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {w.labels.map((label) => (
-                        <span
-                          key={label}
-                          className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary-container text-on-secondary-container"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {w.last_heartbeat && (
-                    <p className="text-[10px] text-on-surface-variant/60 mt-3">
-                      {t('models.workers.lastHeartbeat', { time: formatTime(w.last_heartbeat) })}
-                    </p>
-                  )}
-                  {/* Sparkline — tasks dispatched per day (last 7 days) */}
-                  <div
-                    className="h-12 w-full flex items-end gap-1 mt-3"
-                    title={t('models.workers.tasksTitle')}
-                  >
-                    {sparkBarsFor(w.name).map(({ h, active }, i) => (
-                      <div
-                        key={i}
-                        className={`flex-1 rounded-t transition-colors ${
-                          online && active
-                            ? 'bg-cyan-400'
-                            : online
-                              ? 'bg-cyan-400/15'
-                              : 'bg-slate-500/20'
-                        }`}
-                        style={{ height: `${h}%` }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <ResponsiveTable
+            columns={workerColumns}
+            rows={workers}
+            rowKey={(w) => w.id}
+            renderMobileCard={renderWorkerCard}
+          />
         </div>
       )}
     </div>

@@ -68,12 +68,14 @@ test.describe('Dashboard Page', () => {
   test('shows Recent Activity table with audit logs', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByText('Recent Activity')).toBeVisible();
-    // Table headers
-    await expect(page.getByText('Actor')).toBeVisible();
-    await expect(page.getByText('Action').first()).toBeVisible();
+    // Recent Activity is a <ResponsiveTable> — column headers / row text
+    // render in both the desktop <table> and the mobile card stack; only
+    // one tree is visible per viewport, so scope to the visible match.
+    await expect(page.getByText('Actor').locator('visible=true').first()).toBeVisible();
+    await expect(page.getByText('Action').locator('visible=true').first()).toBeVisible();
     // Audit log action badges
-    await expect(page.getByText('created_rule')).toBeVisible();
-    await expect(page.getByText('deleted_model')).toBeVisible();
+    await expect(page.getByText('created_rule').locator('visible=true')).toBeVisible();
+    await expect(page.getByText('deleted_model').locator('visible=true')).toBeVisible();
   });
 
   test('refresh button is visible and clickable', async ({ page }) => {
