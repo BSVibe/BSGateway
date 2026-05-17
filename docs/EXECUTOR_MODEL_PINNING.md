@@ -53,12 +53,10 @@ target whichever `name` you want.
 
 - **claude_code / codex** — passed verbatim as `--model <ai_model>`. Use
   whatever the CLI accepts (`sonnet`, `opus`, a full model id).
-- **opencode** — **must** be `provider/model`. opencode's API
-  (`SessionPromptData.model`) requires a structured
-  `{providerID, modelID}` pair, so `anthropic/claude-opus-4-7` is split
-  into `providerID=anthropic`, `modelID=claude-opus-4-7`. A bare string
-  with no `/` cannot be expressed and is dropped — opencode then uses
-  its own configured default. Always use the slash form for opencode.
+- **opencode** — passed verbatim as `opencode run -m <ai_model>`. opencode
+  expects the `provider/model` format (e.g. `anthropic/claude-opus-4-7`),
+  so use that form. The provider must be configured in the worker's
+  opencode config.
 
 Omitting `ai_model` (e.g. the auto-created base model) ⇒ the CLI uses its
 local default — fully back-compatible.
