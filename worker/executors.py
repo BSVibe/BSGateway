@@ -382,15 +382,29 @@ class OpenCodeExecutor:
     Each task gets a fresh session — multi-turn reuse is intentionally
     out of scope for v1 (see follow-ups).
 
+    The request shapes track the published ``@opencode-ai/sdk`` typed
+    contract (verified against 1.15.3):
+
+    * ``POST /session`` body is ``{parentID?, title?}`` only.
+    * ``POST /session/{id}/message`` body (``SessionPromptData``) is
+      ``{model?: {providerID, modelID}, system?, agent?, tools?,
+      parts: [...]}`` — messages are ``parts`` arrays of typed blocks,
+      NOT ``{role, content}``.
+
     **TODO E6 — workspace_dir limitation**: ``opencode serve`` is a
     single long-lived process whose ``cwd`` is fixed at spawn time. The
-    session create body does not currently expose a per-session
-    ``directory`` / ``cwd`` field (verified against opencode upstream
-    at PR #26 time). We therefore **ignore** ``context.workspace_dir``
+    session create body does not expose a per-session ``directory`` /
+    ``cwd`` field. We therefore **ignore** ``context.workspace_dir``
     here — opencode operates in the worker's process cwd. claude_code
     and codex both honor ``workspace_dir`` per-task. BSNexus v1 picks
     ``executor_type=claude_code`` so this is acceptable; tightening the
     opencode cwd is a follow-up TODO E6b.
+
+    **TODO E5b — MCP injection**: opencode has no HTTP/per-session MCP
+    API — MCP servers are only configurable via the ``mcp`` block of an
+    ``opencode.json`` config file read at process startup. Run-scoped
+    MCP injection therefore needs a per-task spawn restructure (see
+    E6b). ``context.mcp_servers`` is currently **ignored** for opencode.
     """
 
     _server_lock = asyncio.Lock()
@@ -459,33 +473,25 @@ class OpenCodeExecutor:
             return
 
         system = context.get("system") or ""
-        mcp_servers = context.get("mcp_servers") or {}
         model = context.get("model") or None
-        # opencode selects a model by a structured ``{providerID, modelID}``
-        # pair. The single ``ai_model`` string uses a ``provider/model``
-        # convention; split on the first ``/``. A bare string (no slash)
-        # is sent as ``model`` and opencode resolves the provider itself.
-        provider_id: str | None = None
-        model_id: str | None = None
-        if model:
-            if "/" in model:
-                provider_id, model_id = model.split("/", 1)
-            else:
-                model_id = model
+        # opencode's typed contract requires a structured
+        # ``model: {providerID, modelID}`` object — there is no bare
+        # model-string form. The single ``ai_model`` string must use the
+        # ``provider/model`` convention; we split on the first ``/``. A
+        # value with no ``/`` cannot be expressed and is dropped so
+        # opencode falls back to its configured default.
+        model_obj: dict[str, str] | None = None
+        if model and "/" in model:
+            provider_id, model_id = model.split("/", 1)
+            if provider_id and model_id:
+                model_obj = {"providerID": provider_id, "modelID": model_id}
         try:
             async with httpx.AsyncClient(
                 base_url=base_url, timeout=self._request_timeout
             ) as client:
-                session_body: dict[str, Any] = {}
-                if system:
-                    session_body["system"] = system
-                # TODO E5b — opencode session-level MCP injection. The
-                # ``mcpServers`` field on session create matches claude
-                # CLI's ``--mcp-config`` shape (``{name: {url, headers}}``).
-                # Empty / missing ⇒ field omitted (back-compat).
-                if mcp_servers:
-                    session_body["mcpServers"] = mcp_servers
-                res = await client.post("/session", json=session_body)
+                # SessionCreateData accepts only {parentID?, title?} —
+                # system + model are per-message (SessionPromptData).
+                res = await client.post("/session", json={})
                 res.raise_for_status()
                 session_id = res.json().get("id") or res.json().get("sessionID")
                 if not session_id:
@@ -493,15 +499,15 @@ class OpenCodeExecutor:
                     return
 
                 async def _post_message() -> None:
-                    # TODO E6c — verify opencode message-body model fields
-                    # (providerID/modelID vs model) against the worker's
-                    # pinned opencode version via GET /doc; shapes drift.
-                    msg_body: dict[str, Any] = {"role": "user", "content": prompt}
-                    if model_id and provider_id:
-                        msg_body["providerID"] = provider_id
-                        msg_body["modelID"] = model_id
-                    elif model_id:
-                        msg_body["model"] = model_id
+                    # SessionPromptData: parts array of typed blocks,
+                    # optional system + model. NOT {role, content}.
+                    msg_body: dict[str, Any] = {
+                        "parts": [{"type": "text", "text": prompt}],
+                    }
+                    if system:
+                        msg_body["system"] = system
+                    if model_obj is not None:
+                        msg_body["model"] = model_obj
                     await client.post(
                         f"/session/{session_id}/message",
                         json=msg_body,

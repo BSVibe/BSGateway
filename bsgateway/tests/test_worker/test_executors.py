@@ -399,120 +399,66 @@ async def test_opencode_executor_streams_sse_events() -> None:
     assert result.stdout == "Hello"
 
 
-@pytest.mark.asyncio
-async def test_opencode_executor_passes_mcp_servers_to_session_create() -> None:
-    """TODO E5b — opencode session-level MCP injection. mcp_servers from
-    context lands in the ``mcpServers`` field of the session POST body."""
-    executor = OpenCodeExecutor()
-    executor._cmd = "/bin/true"
-    executor._base_url = "http://127.0.0.1:1234"
-    executor._proc = MagicMock()
-    executor._proc.returncode = None
+# ─── opencode request-body contract (SessionPromptData) ─────────────
 
+
+@pytest.mark.asyncio
+async def test_opencode_message_body_uses_parts_array() -> None:
+    """opencode SessionPromptData uses a ``parts`` array — NOT {role, content}."""
+    executor = _make_opencode_executor()
     captured: list[dict[str, Any]] = []
 
-    class _FakeStreamResp:
-        status_code = 200
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("hello world", {"task_id": "t"}))
 
-        def raise_for_status(self) -> None:
-            pass
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert msg["body"]["parts"] == [{"type": "text", "text": "hello world"}]
+    assert "role" not in msg["body"]
+    assert "content" not in msg["body"]
 
-        async def aiter_lines(self):
-            yield "data: " + json.dumps(
-                {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
-            )
-            yield ""
 
-    class _FakeStreamCtx:
-        async def __aenter__(self):
-            return _FakeStreamResp()
+@pytest.mark.asyncio
+async def test_opencode_system_goes_on_message_body() -> None:
+    """``system`` is a SessionPromptData field — on the message, not /session."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
 
-        async def __aexit__(self, *a, **kw):
-            return None
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "system": "be terse"}))
 
-    class _FakeClient:
-        def __init__(self, *a, **kw):
-            pass
+    session_create = next(c for c in captured if c["path"] == "/session")
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert msg["body"]["system"] == "be terse"
+    assert "system" not in session_create["body"]
 
-        async def __aenter__(self):
-            return self
 
-        async def __aexit__(self, *a, **kw):
-            return None
+@pytest.mark.asyncio
+async def test_opencode_session_create_body_is_minimal() -> None:
+    """SessionCreateData only accepts {parentID?, title?} — POST /session is {}."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
 
-        async def post(self, path: str, json: dict[str, Any] | None = None):
-            captured.append({"path": path, "body": json})
-            resp = MagicMock()
-            resp.raise_for_status = MagicMock()
-            resp.json = MagicMock(return_value={"id": "sess-1"})
-            return resp
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "system": "x"}))
 
-        def stream(self, method: str, path: str):
-            return _FakeStreamCtx()
+    session_create = next(c for c in captured if c["path"] == "/session")
+    assert session_create["body"] == {}
+
+
+@pytest.mark.asyncio
+async def test_opencode_ignores_mcp_servers() -> None:
+    """opencode has no HTTP/per-session MCP API — mcp_servers is dropped
+    (documented TODO E5b limitation), never leaked into any request body."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
 
     mcp = {"bsnexus": {"url": "http://localhost:8100/mcp/sse?token=t", "headers": {}}}
-    with patch("worker.executors.httpx.AsyncClient", _FakeClient):
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
         await collect(executor.execute("p", {"task_id": "t", "mcp_servers": mcp}))
 
-    session_create = next(c for c in captured if c["path"] == "/session")
-    assert session_create["body"].get("mcpServers") == mcp
-
-
-@pytest.mark.asyncio
-async def test_opencode_executor_omits_mcp_servers_when_empty() -> None:
-    """Back-compat: empty ``mcp_servers`` ⇒ ``mcpServers`` field absent."""
-    executor = OpenCodeExecutor()
-    executor._cmd = "/bin/true"
-    executor._base_url = "http://127.0.0.1:1234"
-    executor._proc = MagicMock()
-    executor._proc.returncode = None
-
-    captured: list[dict[str, Any]] = []
-
-    class _FakeStreamResp:
-        status_code = 200
-
-        def raise_for_status(self) -> None:
-            pass
-
-        async def aiter_lines(self):
-            yield "data: " + json.dumps(
-                {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
-            )
-            yield ""
-
-    class _FakeStreamCtx:
-        async def __aenter__(self):
-            return _FakeStreamResp()
-
-        async def __aexit__(self, *a, **kw):
-            return None
-
-    class _FakeClient:
-        def __init__(self, *a, **kw):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *a, **kw):
-            return None
-
-        async def post(self, path: str, json: dict[str, Any] | None = None):
-            captured.append({"path": path, "body": json})
-            resp = MagicMock()
-            resp.raise_for_status = MagicMock()
-            resp.json = MagicMock(return_value={"id": "sess-1"})
-            return resp
-
-        def stream(self, method: str, path: str):
-            return _FakeStreamCtx()
-
-    with patch("worker.executors.httpx.AsyncClient", _FakeClient):
-        await collect(executor.execute("p", {"task_id": "t"}))
-
-    session_create = next(c for c in captured if c["path"] == "/session")
-    assert "mcpServers" not in session_create["body"]
+    for call in captured:
+        assert "mcpServers" not in call["body"]
+        assert "mcp_servers" not in call["body"]
 
 
 # ─── model selection (context["model"]) ─────────────────────────────
@@ -627,7 +573,8 @@ def _make_opencode_executor() -> OpenCodeExecutor:
 
 @pytest.mark.asyncio
 async def test_opencode_executor_passes_provider_model() -> None:
-    """``provider/model`` string ⇒ providerID + modelID on the message body."""
+    """``provider/model`` ⇒ nested ``model: {providerID, modelID}`` (the
+    only model shape opencode's SessionPromptData accepts)."""
     executor = _make_opencode_executor()
     captured: list[dict[str, Any]] = []
 
@@ -635,13 +582,16 @@ async def test_opencode_executor_passes_provider_model() -> None:
         await collect(executor.execute("p", {"task_id": "t", "model": "anthropic/claude-opus-4-7"}))
 
     msg = next(c for c in captured if c["path"].endswith("/message"))
-    assert msg["body"].get("providerID") == "anthropic"
-    assert msg["body"].get("modelID") == "claude-opus-4-7"
+    assert msg["body"]["model"] == {
+        "providerID": "anthropic",
+        "modelID": "claude-opus-4-7",
+    }
 
 
 @pytest.mark.asyncio
-async def test_opencode_executor_bare_model_string() -> None:
-    """A bare model string (no provider) ⇒ ``model`` field on the message body."""
+async def test_opencode_executor_drops_bare_model_string() -> None:
+    """opencode requires both providerID + modelID — a bare string (no
+    ``/``) can't be expressed, so it's dropped and the CLI default wins."""
     executor = _make_opencode_executor()
     captured: list[dict[str, Any]] = []
 
@@ -649,8 +599,7 @@ async def test_opencode_executor_bare_model_string() -> None:
         await collect(executor.execute("p", {"task_id": "t", "model": "claude-opus-4-7"}))
 
     msg = next(c for c in captured if c["path"].endswith("/message"))
-    assert msg["body"].get("model") == "claude-opus-4-7"
-    assert "providerID" not in msg["body"]
+    assert "model" not in msg["body"]
 
 
 @pytest.mark.asyncio
@@ -662,8 +611,6 @@ async def test_opencode_executor_omits_model_when_absent() -> None:
         await collect(executor.execute("p", {"task_id": "t"}))
 
     msg = next(c for c in captured if c["path"].endswith("/message"))
-    assert "providerID" not in msg["body"]
-    assert "modelID" not in msg["body"]
     assert "model" not in msg["body"]
 
 
