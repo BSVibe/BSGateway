@@ -128,9 +128,6 @@ class Settings(FastApiSettings):
     # ``BSVIBE_AUTH_AUDIT_URL`` so the relay has somewhere to push events.
     bsvibe_audit_outbox_enabled: bool = True
 
-    # Frontend dist directory (for serving dashboard static files)
-    frontend_dist_dir: str = ""
-
     # FastApiSettings.cors_allowed_origins is Annotated[list[str], NoDecode]
     # with a CSV field_validator. Override the default to "" → [] (legacy
     # behaviour: when unset, fall back to localhost in app.create_app).

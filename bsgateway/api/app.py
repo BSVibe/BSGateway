@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -12,7 +11,6 @@ import structlog
 from bsvibe_fastapi import add_cors_middleware, make_health_router
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from bsgateway.audit.repository import AuditRepository
 from bsgateway.audit_publisher import build_audit_outbox
@@ -486,18 +484,6 @@ def create_app() -> FastAPI:
         return JSONResponse(
             content={"status": "ready" if all_ok else "unavailable", **checks},
             status_code=status_code,
-        )
-
-    # Serve frontend dashboard (only if build directory exists)
-    if settings.frontend_dist_dir:
-        frontend_dist = Path(settings.frontend_dist_dir)
-    else:
-        frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
-    if frontend_dist.is_dir():
-        app.mount(
-            "/dashboard",
-            StaticFiles(directory=str(frontend_dist), html=True),
-            name="dashboard",
         )
 
     return app
