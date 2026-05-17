@@ -144,6 +144,7 @@ class ClaudeCodeExecutor:
         workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
         mcp_servers = context.get("mcp_servers") or {}
+        model = context.get("model") or None
         # Materialise the mcp config tempfile once for the whole retry loop —
         # claude CLI re-reads the path on each invocation, so we don't need
         # to recreate it per attempt. Cleanup happens here in the finally so
@@ -161,7 +162,7 @@ class ClaudeCodeExecutor:
                 had_delta = False
                 try:
                     async for chunk in self._run_once(
-                        prompt, workspace, system, mcp_config_path, deadline, stderr_buf
+                        prompt, workspace, system, mcp_config_path, deadline, stderr_buf, model
                     ):
                         if chunk.delta:
                             had_delta = True
@@ -208,6 +209,7 @@ class ClaudeCodeExecutor:
         mcp_config_path: str | None,
         deadline: float,
         stderr_buf: list[str],
+        model: str | None = None,
     ) -> AsyncIterator[ExecutionChunk]:
         cmd_args = [
             self._cmd,
@@ -221,6 +223,8 @@ class ClaudeCodeExecutor:
             cmd_args += ["--append-system-prompt", system]
         if mcp_config_path:
             cmd_args += ["--mcp-config", mcp_config_path]
+        if model:
+            cmd_args += ["--model", model]
         process: asyncio.subprocess.Process | None = None
         try:
             process = await asyncio.create_subprocess_exec(
@@ -294,6 +298,7 @@ class CodexExecutor:
     async def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]:
         workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
+        model = context.get("model") or None
         deadline = asyncio.get_event_loop().time() + self._timeout
 
         sys_path: str | None = None
@@ -308,6 +313,8 @@ class CodexExecutor:
         cmd_args = [self._cmd, "exec", "--json", "--full-auto"]
         if sys_path:
             cmd_args += ["--config", f"experimental_instructions_file={sys_path}"]
+        if model:
+            cmd_args += ["--model", model]
 
         process: asyncio.subprocess.Process | None = None
         stderr_buf: list[str] = []
@@ -453,6 +460,18 @@ class OpenCodeExecutor:
 
         system = context.get("system") or ""
         mcp_servers = context.get("mcp_servers") or {}
+        model = context.get("model") or None
+        # opencode selects a model by a structured ``{providerID, modelID}``
+        # pair. The single ``ai_model`` string uses a ``provider/model``
+        # convention; split on the first ``/``. A bare string (no slash)
+        # is sent as ``model`` and opencode resolves the provider itself.
+        provider_id: str | None = None
+        model_id: str | None = None
+        if model:
+            if "/" in model:
+                provider_id, model_id = model.split("/", 1)
+            else:
+                model_id = model
         try:
             async with httpx.AsyncClient(
                 base_url=base_url, timeout=self._request_timeout
@@ -474,9 +493,18 @@ class OpenCodeExecutor:
                     return
 
                 async def _post_message() -> None:
+                    # TODO E6c — verify opencode message-body model fields
+                    # (providerID/modelID vs model) against the worker's
+                    # pinned opencode version via GET /doc; shapes drift.
+                    msg_body: dict[str, Any] = {"role": "user", "content": prompt}
+                    if model_id and provider_id:
+                        msg_body["providerID"] = provider_id
+                        msg_body["modelID"] = model_id
+                    elif model_id:
+                        msg_body["model"] = model_id
                     await client.post(
                         f"/session/{session_id}/message",
-                        json={"role": "user", "content": prompt},
+                        json=msg_body,
                     )
 
                 send_task = asyncio.create_task(_post_message())

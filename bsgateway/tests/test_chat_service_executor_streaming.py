@@ -66,6 +66,7 @@ class TestSystemPromptForwarding:
             system="",
             workspace_dir=".",
             mcp_servers=None,
+            ai_model=None,
         ):
             captured["system"] = system
             captured["prompt"] = prompt
@@ -117,6 +118,7 @@ class TestMetadataForwarding:
             system="",
             workspace_dir=".",
             mcp_servers=None,
+            ai_model=None,
         ):
             captured["workspace_dir"] = workspace_dir
             return "msg-1"
@@ -160,6 +162,7 @@ class TestMetadataForwarding:
             system="",
             workspace_dir=".",
             mcp_servers=None,
+            ai_model=None,
         ):
             captured["mcp_servers"] = mcp_servers
             return "msg-1"
@@ -187,6 +190,98 @@ class TestMetadataForwarding:
             await svc._execute_via_worker(TENANT_ID, request, _executor_model(), None)
 
         assert captured["mcp_servers"] == mcp
+
+
+class TestAiModelForwarding:
+    """model.extra_params.ai_model → WorkerDispatcher.dispatch_task kwarg."""
+
+    @pytest.mark.asyncio
+    async def test_ai_model_forwarded_to_dispatcher(self) -> None:
+        pool, _conn, _row = _make_pool_with_task()
+        svc = _build_svc(pool, redis=AsyncMock())
+
+        captured: dict[str, Any] = {}
+
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+            ai_model=None,
+        ):
+            captured["ai_model"] = ai_model
+            return "msg-1"
+
+        async def fake_await(self, task_id, tenant_id, timeout_seconds, poll_interval=None):
+            return {"status": "done", "output": "ok", "error_message": None}
+
+        pinned_model = TenantModel(
+            model_name="codex-opus",
+            provider="executor",
+            litellm_model="executor/codex",
+            extra_params={
+                "worker_id": str(WORKER_ID),
+                "timeout_seconds": 5,
+                "ai_model": "openai/gpt-5-codex",
+            },
+        )
+
+        with (
+            patch("bsgateway.chat.service.WorkerDispatcher.dispatch_task", fake_dispatch),
+            patch.object(svc, "_await_task_completion", new=fake_await.__get__(svc)),
+            patch("bsgateway.chat.service._executor_sql") as mock_sql,
+        ):
+            mock_sql.query.side_effect = lambda q: q
+            request = {
+                "model": "codex-opus",
+                "messages": [{"role": "user", "content": "hi"}],
+            }
+            await svc._execute_via_worker(TENANT_ID, request, pinned_model, None)
+
+        assert captured["ai_model"] == "openai/gpt-5-codex"
+
+    @pytest.mark.asyncio
+    async def test_ai_model_absent_dispatches_none(self) -> None:
+        """Back-compat: a model without ai_model ⇒ dispatch ai_model=None."""
+        pool, _conn, _row = _make_pool_with_task()
+        svc = _build_svc(pool, redis=AsyncMock())
+
+        captured: dict[str, Any] = {}
+
+        async def fake_dispatch(
+            self,
+            worker_id,
+            task_id,
+            executor_type,
+            prompt,
+            system="",
+            workspace_dir=".",
+            mcp_servers=None,
+            ai_model=None,
+        ):
+            captured["ai_model"] = ai_model
+            return "msg-1"
+
+        async def fake_await(self, task_id, tenant_id, timeout_seconds, poll_interval=None):
+            return {"status": "done", "output": "ok", "error_message": None}
+
+        with (
+            patch("bsgateway.chat.service.WorkerDispatcher.dispatch_task", fake_dispatch),
+            patch.object(svc, "_await_task_completion", new=fake_await.__get__(svc)),
+            patch("bsgateway.chat.service._executor_sql") as mock_sql,
+        ):
+            mock_sql.query.side_effect = lambda q: q
+            request = {
+                "model": "my-worker",
+                "messages": [{"role": "user", "content": "hi"}],
+            }
+            await svc._execute_via_worker(TENANT_ID, request, _executor_model(), None)
+
+        assert captured["ai_model"] is None
 
 
 class TestMetadataExecutorOnlyStrip:
@@ -218,6 +313,7 @@ class TestMetadataExecutorOnlyStrip:
             system="",
             workspace_dir=".",
             mcp_servers=None,
+            ai_model=None,
         ):
             captured["workspace_dir"] = workspace_dir
             return "msg-1"
@@ -260,6 +356,7 @@ class TestStreamingResponse:
             system="",
             workspace_dir=".",
             mcp_servers=None,
+            ai_model=None,
         ):
             return "msg-1"
 
@@ -318,6 +415,7 @@ class TestStreamingResponse:
             system="",
             workspace_dir=".",
             mcp_servers=None,
+            ai_model=None,
         ):
             return "msg-1"
 

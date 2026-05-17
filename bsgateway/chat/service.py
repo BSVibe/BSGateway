@@ -425,6 +425,9 @@ class ChatService:
         executor_type = lm.split("/", 1)[-1] if "/" in lm else lm
         extra = model.extra_params or {}
         pinned_worker_id = extra.get("worker_id")
+        # Optional LLM model the executor CLI should run with. Absent ⇒
+        # the CLI uses its local default (back-compat).
+        ai_model = extra.get("ai_model")
         timeout_seconds = int(
             extra.get("timeout_seconds", executor_settings.worker_default_timeout_seconds)
         )
@@ -460,6 +463,7 @@ class ChatService:
                 system=system_prompt,
                 workspace_dir=workspace_dir,
                 mcp_servers=mcp_servers,
+                ai_model=ai_model,
                 tenant_id=tenant_id,
                 request_data=request_data,
                 model=model,
@@ -476,6 +480,7 @@ class ChatService:
             system=system_prompt,
             workspace_dir=workspace_dir,
             mcp_servers=mcp_servers,
+            ai_model=ai_model,
         )
 
         final_row = await self._await_task_completion(
@@ -525,6 +530,7 @@ class ChatService:
         system: str,
         workspace_dir: str = ".",
         mcp_servers: dict[str, Any] | None = None,
+        ai_model: str | None = None,
         tenant_id: UUID,
         request_data: dict,
         model: TenantModel,
@@ -550,6 +556,7 @@ class ChatService:
             system=system,
             workspace_dir=workspace_dir,
             mcp_servers=mcp_servers,
+            ai_model=ai_model,
         )
 
         completion_id = f"exec-{uuid.uuid4().hex[:24]}"

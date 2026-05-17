@@ -155,6 +155,9 @@ async def _handle_task(
         "workspace_dir": task.get("workspace_dir", "."),
         "system": task.get("system") or "",
         "mcp_servers": mcp_servers,
+        # The LLM model the executor CLI should run with. Absent for an
+        # older gateway ⇒ None ⇒ the CLI uses its local default.
+        "model": task.get("ai_model") or None,
     }
     stream_channel = task.get("stream_channel") or f"task:{task_id}:stream"
     done_channel = task.get("done_channel") or f"task:{task_id}:done"

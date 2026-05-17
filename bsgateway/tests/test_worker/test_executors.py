@@ -515,6 +515,158 @@ async def test_opencode_executor_omits_mcp_servers_when_empty() -> None:
     assert "mcpServers" not in session_create["body"]
 
 
+# ─── model selection (context["model"]) ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_claude_executor_passes_model_flag() -> None:
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t", "model": "claude-opus-4-7"}))
+
+    args = mock_exec.call_args.args
+    assert "--model" in args
+    assert args[args.index("--model") + 1] == "claude-opus-4-7"
+
+
+@pytest.mark.asyncio
+async def test_claude_executor_omits_model_flag_when_absent() -> None:
+    executor = ClaudeCodeExecutor(rate_limit_retries=0)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    assert "--model" not in mock_exec.call_args.args
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_passes_model_flag() -> None:
+    executor = CodexExecutor(timeout_seconds=5)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t", "model": "gpt-5-codex"}))
+
+    args = mock_exec.call_args.args
+    assert "--model" in args
+    assert args[args.index("--model") + 1] == "gpt-5-codex"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_omits_model_flag_when_absent() -> None:
+    executor = CodexExecutor(timeout_seconds=5)
+    proc = _make_proc([], returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    assert "--model" not in mock_exec.call_args.args
+
+
+def _opencode_capture_client(captured: list[dict[str, Any]]) -> type:
+    """A fake httpx.AsyncClient that records every POST body."""
+
+    class _FakeStreamResp:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            pass
+
+        async def aiter_lines(self):
+            # Yield to the event loop so the concurrently-scheduled
+            # ``/message`` POST task runs before the terminal event ends
+            # the stream — otherwise it gets cancelled and never records.
+            for _ in range(5):
+                await asyncio.sleep(0)
+            yield "data: " + json.dumps(
+                {"type": "session.idle", "properties": {"sessionID": "sess-1"}}
+            )
+            yield ""
+
+    class _FakeStreamCtx:
+        async def __aenter__(self):
+            return _FakeStreamResp()
+
+        async def __aexit__(self, *a, **kw):
+            return None
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a, **kw):
+            return None
+
+        async def post(self, path: str, json: dict[str, Any] | None = None):
+            captured.append({"path": path, "body": json})
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json = MagicMock(return_value={"id": "sess-1"})
+            return resp
+
+        def stream(self, method: str, path: str):
+            return _FakeStreamCtx()
+
+    return _FakeClient
+
+
+def _make_opencode_executor() -> OpenCodeExecutor:
+    executor = OpenCodeExecutor()
+    executor._cmd = "/bin/true"
+    executor._base_url = "http://127.0.0.1:1234"
+    executor._proc = MagicMock()
+    executor._proc.returncode = None
+    return executor
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_passes_provider_model() -> None:
+    """``provider/model`` string ⇒ providerID + modelID on the message body."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
+
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "model": "anthropic/claude-opus-4-7"}))
+
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert msg["body"].get("providerID") == "anthropic"
+    assert msg["body"].get("modelID") == "claude-opus-4-7"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_bare_model_string() -> None:
+    """A bare model string (no provider) ⇒ ``model`` field on the message body."""
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
+
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t", "model": "claude-opus-4-7"}))
+
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert msg["body"].get("model") == "claude-opus-4-7"
+    assert "providerID" not in msg["body"]
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_omits_model_when_absent() -> None:
+    executor = _make_opencode_executor()
+    captured: list[dict[str, Any]] = []
+
+    with patch("worker.executors.httpx.AsyncClient", _opencode_capture_client(captured)):
+        await collect(executor.execute("p", {"task_id": "t"}))
+
+    msg = next(c for c in captured if c["path"].endswith("/message"))
+    assert "providerID" not in msg["body"]
+    assert "modelID" not in msg["body"]
+    assert "model" not in msg["body"]
+
+
 # ─── factory ─────────────────────────────────────────────────────────
 
 
