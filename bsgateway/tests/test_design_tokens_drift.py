@@ -1,18 +1,18 @@
-"""Drift guard: ``frontend/app/globals.css`` Material 3 tokens must
+"""Drift guard: ``frontend/app/[locale]/globals.css`` Material 3 tokens must
 match the ``@bsvibe/design-tokens`` ``m3.*`` namespace.
 
 Phase A Batch 5 (Lockin §3 #12 + #11): the BSGateway frontend cannot
 yet `@import "@bsvibe/design-tokens/css"` because GitHub Packages
 publishing requires a user-action PAT (Lockin §3 #12) that hasn't been
 provisioned. As an interim measure, we keep the M3 token values inline
-in ``frontend/app/globals.css`` and pin them with this test against the
+in ``frontend/app/[locale]/globals.css`` and pin them with this test against the
 canonical TypeScript export.
 
 The TS source of truth lives in
 ``~/Works/bsvibe-frontend-lib/main/packages/design-tokens/src/index.ts``
 under the ``m3`` const (lines 180-223). When that file changes,
 this test fails and the engineer must:
-* update ``frontend/app/globals.css`` to mirror the new values, OR
+* update ``frontend/app/[locale]/globals.css`` to mirror the new values, OR
 * update ``CANONICAL_M3`` below if the change was intentional.
 
 Once Decision #12 lands and BSGateway can pull tokens via
@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-GLOBALS_CSS = REPO_ROOT / "frontend" / "app" / "globals.css"
+GLOBALS_CSS = REPO_ROOT / "frontend" / "app" / "[locale]" / "globals.css"
 
 
 # Canonical M3 values from @bsvibe/design-tokens m3.* (verbatim).
@@ -90,13 +90,13 @@ class TestDesignTokensDrift:
         self, key: str, expected: str, globals_css_vars: dict[str, str]
     ) -> None:
         assert key in globals_css_vars, (
-            f"--color-{key} missing from frontend/app/globals.css. "
+            f"--color-{key} missing from frontend/app/[locale]/globals.css. "
             f"Expected {expected} (from @bsvibe/design-tokens m3.*)"
         )
         assert globals_css_vars[key] == expected.lower(), (
             f"--color-{key} drift: got {globals_css_vars[key]!r}, "
             f"expected {expected!r} (from @bsvibe/design-tokens m3.*). "
-            f"Update frontend/app/globals.css or CANONICAL_M3 in this test."
+            f"Update frontend/app/[locale]/globals.css or CANONICAL_M3 in this test."
         )
 
     def test_canonical_m3_count_matches_upstream(self) -> None:
