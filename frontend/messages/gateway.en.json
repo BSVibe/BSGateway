@@ -43,7 +43,7 @@
     "en": "English"
   },
   "dashboard": {
-    "tenantOverview": "{{tenant}} Overview",
+    "tenantOverview": "{tenant} Overview",
     "systemOverview": "System Overview",
     "subtitle": "Routing overview and metrics",
     "stats": {
@@ -75,16 +75,14 @@
     "loadFailed": "Failed to load dashboard",
     "time": {
       "justNow": "just now",
-      "minutesAgo": "{{count}}m ago",
-      "hoursAgo": "{{count}}h ago",
-      "daysAgo": "{{count}}d ago"
+      "minutesAgo": "{count}m ago",
+      "hoursAgo": "{count}h ago",
+      "daysAgo": "{count}d ago"
     }
   },
   "routes": {
     "title": "Routing Rules",
     "subtitle": "Describe what kind of requests should go to which model.",
-    "configured_one": "{{count}} rule configured.",
-    "configured_other": "{{count}} rules configured.",
     "addRule": "Add Rule",
     "createRule": "Create Rule",
     "modal": {
@@ -102,8 +100,6 @@
       "createFailed": "Failed to create rule"
     },
     "card": {
-      "exampleCount_one": "{{count}} example",
-      "exampleCount_other": "{{count}} examples",
       "examplesHeader": "Example phrases",
       "noExamples": "No examples yet — add one below to improve intent matching.",
       "addExamplePlaceholder": "Add an example phrase...",
@@ -118,7 +114,8 @@
       "toggleFailed": "Failed to toggle",
       "modelUpdateFailed": "Failed to update model",
       "addExampleFailed": "Failed to add example",
-      "removeExampleFailed": "Failed to remove example"
+      "removeExampleFailed": "Failed to remove example",
+      "exampleCount": "{count, plural, one {{count} example} other {{count} examples}}"
     },
     "default": {
       "title": "Default fallback",
@@ -135,7 +132,7 @@
       "header": "Embedding model",
       "active": "active",
       "disabled": "disabled",
-      "activeHint": "{{model}} — used to classify intents on incoming chat requests",
+      "activeHint": "{model} — used to classify intents on incoming chat requests",
       "disabledHint": "No embedding model configured. Intent rules will not match live traffic.",
       "modelLabel": "Model",
       "modelPlaceholder": "text-embedding-3-small",
@@ -152,7 +149,7 @@
       "modelRequired": "Model is required",
       "savedRunReembed": "Saved. Run \"Re-embed\" if you swapped models.",
       "disabledMessage": "Embedding disabled for this tenant.",
-      "reembedComplete": "Re-embed complete: {{refreshed}} refreshed, {{failed}} failed (model: {{model}}).",
+      "reembedComplete": "Re-embed complete: {refreshed} refreshed, {failed} failed (model: {model}).",
       "loadFailed": "Failed to load embedding settings",
       "saveFailed": "Failed to save settings",
       "clearFailed": "Failed to clear settings",
@@ -162,12 +159,21 @@
       "title": "No routing rules yet",
       "hint": "Describe a kind of request and pick a model — that's it.",
       "createFirst": "Create your first routing rule"
+    },
+    "configured": "{count, plural, one {{count} rule configured.} other {{count} rules configured.}}",
+    "table": {
+      "status": "Status",
+      "description": "Description",
+      "targetModel": "Target Model",
+      "priority": "Priority",
+      "examples": "Examples",
+      "actions": "Actions"
     }
   },
   "models": {
     "title": "Model Registry",
     "subtitle": "Manage and monitor deployment-ready LLMs across your distributed infrastructure.",
-    "summary": "{{models}} model{{ms}} · {{workers}} worker{{ws}} registered.",
+    "summary": "{models} model{ms} · {workers} worker{ws} registered.",
     "installWorker": "Install Worker",
     "hide": "Hide",
     "registerModel": "Register Model",
@@ -210,16 +216,23 @@
     },
     "workers": {
       "header": "Executor Workers",
-      "lastHeartbeat": "Last heartbeat: {{time}}",
+      "lastHeartbeat": "Last heartbeat: {time}",
       "tasksTitle": "Tasks per day (last 7 days)",
       "requestsTitle": "Requests per day (last 7 days)"
+    },
+    "table": {
+      "provider": "Provider",
+      "apiBase": "API Base",
+      "actions": "Actions",
+      "worker": "Worker",
+      "capabilities": "Capabilities",
+      "labels": "Labels",
+      "lastHeartbeat": "Last Heartbeat"
     }
   },
   "rulesLegacy": {
     "title": "Routing Rules",
     "subtitle": "Configure intelligent traffic distribution based on prompt complexity, metadata, and token density.",
-    "configured_one": "{{count}} rule configured.",
-    "configured_other": "{{count}} rules configured.",
     "createRule": "Create Rule",
     "modal": {
       "title": "Create Routing Rule",
@@ -243,14 +256,14 @@
       "status": "Status",
       "actions": "Actions",
       "defaultBadge": "default",
-      "conditions_one": "{{count}} condition",
-      "conditions_other": "{{count}} conditions"
+      "conditions": "{count, plural, one {{count} condition} other {{count} conditions}}"
     },
     "empty": {
       "title": "No routing rules yet",
       "hint": "Create a rule to start intelligently routing your LLM requests.",
       "createFirst": "Create First Rule"
-    }
+    },
+    "configured": "{count, plural, one {{count} rule configured.} other {{count} rules configured.}}"
   },
   "audit": {
     "title": "Audit Log",
@@ -265,7 +278,7 @@
       "noLogs": "No audit logs"
     },
     "pagination": {
-      "range": "{{from}}--{{to}} of {{total}}"
+      "range": "{from}--{to} of {total}"
     },
     "loadFailed": "Failed to load audit logs"
   },
@@ -314,10 +327,14 @@
     },
     "list": {
       "inactive": "inactive",
-      "threshold": "threshold: {{value}}"
+      "threshold": "threshold: {value}"
     },
     "empty": {
       "noIntents": "No intents defined"
+    },
+    "table": {
+      "threshold": "Threshold",
+      "actions": "Actions"
     }
   },
   "test": {
@@ -410,5 +427,9 @@
         "description": "BSGateway is an LLM cost-optimized routing proxy"
       }
     }
+  },
+  "demo": {
+    "settingUp": "Setting up your demo sandbox…",
+    "unavailable": "Demo unavailable"
   }
 }

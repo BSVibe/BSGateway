@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { rulesApi } from '../api/rules';
 import { useAuth } from '../hooks/useAuth';
 import { useApi } from '../hooks/useApi';
@@ -21,7 +21,7 @@ function CreateModal({
   onCreated: () => void;
   tenantId: string;
 }) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const [formData, setFormData] = useState<RuleCreate>(INITIAL_RULE);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -180,7 +180,7 @@ function StatusToggle({ rule, tenantId, onToggled }: { rule: Rule; tenantId: str
 }
 
 export function RulesPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const loadRules = useCallback(() => rulesApi.list(tid), [tid]);

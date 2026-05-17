@@ -1,7 +1,7 @@
 'use client';
 
 import { Component, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 
 class PageErrorBoundary extends Component<
   { children: ReactNode },
@@ -27,7 +27,7 @@ class PageErrorBoundary extends Component<
 }
 
 function PageErrorFallback({ message, onReset }: { message: string; onReset: () => void }) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   return (
     <div className="flex items-center justify-center min-h-[50vh] bg-surface">
       <div className="text-center p-8">

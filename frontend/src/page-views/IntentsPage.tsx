@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
+import { ResponsiveTable } from '@bsvibe/ui';
+import type { ResponsiveTableColumn } from '@bsvibe/ui';
 import { useApi } from '../hooks/useApi';
 import { useForm } from '../hooks/useForm';
 import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
@@ -9,6 +11,7 @@ import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { intentsApi } from '../api/intents';
 import { useAuth } from '../hooks/useAuth';
+import type { Intent } from '../types/api';
 
 
 interface IntentFormData {
@@ -21,7 +24,7 @@ interface IntentFormData {
 const INITIAL_INTENT: IntentFormData = { name: '', description: '', examples: [''], target_model: '' };
 
 export function IntentsPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const loadIntents = useCallback(() => intentsApi.list(tid).catch(() => []), [tid]);
@@ -42,6 +45,76 @@ export function IntentsPage() {
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorBanner message={error} onRetry={refetch} />;
+
+  const intentList: Intent[] = Array.isArray(intents) ? intents : [];
+
+  const renderDeleteButton = (intent: Intent) => (
+    <button
+      onClick={() => onDelete(intent.id, () => intentsApi.delete(tid, intent.id), refetch)}
+      className={`transition-colors ${
+        deleting === intent.id ? 'text-error' : 'text-on-surface-variant hover:text-error'
+      }`}
+    >
+      <span className="material-symbols-outlined">
+        {deleting === intent.id ? 'check_circle' : 'delete'}
+      </span>
+    </button>
+  );
+
+  const columns: ResponsiveTableColumn<Intent>[] = [
+    {
+      key: 'name',
+      header: t('intents.form.name'),
+      cell: (intent) => (
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-on-surface">{intent.name}</span>
+          {!intent.is_active && (
+            <span className="text-[10px] bg-error/15 text-error px-2 py-0.5 rounded-full font-bold">
+              {t('intents.list.inactive')}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'description',
+      header: t('intents.form.description'),
+      cellClassName: 'text-sm text-on-surface-variant',
+      cell: (intent) => intent.description || '—',
+    },
+    {
+      key: 'threshold',
+      header: t('intents.table.threshold'),
+      cellClassName: 'text-xs text-on-surface-variant/60',
+      cell: (intent) => t('intents.list.threshold', { value: intent.threshold }),
+    },
+    {
+      key: 'actions',
+      header: t('intents.table.actions'),
+      cellClassName: 'text-right',
+      cell: renderDeleteButton,
+    },
+  ];
+
+  const renderIntentCard = (intent: Intent) => (
+    <div className="p-6 flex items-center justify-between hover:bg-surface-container/30 transition-colors">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-on-surface">{intent.name}</span>
+          {!intent.is_active && (
+            <span className="text-[10px] bg-error/15 text-error px-2 py-0.5 rounded-full font-bold">
+              {t('intents.list.inactive')}
+            </span>
+          )}
+        </div>
+        {intent.description && (
+          <p className="text-sm text-on-surface-variant mt-1">{intent.description}</p>
+        )}
+        <p className="text-xs text-on-surface-variant/60 mt-1">{t('intents.list.threshold', { value: intent.threshold })}</p>
+      </div>
+      {renderDeleteButton(intent)}
+    </div>
+  );
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -148,45 +221,18 @@ export function IntentsPage() {
       )}
 
       <div className="bg-surface-container-low rounded-2xl border border-outline-variant/5 overflow-hidden">
-        {Array.isArray(intents) && intents.length > 0 ? (
-          <div className="divide-y divide-outline-variant/5">
-            {intents.map((intent) => (
-              <div key={intent.id} className="p-6 flex items-center justify-between hover:bg-surface-container/30 transition-colors group">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-on-surface">{intent.name}</span>
-                    {!intent.is_active && (
-                      <span className="text-[10px] bg-error/15 text-error px-2 py-0.5 rounded-full font-bold">
-                        {t('intents.list.inactive')}
-                      </span>
-                    )}
-                  </div>
-                  {intent.description && (
-                    <p className="text-sm text-on-surface-variant mt-1">{intent.description}</p>
-                  )}
-                  <p className="text-xs text-on-surface-variant/60 mt-1">{t('intents.list.threshold', { value: intent.threshold })}</p>
-                </div>
-                <button
-                  onClick={() => onDelete(intent.id, () => intentsApi.delete(tid, intent.id), refetch)}
-                  className={`transition-colors opacity-0 group-hover:opacity-100 ${
-                    deleting === intent.id
-                      ? 'text-error'
-                      : 'text-on-surface-variant hover:text-error'
-                  }`}
-                >
-                  <span className="material-symbols-outlined">
-                    {deleting === intent.id ? 'check_circle' : 'delete'}
-                  </span>
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16">
-            <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-4">target</span>
-            <p className="text-sm text-on-surface-variant">{t('intents.empty.noIntents')}</p>
-          </div>
-        )}
+        <ResponsiveTable
+          columns={columns}
+          rows={intentList}
+          rowKey={(intent) => intent.id}
+          renderMobileCard={renderIntentCard}
+          emptyMessage={
+            <span className="flex flex-col items-center justify-center gap-4 py-8">
+              <span className="material-symbols-outlined text-5xl text-on-surface-variant/30">target</span>
+              <span className="text-sm text-on-surface-variant">{t('intents.empty.noIntents')}</span>
+            </span>
+          }
+        />
       </div>
     </div>
   );

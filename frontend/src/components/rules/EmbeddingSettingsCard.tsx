@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { routesApi } from '../../api/routes';
 import type { EmbeddingSettings } from '../../types/api';
 
@@ -20,7 +20,7 @@ const PRESETS: { label: string; model: string; api_base?: string }[] = [
 ];
 
 export function EmbeddingSettingsCard({ tenantId }: Props) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reembedding, setReembedding] = useState(false);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 
 interface ErrorBannerProps {
   message: string;
@@ -8,7 +8,7 @@ interface ErrorBannerProps {
 }
 
 export function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   return (
     <div className="bg-error-container/20 border border-error/30 rounded-xl p-4 flex items-center justify-between">
       <div className="flex items-center gap-3">

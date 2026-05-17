@@ -1,15 +1,25 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import Link from 'next/link';
+import { useT } from '@bsvibe/i18n';
+import { ResponsiveTable } from '@bsvibe/ui';
+import type { ResponsiveTableColumn } from '@bsvibe/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useApi } from '../hooks/useApi';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { RouteCard } from '../components/rules/RouteCard';
+import {
+  RouteStatusCell,
+  RouteModelCell,
+  RouteExamplesCell,
+  RouteActionsCell,
+} from '../components/rules/RouteCells';
 import { EmbeddingSettingsCard } from '../components/rules/EmbeddingSettingsCard';
 import { DefaultFallbackCard } from '../components/rules/DefaultFallbackCard';
 import { routesApi } from '../api/routes';
+import type { RouteCard as RouteCardType } from '../api/routes';
 import type { TenantModel } from '../types/api';
 import { modelDisplayLabel } from '../utils/modelLabel';
 
@@ -36,7 +46,7 @@ function CreateModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const [formData, setFormData] = useState<CreateFormData>({
     ...INITIAL_FORM,
     targetModel: models[0]?.model_name || '',
@@ -128,9 +138,9 @@ function CreateModal({
             ) : (
               <div className="bg-surface-container-highest rounded-xl p-4 text-sm text-on-surface-variant">
                 {t('routes.modal.noModels')}{' '}
-                <a href="/models" className="text-primary font-bold hover:underline">
+                <Link href="/models" className="text-primary font-bold hover:underline">
                   {t('routes.modal.registerFirst')}
-                </a>
+                </Link>
                 .
               </div>
             )}
@@ -215,7 +225,7 @@ function CreateModal({
 }
 
 export function RoutesPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const loadRoutes = useCallback(() => routesApi.list(tid), [tid]);
@@ -259,6 +269,68 @@ export function RoutesPage() {
   const intentCards = allCards.filter((c) => !c.isDefault);
   const defaultCard = allCards.find((c) => c.isDefault) || null;
 
+  // Desktop <table> column model — each cell is an individually-stateful
+  // sub-component preserving RouteCard's behavior. Mobile reuses <RouteCard>.
+  const routeColumns: ResponsiveTableColumn<RouteCardType>[] = [
+    {
+      key: 'status',
+      header: t('routes.table.status'),
+      cellClassName: 'w-12',
+      cell: (card) => (
+        <RouteStatusCell card={card} tenantId={tid} onUpdate={refetch} />
+      ),
+    },
+    {
+      key: 'description',
+      header: t('routes.table.description'),
+      cell: (card) => (
+        <p className="text-on-surface text-sm leading-relaxed">{card.description}</p>
+      ),
+    },
+    {
+      key: 'targetModel',
+      header: t('routes.table.targetModel'),
+      cell: (card) => (
+        <RouteModelCell card={card} tenantId={tid} onUpdate={refetch} models={modelList} />
+      ),
+    },
+    {
+      key: 'priority',
+      header: t('routes.table.priority'),
+      cell: (card) => (
+        <span className="px-2 py-0.5 bg-on-surface-variant/10 text-on-surface-variant text-[10px] font-black rounded border border-outline-variant/10 uppercase">
+          P{card.priority}
+        </span>
+      ),
+    },
+    {
+      key: 'examples',
+      header: t('routes.table.examples'),
+      cell: (card) => (
+        <RouteExamplesCell card={card} tenantId={tid} onUpdate={refetch} />
+      ),
+    },
+    {
+      key: 'actions',
+      header: t('routes.table.actions'),
+      cellClassName: 'text-right',
+      cell: (card) => {
+        const index = intentCards.findIndex((c) => c.ruleId === card.ruleId);
+        return (
+          <RouteActionsCell
+            card={card}
+            tenantId={tid}
+            onDelete={refetch}
+            onMoveUp={() => handleReorder(index, index - 1)}
+            onMoveDown={() => handleReorder(index, index + 1)}
+            canMoveUp={index > 0}
+            canMoveDown={index < intentCards.length - 1}
+          />
+        );
+      },
+    },
+  ];
+
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
       {showModal && (
@@ -292,22 +364,27 @@ export function RoutesPage() {
       <EmbeddingSettingsCard tenantId={tid} />
 
       {intentCards.length > 0 ? (
-        <div className="space-y-3">
-          {intentCards.map((card, index) => (
-            <RouteCard
-              key={card.ruleId}
-              card={card}
-              tenantId={tid}
-              models={modelList}
-              onUpdate={refetch}
-              onDelete={refetch}
-              onMoveUp={() => handleReorder(index, index - 1)}
-              onMoveDown={() => handleReorder(index, index + 1)}
-              canMoveUp={index > 0}
-              canMoveDown={index < intentCards.length - 1}
-            />
-          ))}
-        </div>
+        <ResponsiveTable
+          columns={routeColumns}
+          rows={intentCards}
+          rowKey={(card) => card.ruleId}
+          renderMobileCard={(card) => {
+            const index = intentCards.findIndex((c) => c.ruleId === card.ruleId);
+            return (
+              <RouteCard
+                card={card}
+                tenantId={tid}
+                models={modelList}
+                onUpdate={refetch}
+                onDelete={refetch}
+                onMoveUp={() => handleReorder(index, index - 1)}
+                onMoveDown={() => handleReorder(index, index + 1)}
+                canMoveUp={index > 0}
+                canMoveDown={index < intentCards.length - 1}
+              />
+            );
+          }}
+        />
       ) : (
         <div className="bg-surface-container-low rounded-2xl border border-outline-variant/5 flex flex-col items-center justify-center py-16 min-h-[300px]">
           <div className="relative w-32 h-32 mb-8">

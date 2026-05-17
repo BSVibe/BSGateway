@@ -30,6 +30,13 @@
  * bg-gray-950, etc.) are present in the generated CSS. Without this the
  * library renders unstyled. */
 @source "../node_modules/@bsvibe/layout/dist/**/*.js";
+/* Same rationale for @bsvibe/ui — <ResponsiveTable> ships inline utility
+ * classes (hidden sm:table, overflow-x-auto, border-gray-800,
+ * hover:bg-gray-900/60, …) that Tailwind 4 only emits when it can see the
+ * compiled source. Without this the responsive table renders unstyled.
+ * NOTE: globals.css lives at app/[locale]/, so node_modules is two levels
+ * up (../../) — not one. */
+@source "../../node_modules/@bsvibe/ui/dist/**/*.js";
 
 @theme {
   /* Material 3 dark theme tokens — ports of tailwind.config.js */
@@ -204,8 +211,9 @@
  * BSGateway already has a md:translate-x-0 / -translate-x-full sidebar
  * pattern + md:hidden hamburger. This block adds:
  *   - 44px tap targets (Material 3 / iOS HIG) on hamburger and aside nav
- *   - DataTables (rules / models / audit) wrap in `overflow-x-auto`
- *     so horizontal scroll on narrow viewports already works structurally
+ *   - Tabular views (audit / dashboard / routes / models / intents) now use
+ *     the shared @bsvibe/ui <ResponsiveTable>, which dual-renders a
+ *     `<table>` (overflow-x-auto) on sm:+ and a card stack below sm:
  *   - Preserves output: 'export' + FastAPI mount path (unchanged)
  * ---------------------------------------------------------------------- */
 @media (max-width: 767px) {
@@ -216,7 +224,7 @@
     min-width: 44px;
     min-height: 44px;
   }
-  /* Tighter container padding so DataTable / cards have breathing room. */
+  /* Tighter container padding so tables / cards have breathing room. */
   main > div {
     padding-left: 1rem !important;
     padding-right: 1rem !important;

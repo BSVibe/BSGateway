@@ -31,7 +31,11 @@ test.describe('Routes Page (Notion Mail-style)', () => {
 
   test('renders a route card for each intent + rule pair', async ({ page }) => {
     await page.goto('/rules');
-    await expect(page.getByText('Code review and debugging requests')).toBeVisible();
+    // ResponsiveTable dual-renders the route — desktop <td> + mobile RouteCard.
+    // Only one tree is visible per viewport; scope to the visible one.
+    await expect(
+      page.getByText('Code review and debugging requests').locator('visible=true'),
+    ).toBeVisible();
   });
 
   test('renders a default fallback card at the bottom', async ({ page }) => {
@@ -42,12 +46,12 @@ test.describe('Routes Page (Notion Mail-style)', () => {
 
   test('shows priority badge on non-default cards', async ({ page }) => {
     await page.goto('/rules');
-    await expect(page.getByText('P0')).toBeVisible();
+    await expect(page.getByText('P0').locator('visible=true')).toBeVisible();
   });
 
   test('shows examples count on cards with intent', async ({ page }) => {
     await page.goto('/rules');
-    await expect(page.getByText('2 examples')).toBeVisible();
+    await expect(page.getByText('2 examples').locator('visible=true')).toBeVisible();
   });
 
   test('Add Rule button opens the create modal', async ({ page }) => {
@@ -104,10 +108,11 @@ test.describe('Routes Page (Notion Mail-style)', () => {
 
   test('expanding card reveals example phrases', async ({ page }) => {
     await page.goto('/rules');
-    await page.getByText('2 examples').click();
-    await expect(page.getByText('Example phrases')).toBeVisible();
-    await expect(page.getByText('Please review this code')).toBeVisible();
-    await expect(page.getByText('Help me debug this error')).toBeVisible();
+    // Click the visible "N examples" toggle (desktop table cell or mobile card).
+    await page.getByText('2 examples').locator('visible=true').click();
+    await expect(page.getByText('Example phrases').locator('visible=true')).toBeVisible();
+    await expect(page.getByText('Please review this code').locator('visible=true')).toBeVisible();
+    await expect(page.getByText('Help me debug this error').locator('visible=true')).toBeVisible();
   });
 
   test('empty state shows when no rules and no intents exist', async ({ page }) => {

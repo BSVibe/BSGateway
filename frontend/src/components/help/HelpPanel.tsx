@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 
 interface HelpPageEntry {
   /** Translation key under `help.pages.<key>` (with `.title` and `.description`). */
@@ -42,7 +42,7 @@ interface HelpPanelProps {
 }
 
 export function HelpPanel({ open, onClose }: HelpPanelProps) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const entry =
     Object.entries(HELP_CONTENT).find(([path]) =>
