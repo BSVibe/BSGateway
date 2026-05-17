@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
@@ -15,7 +15,7 @@ import type { UsageResponse } from '../types/api';
 const COLORS = ['#f59e0b', '#8fd5ff', '#d8c3ad', '#d97706', '#10b981', '#ec4899'];
 
 export function UsagePage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const PERIOD_LABELS: Record<'day' | 'week' | 'month', string> = {
     day: t('usage.period.day'),
     week: t('usage.period.week'),

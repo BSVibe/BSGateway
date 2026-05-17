@@ -1,13 +1,11 @@
 'use client';
 
 import { Component, useSyncExternalStore, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { DemoBanner, isDemoMode, useAutoDemoSession } from '@bsvibe/demo';
 import { Layout } from './Layout';
 import { useAuth, injectDemoToken } from '../../hooks/useAuth';
 import { LoginPage } from '../../page-views/LoginPage';
-// Initialize i18next on the client (avoids running in server-render path).
-import '../../i18n';
 
 class ErrorBoundary extends Component<
   { children: ReactNode; fallback?: 'page' | 'app' },
@@ -43,7 +41,7 @@ function ErrorBoundaryFallback({
   message: string;
   onReset: () => void;
 }) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   return (
     <div className={`flex items-center justify-center ${isPage ? 'min-h-[50vh]' : 'min-h-screen'} bg-surface`}>
       <div className="text-center p-8">
@@ -67,6 +65,7 @@ function ErrorBoundaryFallback({
 }
 
 function DemoShell({ children }: { children: ReactNode }) {
+  const t = useT('gateway');
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'https://api-demo-gateway.bsvibe.dev';
   const { loading, error } = useAutoDemoSession(apiBase, {
     onSessionReady: ({ token, expiresIn }) => {
@@ -82,7 +81,7 @@ function DemoShell({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-surface gap-4">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-amber-500" />
-        <p className="text-on-surface-variant text-sm">Setting up your demo sandbox…</p>
+        <p className="text-on-surface-variant text-sm">{t('demo.settingUp')}</p>
       </div>
     );
   }
@@ -91,7 +90,7 @@ function DemoShell({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center p-8">
-          <h1 className="text-xl font-bold text-on-surface mb-2">Demo unavailable</h1>
+          <h1 className="text-xl font-bold text-on-surface mb-2">{t('demo.unavailable')}</h1>
           <p className="text-on-surface-variant text-sm">{error}</p>
         </div>
       </div>

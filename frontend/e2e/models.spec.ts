@@ -11,7 +11,8 @@ test.describe('Models Page', () => {
   test('displays page heading and model count', async ({ page }) => {
     await page.goto('/models');
     await expect(page.getByRole('heading', { name: /model registry/i })).toBeVisible();
-    await expect(page.getByText('3 models registered.')).toBeVisible();
+    // models.summary renders "<n> model(s) · <n> worker(s) registered."
+    await expect(page.getByText(/3 models · \d+ workers? registered\./)).toBeVisible();
   });
 
   test('renders model cards in grid layout', async ({ page }) => {

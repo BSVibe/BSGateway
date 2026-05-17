@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { routesApi } from '../../api/routes';
 import type { RouteCard as RouteCardType } from '../../api/routes';
 import type { TenantModel } from '../../types/api';
@@ -21,7 +21,7 @@ interface Props {
  * without it, every unmatched chat request returns 400.
  */
 export function DefaultFallbackCard({ tenantId, card, models, onChange }: Props) {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState(card?.targetModel || '');

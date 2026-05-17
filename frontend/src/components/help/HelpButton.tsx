@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { HelpPanel } from './HelpPanel';
 
 export function HelpButton() {
   const [open, setOpen] = useState(false);
-  const { t } = useTranslation();
+  const t = useT('gateway');
 
   return (
     <>

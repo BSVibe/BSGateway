@@ -1,7 +1,8 @@
 'use client';
 
 import { type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { usePathname, useRouter } from 'next/navigation';
+import { useT, useCurrentLocale } from '@bsvibe/i18n';
 import {
   LanguageToggle,
   ResponsiveSidebar,
@@ -10,8 +11,39 @@ import {
   SidebarUserCard,
 } from '@bsvibe/layout';
 import type { SidebarTenant } from '@bsvibe/layout';
-import { SUPPORTED_LOCALES, setLocale, type Locale } from '../../i18n';
 import { HelpButton } from '../help/HelpButton';
+
+/**
+ * Locale switcher — mirrors the BSupervisor `SidebarLocaleSwitcher`.
+ * Strips any leading `/ko` or `/en` segment, then re-prefixes only when
+ * switching to the non-default locale (`ko`). Default `en` is bare-rooted
+ * because middleware uses `localePrefix: 'as-needed'` with default `en`.
+ */
+function SidebarLocaleSwitcher() {
+  const router = useRouter();
+  const pathname = usePathname() ?? '/';
+  const current = useCurrentLocale();
+
+  const onChange = (next: string) => {
+    if (next === current) return;
+    const stripped = pathname.replace(/^\/(ko|en)(?=\/|$)/, '') || '/';
+    const nextPath = next === 'ko' ? `/ko${stripped === '/' ? '' : stripped}` : stripped;
+    router.replace(nextPath);
+  };
+
+  return (
+    <LanguageToggle
+      value={current}
+      options={[
+        { value: 'en', label: 'EN' },
+        { value: 'ko', label: 'KO' },
+      ]}
+      onChange={onChange}
+      ariaLabel="Language"
+      dataTestId="lang-switcher"
+    />
+  );
+}
 
 interface LayoutProps {
   onLogout?: () => void;
@@ -57,7 +89,7 @@ export function Layout({
   onSwitchTenant,
   children,
 }: LayoutProps) {
-  const { t, i18n } = useTranslation();
+  const t = useT('gateway');
 
   const items = navItems.map((item) => ({
     href: item.path,
@@ -91,13 +123,7 @@ export function Layout({
               onSwitchTenant={(id) => onSwitchTenant?.(id)}
               dataTestId="sidebar-tenant-switcher"
             />
-            <LanguageToggle
-              value={(i18n.language as Locale) ?? 'en'}
-              options={SUPPORTED_LOCALES.map((l) => ({ value: l, label: l.toUpperCase() }))}
-              onChange={(next) => setLocale(next as Locale)}
-              ariaLabel={t('language.label')}
-              dataTestId="lang-switcher"
-            />
+            <SidebarLocaleSwitcher />
             {onLogout && email ? (
               <SidebarUserCard
                 email={email}

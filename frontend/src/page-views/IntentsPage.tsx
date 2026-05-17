@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { useApi } from '../hooks/useApi';
 import { useForm } from '../hooks/useForm';
 import { useDeleteConfirm } from '../hooks/useDeleteConfirm';
@@ -21,7 +21,7 @@ interface IntentFormData {
 const INITIAL_INTENT: IntentFormData = { name: '', description: '', examples: [''], target_model: '' };
 
 export function IntentsPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const loadIntents = useCallback(() => intentsApi.list(tid).catch(() => []), [tid]);

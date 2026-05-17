@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { rulesApi } from '../api/rules';
 import { auditApi } from '../api/audit';
@@ -51,7 +51,7 @@ const StatCard = ({ stat }: { stat: Stat }) => (
 );
 
 function useFormatRelativeTime() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   return (isoStr: string): string => {
     const diff = Date.now() - new Date(isoStr).getTime();
     const m = Math.floor(diff / 60000);
@@ -70,7 +70,7 @@ function formatModel(name: string): string {
 const MODEL_COLORS = ['#f59e0b', '#d97706', '#b45309', '#8fd5ff', '#534434'];
 
 export function DashboardPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const formatRelativeTime = useFormatRelativeTime();
   const { tenantId, tenantName } = useAuth();
   const tid = tenantId || '';
@@ -153,10 +153,9 @@ export function DashboardPage() {
     } finally {
       setLoading(false);
     }
-    // `t` is intentionally not in deps: react-i18next may rebuild the
-    // function on locale change, which would otherwise re-fire data fetch
-    // on every render and race the e2e mocks. Locale changes don't need to
-    // refetch the dashboard.
+    // `t` is intentionally not in deps: it may be rebuilt on locale change,
+    // which would otherwise re-fire data fetch on every render and race the
+    // e2e mocks. Locale changes don't need to refetch the dashboard.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid]);
 

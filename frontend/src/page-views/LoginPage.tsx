@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { useAuth } from '../hooks/useAuth';
 
 interface FeatureKey {
@@ -15,7 +15,7 @@ const features: readonly FeatureKey[] = [
 ];
 
 export function LoginPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { login, signup } = useAuth({ probeRemoteSession: false });
 
   return (

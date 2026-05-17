@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -14,7 +14,7 @@ interface AuditLogListResponse {
 }
 
 export function AuditPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const [logs, setLogs] = useState<AuditLog[]>([]);

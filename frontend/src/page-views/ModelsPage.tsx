@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { tenantsApi } from '../api/tenants';
 import { executorsApi } from '../api/executors';
 import { useAuth } from '../hooks/useAuth';
@@ -39,7 +39,7 @@ function formatTime(iso: string): string {
 }
 
 export function ModelsPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const loadModels = useCallback(() => tenantsApi.listModels(tid), [tid]);

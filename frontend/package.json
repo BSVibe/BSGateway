@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev -p 5173",
     "build": "next build",
-    "preview": "npx --yes serve dist -p 5173",
+    "preview": "next start -p 5173",
     "lint": "eslint .",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -16,12 +16,12 @@
   "dependencies": {
     "@bsvibe/demo": "^0.3.3",
     "@bsvibe/design-tokens": "^0.2.0",
+    "@bsvibe/i18n": "0.2.0",
     "@bsvibe/layout": "^0.7.0",
-    "i18next": "^26.0.3",
     "next": "^15.0.0",
+    "next-intl": "^4.9.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-i18next": "^17.0.2",
     "recharts": "^3.8.0"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useT } from '@bsvibe/i18n';
 import { useAuth } from '../hooks/useAuth';
 import { rulesApi } from '../api/rules';
 import { ErrorBanner } from '../components/common/ErrorBanner';
@@ -25,7 +25,7 @@ interface TestResult {
 }
 
 export function RoutingTestPage() {
-  const { t } = useTranslation();
+  const t = useT('gateway');
   const { tenantId } = useAuth();
   const tid = tenantId || '';
   const [messages, setMessages] = useState<TestMessage[]>([{ role: 'user', content: '' }]);
