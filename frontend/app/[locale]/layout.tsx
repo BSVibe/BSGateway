@@ -19,6 +19,13 @@ export function generateStaticParams() {
   return [{ locale: 'ko' }, { locale: 'en' }];
 }
 
+// Pinned IANA time zone. Without an explicit zone, `use-intl`'s client
+// provider emits an `ENVIRONMENT_FALLBACK` error during static generation
+// (the server prerender and client hydration would otherwise format dates
+// against different host time zones). Must match `i18n/request.ts`.
+// https://next-intl.dev/docs/configuration#time-zone
+const TIME_ZONE = 'UTC';
+
 /**
  * Root layout for BSGateway — owns `<html>` because the next-intl
  * `[locale]` pattern makes `app/[locale]/layout.tsx` the root layout
@@ -64,7 +71,7 @@ export default async function RootLayout({
         />
       </head>
       <body>
-        <BSVibeIntlProvider locale={locale} messages={messages}>
+        <BSVibeIntlProvider locale={locale} messages={messages} timeZone={TIME_ZONE}>
           <AppShell>{children}</AppShell>
         </BSVibeIntlProvider>
       </body>

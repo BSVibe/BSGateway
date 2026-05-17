@@ -99,9 +99,22 @@ jobs:
             fi
             sleep 2
           done
+          # Fail fast on a redirect loop. `next start` + next-intl
+          # `as-needed` routing can, if regressed, send `GET /` into an
+          # infinite 307 loop — Playwright's `webServer.url` probe would
+          # then hang the whole job until the 20-min timeout. `curl -L`
+          # follows redirects and gives up after --max-redirs; a loop
+          # surfaces here in seconds instead.
+          loop_code=$(curl -s -L --max-redirs 10 --max-time 15 \
+            -o /dev/null -w '%{http_code}' "http://localhost:${FRONTEND_PORT}/" || true)
+          if [ "$loop_code" != "200" ]; then
+            echo "::error::GET / did not settle on 200 (got '${loop_code}') — likely an i18n redirect loop"
+            tail -100 /tmp/frontend.log || true
+            exit 1
+          fi
           # Verify what's actually being served
           echo "::group::GET / preview"
-          curl -sS http://localhost:"$FRONTEND_PORT"/ | head -c 400
+          curl -sS -L http://localhost:"$FRONTEND_PORT"/ | head -c 400
           echo
           echo "::endgroup::"
 

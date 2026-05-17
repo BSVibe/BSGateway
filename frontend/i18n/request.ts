@@ -15,6 +15,14 @@ import {
 
 const GATEWAY_DEFAULT_LOCALE = 'en' as const;
 
+// next-intl / use-intl emit an `ENVIRONMENT_FALLBACK` error during static
+// generation when no `timeZone` is configured — without a fixed zone the
+// server prerender and the client hydration can format dates against
+// different host time zones, causing markup mismatches. Pin a single
+// explicit zone so the prerendered HTML is deterministic.
+// https://next-intl.dev/docs/configuration#time-zone
+const GATEWAY_TIME_ZONE = 'UTC' as const;
+
 export default defineRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;
   const locale = resolveLocale(requested, GATEWAY_DEFAULT_LOCALE);
@@ -34,5 +42,6 @@ export default defineRequestConfig(async ({ requestLocale }) => {
   return {
     locale,
     messages: shared.messages,
+    timeZone: GATEWAY_TIME_ZONE,
   };
 });
