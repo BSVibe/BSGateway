@@ -3,21 +3,20 @@
 Kept self-contained so the worker package doesn't depend on the full
 ``bsgateway`` backend (which pulls in asyncpg, fastapi, etc.).
 
-All executors expose a streaming contract — ``execute()`` returns an
-``AsyncIterator[ExecutionChunk]``. The worker main loop forwards each
-chunk to the gateway via Redis pub/sub so the client can receive
-incremental ``chat.completion.chunk`` events. Subprocess CLIs read the
-CLI's native streaming format (``--output-format stream-json`` for
-claude, ``exec --json`` for codex); ``OpenCodeExecutor`` consumes the
-``opencode serve`` SSE feed.
+All three executors are one-shot subprocess streamers — ``execute()``
+returns an ``AsyncIterator[ExecutionChunk]`` reading the CLI's native
+JSON stream (``--output-format stream-json`` for claude, ``exec --json``
+for codex, ``run --format json`` for opencode). The worker main loop
+forwards each chunk to the gateway via Redis pub/sub so the client can
+receive incremental ``chat.completion.chunk`` events.
 
-User harness (``CLAUDE.md`` / ``settings.json`` / hooks / MCP /
-``agents/``) is intentionally **not** propagated by the gateway. Each
-executor relies on whatever is installed locally on the worker
-machine. Only the OpenAI-API-expressible ``system`` message is
-forwarded — via ``--append-system-prompt`` (claude),
-``--config experimental_instructions_file=<tmp>`` (codex), or the
-``system`` field of the opencode session create request.
+User harness (``CLAUDE.md`` / ``settings.json`` / hooks / ``agents/``)
+is intentionally **not** propagated by the gateway. Each executor relies
+on whatever is installed locally on the worker machine. The
+OpenAI-API-expressible ``system`` message IS forwarded — via
+``--append-system-prompt`` (claude), ``--config
+model_instructions_file=<tmp>`` (codex), or the ``instructions`` config
+key (opencode, via ``OPENCODE_CONFIG_CONTENT``).
 """
 
 from __future__ import annotations
@@ -31,8 +30,6 @@ import tempfile
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
-
-import httpx
 
 
 @dataclass
@@ -380,176 +377,150 @@ class CodexExecutor:
                     pass
 
 
-# ─── opencode serve executor ─────────────────────────────────────────
+# ─── opencode run executor (subprocess) ──────────────────────────────
 
 
 class OpenCodeExecutor:
-    """Talks to a worker-local ``opencode serve`` instance over HTTP+SSE.
+    """Run a one-shot ``opencode run --format json`` subprocess per task.
 
-    The first ``execute()`` call lazy-spawns ``opencode serve`` on a free
-    port (or a configured port) and reuses it for the worker's lifetime.
-    Each task gets a fresh session — multi-turn reuse is intentionally
-    out of scope for v1 (see follow-ups).
+    Verified against opencode 1.15.0+ (probed 1.15.3). Each task is its
+    own process, so per-task ``--dir`` (workspace cwd), model, system
+    prompt, and MCP servers are all naturally isolated — no shared
+    ``opencode serve``, no port, no SSE.
 
-    The request shapes track the published ``@opencode-ai/sdk`` typed
-    contract (verified against 1.15.3):
+    ``opencode run --format json`` emits a JSONL event stream on stdout:
+    ``{"type":"step_start",...}`` → ``{"type":"text","part":{"type":
+    "text","text":"..."}}`` → ``{"type":"step_finish","part":{"reason":
+    "stop",...}}``. Assistant text is the ``part.text`` of each ``text``
+    event; ``step_finish`` is terminal.
 
-    * ``POST /session`` body is ``{parentID?, title?}`` only.
-    * ``POST /session/{id}/message`` body (``SessionPromptData``) is
-      ``{model?: {providerID, modelID}, system?, agent?, tools?,
-      parts: [...]}`` — messages are ``parts`` arrays of typed blocks,
-      NOT ``{role, content}``.
-
-    **TODO E6 — workspace_dir limitation**: ``opencode serve`` is a
-    single long-lived process whose ``cwd`` is fixed at spawn time. The
-    session create body does not expose a per-session ``directory`` /
-    ``cwd`` field. We therefore **ignore** ``context.workspace_dir``
-    here — opencode operates in the worker's process cwd. claude_code
-    and codex both honor ``workspace_dir`` per-task. BSNexus v1 picks
-    ``executor_type=claude_code`` so this is acceptable; tightening the
-    opencode cwd is a follow-up TODO E6b.
-
-    **TODO E5b — MCP injection**: opencode has no HTTP/per-session MCP
-    API — MCP servers are only configurable via the ``mcp`` block of an
-    ``opencode.json`` config file read at process startup. Run-scoped
-    MCP injection therefore needs a per-task spawn restructure (see
-    E6b). ``context.mcp_servers`` is currently **ignored** for opencode.
+    ``system`` and ``mcp_servers`` are injected via the
+    ``OPENCODE_CONFIG_CONTENT`` env var — an inline JSON config opencode
+    merges with the worker's global config at startup. ``system`` is
+    written to a temp file referenced by the config's ``instructions``
+    array; ``mcp_servers`` becomes the config's ``mcp`` block (run-scoped
+    MCP, resolving TODO E5b). The temp file is removed when the
+    subprocess exits.
     """
 
-    _server_lock = asyncio.Lock()
-
-    def __init__(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 0,
-        spawn_timeout_seconds: float = 30.0,
-        request_timeout_seconds: float = 600.0,
-    ) -> None:
+    def __init__(self, timeout_seconds: int = 3600) -> None:
         self._cmd = shutil.which("opencode") or "opencode"
-        self._host = host
-        self._port = port
-        self._spawn_timeout = spawn_timeout_seconds
-        self._request_timeout = request_timeout_seconds
-        self._proc: asyncio.subprocess.Process | None = None
-        self._base_url: str | None = None
+        self._timeout = timeout_seconds
 
     def supported_task_types(self) -> list[str]:
         return ["coding", "refactor", "bugfix", "test"]
 
-    async def _ensure_server(self) -> str:
-        if self._base_url is not None and self._proc is not None and self._proc.returncode is None:
-            return self._base_url
-        async with OpenCodeExecutor._server_lock:
-            if (
-                self._base_url is not None
-                and self._proc is not None
-                and self._proc.returncode is None
-            ):
-                return self._base_url
-            port = self._port if self._port else _find_free_port()
-            self._proc = await asyncio.create_subprocess_exec(
-                self._cmd,
-                "serve",
-                "--port",
-                str(port),
-                "--hostname",
-                self._host,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            self._base_url = f"http://{self._host}:{port}"
-            await self._wait_ready(self._base_url)
-            return self._base_url
-
-    async def _wait_ready(self, base_url: str) -> None:
-        deadline = asyncio.get_event_loop().time() + self._spawn_timeout
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            while asyncio.get_event_loop().time() < deadline:
-                try:
-                    res = await client.get(f"{base_url}/doc")
-                    if res.status_code < 500:
-                        return
-                except (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError):
-                    pass
-                await asyncio.sleep(0.2)
-        raise RuntimeError(f"opencode serve did not become ready at {base_url}")
-
     async def execute(self, prompt: str, context: dict[str, Any]) -> AsyncIterator[ExecutionChunk]:
-        try:
-            base_url = await self._ensure_server()
-        except (FileNotFoundError, PermissionError, OSError, RuntimeError) as e:
-            yield ExecutionChunk(done=True, error=str(e))
-            return
-
+        workspace = context.get("workspace_dir", ".")
         system = context.get("system") or ""
         model = context.get("model") or None
-        # opencode's typed contract requires a structured
-        # ``model: {providerID, modelID}`` object — there is no bare
-        # model-string form. The single ``ai_model`` string must use the
-        # ``provider/model`` convention; we split on the first ``/``. A
-        # value with no ``/`` cannot be expressed and is dropped so
-        # opencode falls back to its configured default.
-        model_obj: dict[str, str] | None = None
-        if model and "/" in model:
-            provider_id, model_id = model.split("/", 1)
-            if provider_id and model_id:
-                model_obj = {"providerID": provider_id, "modelID": model_id}
+        mcp_servers = context.get("mcp_servers") or {}
+        deadline = asyncio.get_event_loop().time() + self._timeout
+
+        # Build the per-task inline config (system instructions + MCP).
+        # opencode merges OPENCODE_CONFIG_CONTENT over the worker's global
+        # config, so each subprocess is isolated without touching disk
+        # config or the workspace.
+        sys_path: str | None = None
+        config: dict[str, Any] = {}
+        if system:
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".md", delete=False, encoding="utf-8"
+            )
+            tmp.write(system)
+            tmp.close()
+            sys_path = tmp.name
+            config["instructions"] = [sys_path]
+        if mcp_servers:
+            config["mcp"] = _opencode_mcp_block(mcp_servers)
+
+        env = dict(os.environ)
+        if config:
+            env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config)
+
+        cmd_args = [
+            self._cmd,
+            "run",
+            "--format",
+            "json",
+            "--dangerously-skip-permissions",
+            "--dir",
+            workspace,
+        ]
+        # opencode's ``-m`` takes the provider/model string verbatim.
+        if model:
+            cmd_args += ["-m", model]
+        cmd_args.append(prompt)
+
+        process: asyncio.subprocess.Process | None = None
+        stderr_buf: list[str] = []
         try:
-            async with httpx.AsyncClient(
-                base_url=base_url, timeout=self._request_timeout
-            ) as client:
-                # SessionCreateData accepts only {parentID?, title?} —
-                # system + model are per-message (SessionPromptData).
-                res = await client.post("/session", json={})
-                res.raise_for_status()
-                session_id = res.json().get("id") or res.json().get("sessionID")
-                if not session_id:
-                    yield ExecutionChunk(done=True, error="opencode session id missing")
-                    return
+            process = await asyncio.create_subprocess_exec(
+                *cmd_args,
+                cwd=workspace,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+            assert process.stdout is not None
+            assert process.stderr is not None
 
-                async def _post_message() -> None:
-                    # SessionPromptData: parts array of typed blocks,
-                    # optional system + model. NOT {role, content}.
-                    msg_body: dict[str, Any] = {
-                        "parts": [{"type": "text", "text": prompt}],
-                    }
-                    if system:
-                        msg_body["system"] = system
-                    if model_obj is not None:
-                        msg_body["model"] = model_obj
-                    await client.post(
-                        f"/session/{session_id}/message",
-                        json=msg_body,
-                    )
-
-                send_task = asyncio.create_task(_post_message())
-                try:
-                    async with client.stream("GET", "/event") as event_res:
-                        event_res.raise_for_status()
-                        async for line in event_res.aiter_lines():
-                            if not line or not line.startswith("data:"):
-                                continue
-                            payload = line[5:].strip()
-                            if not payload:
-                                continue
-                            parsed = _safe_json(payload)
-                            if parsed is None:
-                                continue
-                            delta = _opencode_extract_delta(parsed, session_id)
-                            if delta:
-                                yield ExecutionChunk(delta=delta, raw=parsed)
-                            if _opencode_is_terminal(parsed, session_id):
-                                yield ExecutionChunk(done=True, raw=parsed)
-                                break
-                finally:
-                    if not send_task.done():
-                        send_task.cancel()
-                        try:
-                            await send_task
-                        except (asyncio.CancelledError, httpx.HTTPError):
-                            pass
-        except httpx.HTTPError as e:
+            stderr_task = asyncio.create_task(_drain(process.stderr, stderr_buf))
+            try:
+                async for line in _aiter_lines(process.stdout, deadline):
+                    parsed = _safe_json(line)
+                    if parsed is None:
+                        continue
+                    delta = _opencode_extract_delta(parsed)
+                    if delta:
+                        yield ExecutionChunk(delta=delta, raw=parsed)
+            finally:
+                rc = await asyncio.wait_for(
+                    process.wait(), timeout=max(0.1, deadline - asyncio.get_event_loop().time())
+                )
+                await stderr_task
+            err_text = "".join(stderr_buf)
+            if rc != 0:
+                yield ExecutionChunk(done=True, error=err_text or f"exit {rc}")
+            else:
+                yield ExecutionChunk(done=True)
+        except TimeoutError:
+            yield ExecutionChunk(done=True, error=f"Execution timed out after {self._timeout}s")
+        except (FileNotFoundError, PermissionError, OSError) as e:
             yield ExecutionChunk(done=True, error=str(e))
+        finally:
+            if process is not None and process.returncode is None:
+                try:
+                    process.kill()
+                    await process.wait()
+                except ProcessLookupError:
+                    pass
+            if sys_path:
+                try:
+                    os.unlink(sys_path)
+                except OSError:
+                    pass
+
+
+def _opencode_mcp_block(mcp_servers: dict[str, Any]) -> dict[str, Any]:
+    """Convert the BSNexus ``{name: {url, headers}}`` MCP dict into
+    opencode's config ``mcp`` block shape: each entry is a remote server
+    ``{type: "remote", url, enabled: true, headers?}``.
+    """
+    block: dict[str, Any] = {}
+    for name, spec in mcp_servers.items():
+        if not isinstance(spec, dict):
+            continue
+        entry: dict[str, Any] = {"type": "remote", "enabled": True}
+        url = spec.get("url")
+        if url:
+            entry["url"] = url
+        headers = spec.get("headers")
+        if headers:
+            entry["headers"] = headers
+        block[name] = entry
+    return block
 
 
 # ─── Format-specific extractors ──────────────────────────────────────
@@ -602,38 +573,22 @@ def _codex_extract_delta(event: dict[str, Any]) -> str:
     return ""
 
 
-def _opencode_extract_delta(event: dict[str, Any], session_id: str) -> str:
-    """Pull incremental text from an opencode SSE bus event.
+def _opencode_extract_delta(event: dict[str, Any]) -> str:
+    """Pull assistant text from an ``opencode run --format json`` event.
 
-    opencode multiplexes a global event bus over ``/event``. We only
-    surface ``message.update`` / ``message.part.update`` text deltas
-    scoped to our session.
+    Verified against opencode 1.15.3. ``opencode run`` emits a flat
+    JSONL stream of ``{"type": ..., "part": {...}}`` records:
+    ``step_start`` → ``text`` → ``step_finish``. The assistant's answer
+    is the ``part.text`` of each ``text`` event; tool / step events
+    carry no user-facing text. Process exit (or a ``step_finish``) marks
+    the end, so no terminal-event detection is needed here.
     """
-    name = event.get("type") or event.get("event")
-    props = event.get("properties") or event.get("data") or {}
-    sid = props.get("sessionID") or props.get("session_id")
-    if sid and sid != session_id:
-        return ""
-    if name in ("message.part.update", "message.part.added"):
-        part = props.get("part") or {}
-        if part.get("type") == "text":
+    if event.get("type") == "text":
+        part = event.get("part") or {}
+        if isinstance(part, dict):
             text = part.get("text") or ""
             return text if isinstance(text, str) else ""
-    if name == "message.update":
-        msg = props.get("message") or {}
-        content = msg.get("content") or msg.get("text") or ""
-        if isinstance(content, str):
-            return content
     return ""
-
-
-def _opencode_is_terminal(event: dict[str, Any], session_id: str) -> bool:
-    name = event.get("type") or event.get("event")
-    props = event.get("properties") or event.get("data") or {}
-    sid = props.get("sessionID") or props.get("session_id")
-    if sid and sid != session_id:
-        return False
-    return name in ("session.idle", "message.completed", "message.done")
 
 
 # ─── Subprocess helpers ──────────────────────────────────────────────
@@ -667,14 +622,6 @@ def _safe_json(line: str) -> dict[str, Any] | None:
     except (json.JSONDecodeError, ValueError):
         return None
     return obj if isinstance(obj, dict) else None
-
-
-def _find_free_port() -> int:
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def _write_claude_mcp_config(mcp_servers: dict[str, Any]) -> str:
