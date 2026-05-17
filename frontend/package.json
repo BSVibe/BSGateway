@@ -19,7 +19,7 @@
     "@bsvibe/i18n": "0.2.0",
     "@bsvibe/layout": "^0.7.0",
     "next": "^15.0.0",
-    "next-intl": "^4.9.1",
+    "next-intl": "4.11.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "recharts": "^3.8.0"
@@ -41,5 +41,11 @@
     "tailwindcss": "^4.0.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.56.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "use-intl": "4.11.0",
+      "next-intl": "4.11.0"
+    }
   }
 }
